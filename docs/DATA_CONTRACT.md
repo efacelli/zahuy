@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.2.0 |
+| Versión | 0.3.0 |
 | Estado | **PROPUESTO — PENDIENTE DE CONCORDANCIA DEL BACKEND** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations` |
@@ -170,13 +170,18 @@ Permisos por rol a confirmar ([P-10](#13-preguntas-abiertas)).
 
 ### 4.2 `sale_unit`
 
-| Valor | Descripción |
-|---|---|
-| `unit` | Unidad (cantidades enteras) |
-| `kg` | Kilogramo |
-| `l` | Litro |
+| Valor | Descripción | Cantidades |
+|---|---|---|
+| `unit` | Unidad | enteras |
+| `kg` | Kilogramo | hasta 3 decimales |
+| `l` | Litro | hasta 3 decimales |
+| `pack` | Pack | enteras |
+| `box` | Caja | enteras |
+| `other` | Otra | enteras |
 
-Lista a confirmar ([P-04](#13-preguntas-abiertas)).
+Desde v0.3.0 incluye `pack`, `box` y `other` ([P-04](#13-preguntas-abiertas)).
+`box` como unidad de venta es distinto de `products.boxes_quantity` (conteo
+manual de cajas en depósito).
 
 ### 4.3 `movement_type`
 
@@ -219,6 +224,15 @@ Se calcula en orden de precedencia; el primer caso que se cumple gana:
 - Las alertas se calculan, no se guardan como filas, así que no pueden
   duplicarse.
 - La UI muestra texto o ícono además del color (accesibilidad).
+
+**Niveles de alerta en la UI** (presentación; no es un dato de la base):
+
+| `expiry_status` | Nivel en la UI | Texto |
+|---|---|---|
+| `expires_30`, `expires_15` | `warning` | Próximo a vencer |
+| `expires_7` | `urgent` | Vencimiento urgente |
+| `expired` | `expired` | Vencido |
+| `ok`, `no_expiry`, `depleted` | sin alerta | — |
 
 ---
 
@@ -282,8 +296,8 @@ futura.
 | `barcode` | `text` | sí | — | `CHECK (barcode ~ '^[0-9]{8,14}$')`; único parcial `WHERE barcode IS NOT NULL`. Sin lector en la Etapa 1 |
 | `name` | `text` | no | — | 1–150 caracteres |
 | `description` | `text` | sí | — | — |
-| `category_id` | `uuid` | no* | — | FK → `categories.id` ([P-06](#13-preguntas-abiertas)) |
-| `brand_id` | `uuid` | sí* | — | FK → `brands.id` |
+| `category_id` | `uuid` | no | — | FK → `categories.id` ([P-06](#13-preguntas-abiertas)) |
+| `brand_id` | `uuid` | no | — | FK → `brands.id` (obligatoria desde v0.3.0, [P-06](#13-preguntas-abiertas)) |
 | `supplier_id` | `uuid` | sí | — | FK → `suppliers.id`; proveedor habitual |
 | `sale_unit` | `sale_unit` | no | `'unit'` | — |
 | `cost_price` | `numeric(12,2)` | no | — | `CHECK (cost_price >= 0)` |
@@ -293,6 +307,7 @@ futura.
 | `min_stock` | `numeric(12,3)` | no | `0` | `CHECK (>= 0)` |
 | `is_active` | `boolean` | no | `true` | — |
 | `image_path` | `text` | sí | — | Ruta en el bucket privado `product-images`, **no** una URL pública |
+| `creation_key` | `uuid` | sí | — | `UNIQUE`. Clave de idempotencia del alta; la completa solo `create_product` (§8.4) |
 | columnas comunes | | | | §2.5 |
 
 - **No hay** columna de stock (§3).
@@ -476,7 +491,47 @@ Crea el movimiento compensatorio (`adjustment_in` o `adjustment_out`) con
 `reverses_movement_id`. Falla si ya fue revertido o si dejaría el lote en
 negativo.
 
-### 8.4 Idempotencia
+### 8.4 `create_product` — alta de producto con stock inicial opcional
+
+```
+create_product(
+  p_idempotency_key  uuid,
+  p_sku              text,
+  p_name             text,
+  p_category_id      uuid,
+  p_brand_id         uuid,
+  p_sale_unit        sale_unit,
+  p_cost_price       numeric,
+  p_sale_price       numeric,
+  p_vat_rate         numeric,
+  p_barcode          text    default null,
+  p_description      text    default null,
+  p_supplier_id      uuid    default null,
+  p_boxes_quantity   integer default 0,
+  p_min_stock        numeric default 0,
+  p_is_active        boolean default true,
+  p_image_path       text    default null,
+  p_initial_quantity numeric default null,
+  p_received_on      date    default hoy (AR),
+  p_expires_on       date    default null,
+  p_batch_number     text    default null
+) returns products
+```
+
+- Crea el producto y, si `p_initial_quantity > 0`, su primer lote y el
+  movimiento `entry`, todo en una transacción: o se crea todo o nada.
+- Es la única forma de dar de alta un producto: el `INSERT` directo sobre
+  `products` está revocado. La edición posterior sí es `UPDATE` directo (con
+  RLS), y nunca toca stock.
+- Idempotencia: con stock inicial, la clave queda en el movimiento (§8.5). Sin
+  stock inicial, un reintento con la misma clave y el mismo SKU devuelve el
+  producto ya creado; un SKU existente creado con otra clave da
+  `SKU_ALREADY_EXISTS`. Para eso se guarda la clave en
+  `products.creation_key uuid UNIQUE NULL` (nulable para filas viejas o de
+  semilla; el cliente nunca la escribe directamente).
+- `p_initial_quantity` nula o 0 → el producto se crea sin lotes (stock 0).
+
+### 8.5 Idempotencia
 
 - Si `p_idempotency_key` ya existe **con los mismos datos**, se devuelve el
   movimiento existente sin crear otro (reintento seguro).
@@ -485,7 +540,7 @@ negativo.
   la conserva hasta tener una respuesta definitiva. Esto también sirve para la
   futura cola offline.
 
-### 8.5 Códigos de error
+### 8.6 Códigos de error
 
 Se lanzan con `RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = '<CODIGO>'`.
 El frontend traduce el código a español; no muestra mensajes crudos de la base.
@@ -495,7 +550,8 @@ El frontend traduce el código a español; no muestra mensajes crudos de la base
 | `NOT_AUTHORIZED` | Rol sin permiso o usuario inactivo |
 | `PRODUCT_NOT_FOUND` / `BATCH_NOT_FOUND` / `MOVEMENT_NOT_FOUND` | ID inexistente o no visible |
 | `PRODUCT_INACTIVE` | Movimiento sobre un producto inactivo ([P-13](#13-preguntas-abiertas)) |
-| `INVALID_QUANTITY` | Cantidad ≤ 0 o con decimales en `sale_unit = 'unit'` |
+| `INVALID_QUANTITY` | Cantidad ≤ 0, o con decimales en una unidad de cantidades enteras (`unit`, `pack`, `box`, `other`) |
+| `SKU_ALREADY_EXISTS` | `create_product` con un SKU que ya existe (y no es un reintento idéntico) |
 | `INSUFFICIENT_STOCK` | La salida dejaría el lote en negativo |
 | `REASON_REQUIRED` | Falta el motivo en un tipo que lo exige |
 | `INVALID_MOVEMENT_TYPE` | `entry` vía `register_stock_movement` (usar `receive_stock`) |
@@ -518,7 +574,7 @@ RLS activada en todas las tablas del esquema `public`. Propuesta a confirmar en
 |---|---|---|---|
 | `profiles` | lee el propio | lee todos | lee todos, cambia rol y activo |
 | `categories`, `brands`, `suppliers` | lee | lee / crea / edita | lee / crea / edita |
-| `products` | lee | lee / crea / edita | lee / crea / edita |
+| `products` | lee | lee / crea (solo vía `create_product`) / edita | ídem |
 | `product_batches` | lee | lee; edita `batch_number`, `expires_on`, `notes` | ídem |
 | `stock_movements` | lee; RPC `entry`/`exit` | lee; todas las RPC salvo revertir | todas |
 | `audit_log` | — | — | lee |
@@ -597,9 +653,10 @@ este documento y una migración nueva.
 | P-01 | ¿Todo stock se registra en lotes, aunque el producto no venza? | Sí | Adoptada |
 | P-02 | ¿`cost_price` y `sale_price` incluyen IVA? | Sin definir: consultar al contador | **Pendiente.** No cambia columnas ni tipos; sí cómo la UI rotula los precios. Debe resolverse antes de mostrar precios como finales y antes de márgenes o ventas |
 | P-03 | ¿Las devoluciones son de clientes, a proveedores o ambas? | Ambas, como tipos separados | Adoptada |
-| P-04 | ¿Hay productos por peso o volumen? ¿Qué unidades? | `unit`, `kg`, `l` | Adoptada |
+| P-04 | ¿Hay productos por peso o volumen? ¿Qué unidades? | `unit`, `kg`, `l`, `pack`, `box`, `other` (v0.3.0, pedido del cliente) | Adoptada |
 | P-05 | ¿El SKU tiene formato (largo, caracteres)? ¿Distingue mayúsculas? | 1–40 caracteres, no distingue mayúsculas | Adoptada |
-| P-06 | ¿Categoría y marca son obligatorias? | Categoría sí, marca no | Adoptada |
+| P-06 | ¿Categoría y marca son obligatorias? | Ambas obligatorias (v0.3.0: el pedido del cliente no marca la marca como opcional). Para productos sin marca se usa una marca "Sin marca" | Adoptada |
+| P-16 | ¿El alta de producto incluye stock inicial? | Sí, opcional, mediante `create_product` (§8.4), que crea lote y movimiento `entry` | Adoptada |
 | P-07 | ¿El número de lote debe ser único por producto? | No (el mismo lote puede llegar en dos entregas) | Adoptada |
 | P-08 | ¿Stock bajo es `<=` o `<` al mínimo? ¿Lo que vence hoy está vencido? | `<=`; lo que vence hoy está por vencer | Adoptada |
 | P-09 | ¿Se rechaza `expires_on` anterior a `received_on`? | No; solo advertencia en la UI | Adoptada |
@@ -625,7 +682,7 @@ volver a registrar la concordancia.
 
 | Responsable | Área | Versión revisada | Fecha | Resultado | Observaciones |
 |---|---|---|---|---|---|
-| `efacelli` | Frontend + aprobación de PR | 0.2.0 | 2026-11-14 | Propone | Delegó la redacción a Claude Code |
+| `efacelli` | Frontend + aprobación de PR | 0.3.0 | 2026-11-14 | Propone | Delegó la redacción a Claude Code |
 | _(colega)_ | Backend | | | _pendiente_ | |
 
 ### Historial
@@ -634,3 +691,4 @@ volver a registrar la concordancia.
 |---|---|---|
 | 0.1.0 | 2026-11-14 | Borrador inicial propuesto por Claude Code para revisión |
 | 0.2.0 | 2026-11-14 | Responsables y flujo de aprobación; respuestas P-01 a P-14 adoptadas (salvo P-02); P-15 provisional restrictiva; código `BATCH_EXPIRED` |
+| 0.3.0 | 2026-11-14 | Requisitos del cliente: `sale_unit` agrega `pack`, `box`, `other`; `brand_id` obligatoria; RPC `create_product` con stock inicial opcional y `products.creation_key`; código `SKU_ALREADY_EXISTS`; niveles de alerta en la UI (§4.4) |
