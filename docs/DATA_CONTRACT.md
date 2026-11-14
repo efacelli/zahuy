@@ -2,10 +2,17 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.3.1 |
-| Estado | **PROPUESTO — EL BACKEND CONCUERDA CON LAS OBSERVACIONES DE v0.3.1; PENDIENTE DE APROBACIÓN DE `efacelli`** |
+| Versión | 0.4.0 |
+| Estado | **PROPUESTO — PENDIENTE DE CONCORDANCIA DEL BACKEND** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos |
-| Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations` |
+| Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
+
+> **v0.4.0 incorpora la segunda visita al cliente.** Lo más importante para el
+> backend: los permisos vuelven a diferenciarse por rol (§4.1, §9), los precios
+> se cargan sin IVA (§5.5), el SKU lo genera la base (§5.5), hay unidades por
+> caja (§5.5, §7.2), salidas automáticas por lote que vence primero (§8.7),
+> consumo interno (§4.3), alertas configurables por categoría (§4.4, §5.9) y
+> vencimiento obligatorio al cargar stock (§8.1).
 
 > Este documento no está aprobado hasta que ambos responsables completen la
 > sección [Revisión y aprobación](#14-revisión-y-aprobación). Mientras tanto
@@ -150,9 +157,14 @@ cualquiera podría registrar un cambio a nombre de otro usuario.
    aplicar `CHECK (quantity_available >= 0)`.
 3. **El stock del producto no se guarda**: es `SUM(quantity_available)` de sus
    lotes, expuesto en la vista `v_product_stock`. No existe `products.stock`.
-4. **Todo stock pertenece a un lote.** Un producto no perecedero tiene lotes con
-   `expires_on = NULL`. Así no hay dos caminos (con lote / sin lote) ni dos saldos.
-   Ver [P-01](#13-preguntas-abiertas).
+4. **Todo stock pertenece a un lote.** Así no hay dos caminos (con lote / sin
+   lote) ni dos saldos. Ver [P-01](#13-preguntas-abiertas). Desde v0.4.0 todos
+   los productos se controlan por vencimiento (también limpieza y bazar, que
+   vencen en uno o dos años), así que todo lote nuevo lleva fecha (§8.1).
+5. **Las cajas no son un segundo stock (v0.4.0).** El stock incluye todas las
+   unidades, estén sueltas o dentro de cajas cerradas. `boxes_quantity` es un
+   conteo manual de cuántas cajas cerradas hay en depósito; la vista lo traduce a
+   unidades para mostrar el desglose (§7.2).
 
 **Invariante verificable** (se testea y puede correrse como chequeo de
 conciliación):
@@ -168,17 +180,16 @@ quantity_available = SUM(signed_quantity) de sus movimientos
 
 ### 4.1 `app_role`
 
-| Valor | Descripción |
-|---|---|
-| `admin` | Todo lo operativo, y además gestiona usuarios (rol y activo) y lee `audit_log` |
-| `manager` | Mismos permisos operativos que `staff` (reservado para una regla futura) |
-| `staff` | Empleado: todas las operaciones de la Etapa 1 |
+| Valor | Persona | Descripción |
+|---|---|---|
+| `admin` | Dueño | Todo lo del encargado, y además gestiona usuarios (rol y activo) y lee `audit_log` |
+| `manager` | Encargado | Catálogos, alta y edición de productos (precios, stock mínimo, unidades por caja), todos los movimientos y reversiones, dashboard y configuración de alertas |
+| `staff` | Empleado | Consulta todo (incluidos costos y márgenes), registra **ingresos de mercadería** y **consumo interno**, y actualiza el **conteo de cajas** |
 
-Desde v0.3.1 (respuesta del dueño): **todos los empleados activos pueden hacer
-todas las operaciones** (catálogos, alta y edición de productos, todos los
-movimientos y reversiones, ver costos). Los tres valores del enum se conservan
-para poder diferenciar permisos más adelante (por ejemplo, el rol del dueño)
-sin cambiar el tipo. Ver §9 y [P-10](#13-preguntas-abiertas).
+Desde v0.4.0 (segunda visita, [P-10](#13-preguntas-abiertas)): **cargar
+productos, cambiar precios, hacer ajustes, registrar mermas y anular
+movimientos lo hace solo el encargado** (y el dueño). Esto reemplaza la regla
+de v0.3.1 "todos hacen todo". Matriz completa en §9.
 
 ### 4.2 `sale_unit`
 
@@ -210,6 +221,10 @@ signo se deriva del tipo.
 | `damage` | − | Daño/rotura | sí |
 | `customer_return` | + | Devolución de cliente | sí |
 | `supplier_return` | − | Devolución a proveedor | sí |
+| `internal_use` | − | Consumo interno, regalo o degustación (v0.4.0) | sí |
+
+`signed_quantity` (§5.7) no cambia: `internal_use` es salida, como todo tipo que
+no esté en la lista de entradas.
 
 > **Inconsistencia resuelta:** el requisito decía "ajustes" y "devoluciones" sin
 > dirección. Un ajuste puede sumar o restar y una devolución puede ser de cliente
@@ -218,31 +233,39 @@ signo se deriva del tipo.
 
 ### 4.4 `expiry_status` (solo en vistas, no se guarda)
 
+Desde v0.4.0 los días de alerta **son configurables por categoría** (§5.9), así
+que los valores dejan de llevar el número de días en el nombre. `urgent_days`,
+`soon_days` y `notice_days` son los de la categoría del producto (o los
+generales si la categoría no tiene propios; por defecto 7, 15 y 30).
+
 Se calcula en orden de precedencia; el primer caso que se cumple gana:
 
-| Orden | Valor | Condición |
-|---|---|---|
-| 1 | `depleted` | `quantity_available = 0` |
-| 2 | `no_expiry` | `expires_on IS NULL` |
-| 3 | `expired` | `expires_on < hoy` |
-| 4 | `expires_7` | `expires_on <= hoy + 7` |
-| 5 | `expires_15` | `expires_on <= hoy + 15` |
-| 6 | `expires_30` | `expires_on <= hoy + 30` |
-| 7 | `ok` | resto |
+| Orden | Valor | Condición | Antes de v0.4.0 |
+|---|---|---|---|
+| 1 | `depleted` | `quantity_available = 0` | igual |
+| 2 | `no_expiry` | `expires_on IS NULL` | igual |
+| 3 | `expired` | `expires_on < hoy` | igual |
+| 4 | `expires_urgent` | `expires_on <= hoy + urgent_days` | `expires_7` |
+| 5 | `expires_soon` | `expires_on <= hoy + soon_days` | `expires_15` |
+| 6 | `expires_upcoming` | `expires_on <= hoy + notice_days` | `expires_30` |
+| 7 | `ok` | resto | igual |
 
 - Un lote agotado nunca alerta, aunque esté vencido (requisito).
-- Lo que vence **hoy** cuenta como `expires_7`, no como `expired`
+- Lo que vence **hoy** cuenta como `expires_urgent`, no como `expired`
   ([P-08](#13-preguntas-abiertas)).
 - Las alertas se calculan, no se guardan como filas, así que no pueden
   duplicarse.
-- La UI muestra texto o ícono además del color (accesibilidad).
+- La UI muestra texto o ícono además del color (accesibilidad), y el contador
+  de días ("vence en 5 días").
+- El renombre no rompe datos: el enum todavía no existe en ninguna base. El
+  frontend actualiza sus valores en un PR propio.
 
 **Niveles de alerta en la UI** (presentación; no es un dato de la base):
 
 | `expiry_status` | Nivel en la UI | Texto |
 |---|---|---|
-| `expires_30`, `expires_15` | `warning` | Próximo a vencer |
-| `expires_7` | `urgent` | Vencimiento urgente |
+| `expires_upcoming`, `expires_soon` | `warning` | Próximo a vencer |
+| `expires_urgent` | `urgent` | Vencimiento urgente |
 | `expired` | `expired` | Vencido |
 | `ok`, `no_expiry`, `depleted` | sin alerta | — |
 
@@ -285,16 +308,22 @@ Una fila por usuario de Supabase Auth.
 | Columna | Tipo | Null | Default | Restricciones / notas |
 |---|---|---|---|---|
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
-| `name` | `text` | no | — | `CHECK (length(trim(name)) between 1 and 80)`; único sin distinguir mayúsculas: `unique index categories_name_key on lower(trim(name))` |
+| `name` | `text` | no | — | `CHECK (length(trim(name)) between 1 and 80)`; único sin distinguir mayúsculas **ni tildes** (v0.4.0): `unique index categories_name_key on lower(private.unaccent_text(trim(name)))` |
 | `is_active` | `boolean` | no | `true` | — |
 | columnas comunes | | | | §2.5 |
 
 Lista plana, sin subcategorías en la Etapa 1 ([P-12](#13-preguntas-abiertas)).
 
+**Tildes (v0.4.0):** en la prueba con la base real, "lacteos" se guardó como
+una categoría distinta de "Lácteos". Los nombres de `categories`, `brands` y
+`suppliers` pasan a ser únicos también sin distinguir tildes. Se usa la
+extensión `unaccent` envuelta en una función `IMMUTABLE` (`private.unaccent_text`,
+con `search_path` vacío), porque un índice no acepta `unaccent()` directamente.
+
 ### 5.3 `brands`
 
 Igual que `categories` (`id`, `name` único sin distinguir mayúsculas con el
-índice `brands_name_key`, `is_active`, columnas comunes).
+índice `brands_name_key`, que desde v0.4.0 tampoco distingue tildes, `is_active`, columnas comunes).
 
 ### 5.4 `suppliers`
 
@@ -304,7 +333,7 @@ futura.
 | Columna | Tipo | Null | Default | Restricciones / notas |
 |---|---|---|---|---|
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
-| `name` | `text` | no | — | 1–120 caracteres; único sin distinguir mayúsculas: `unique index suppliers_name_key on lower(trim(name))` |
+| `name` | `text` | no | — | 1–120 caracteres; único sin distinguir mayúsculas **ni tildes** (v0.4.0): `unique index suppliers_name_key on lower(private.unaccent_text(trim(name)))` |
 | `tax_id` | `text` | sí | — | CUIT de 11 dígitos sin guiones: `CHECK (tax_id ~ '^[0-9]{11}$')`; único si no es nulo: `unique index suppliers_tax_id_key` |
 | `phone` | `text` | sí | — | Hasta 40 caracteres |
 | `email` | `text` | sí | — | Hasta 254 caracteres; formato básico `algo@algo.algo` sin espacios |
@@ -317,7 +346,7 @@ futura.
 | Columna | Tipo | Null | Default | Restricciones / notas |
 |---|---|---|---|---|
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
-| `sku` | `text` | no | — | Único sin distinguir mayúsculas: `unique index products_sku_key on upper(sku)`; `CHECK (sku = trim(sku) and length(sku) between 1 and 40)` ([P-05](#13-preguntas-abiertas)) |
+| `sku` | `text` | no | generado | **Lo genera la base** (v0.4.0): `lpad(nextval('products_sku_seq')::text, 6, '0')` → `000001`, `000002`… Único: `unique index products_sku_key on upper(sku)`; `CHECK (sku = trim(sku) and length(sku) between 1 and 40)`. No se edita desde la app ([P-05](#13-preguntas-abiertas)) |
 | `barcode` | `text` | sí | — | `CHECK (barcode ~ '^[0-9]{8,14}$')`; único parcial `products_barcode_key` `WHERE barcode IS NOT NULL`. Sin lector en la Etapa 1 |
 | `name` | `text` | no | — | 1–150 caracteres |
 | `description` | `text` | sí | — | — |
@@ -325,10 +354,12 @@ futura.
 | `brand_id` | `uuid` | no | — | FK → `brands.id` (obligatoria desde v0.3.0, [P-06](#13-preguntas-abiertas)) |
 | `supplier_id` | `uuid` | sí | — | FK → `suppliers.id`; proveedor habitual |
 | `sale_unit` | `sale_unit` | no | `'unit'` | — |
-| `cost_price` | `numeric(12,2)` | no | — | `CHECK (cost_price >= 0)` |
-| `sale_price` | `numeric(12,2)` | no | — | `CHECK (sale_price >= 0)` |
+| `cost_price` | `numeric(12,2)` | no | — | `CHECK (cost_price >= 0)`. Costo **sin IVA** (v0.4.0) |
+| `sale_price` | `numeric(12,2)` | no | — | `CHECK (sale_price >= 0)`. Precio de venta **sin IVA**, el que se carga (v0.4.0) |
 | `vat_rate` | `numeric(4,2)` | no | `21.00` | `CHECK (vat_rate in (10.50, 21.00))` ([P-02](#13-preguntas-abiertas)) |
-| `boxes_quantity` | `integer` | no | `0` | `CHECK (>= 0)`. Manual, **independiente** del stock en unidades |
+| `sale_price_with_vat` | `numeric(12,2)` | no | generada | Precio final de góndola (v0.4.0): `GENERATED ALWAYS AS (round(sale_price * (1 + vat_rate / 100), 2)) STORED`. No se escribe |
+| `boxes_quantity` | `integer` | no | `0` | `CHECK (>= 0)`. Conteo manual de **cajas cerradas en depósito**; lo actualiza cualquier usuario activo |
+| `units_per_box` | `integer` | no | `12` | `CHECK (units_per_box > 0)`. Unidades por caja (v0.4.0); solo encargado o dueño |
 | `min_stock` | `numeric(12,3)` | no | `0` | `CHECK (>= 0)` |
 | `is_active` | `boolean` | no | `true` | — |
 | `image_path` | `text` | sí | — | Ruta en el bucket privado `product-images`, **no** una URL pública |
@@ -336,6 +367,16 @@ futura.
 | columnas comunes | | | | §2.5 |
 
 - **No hay** columna de stock (§3).
+- **Precios (v0.4.0, P-02):** `sale_price` y `cost_price` se guardan **sin
+  IVA**. El precio de góndola es `sale_price_with_vat`, calculado por la base;
+  el frontend no lo calcula. Margen = `sale_price − cost_price`, ambos sin IVA.
+- **Cajas (v0.4.0):** las unidades que están dentro de las cajas **forman parte
+  del stock** (§3). `boxes_quantity` dice cuántas de esas unidades están en cajas
+  cerradas; no suma stock por sí sola. Ver §7.2.
+- **SKU (v0.4.0):** generado por la base con la secuencia `products_sku_seq`.
+  El cliente no tiene código interno propio; el SKU de 6 dígitos sirve también
+  para los productos sin código de barras y, más adelante, como código en la
+  balanza.
 - Los nombres de los índices únicos (`products_sku_key`, `products_barcode_key`,
   `categories_name_key`, `brands_name_key`, `suppliers_name_key`,
   `suppliers_tax_id_key`) son parte del contrato: el frontend traduce el error
@@ -359,7 +400,7 @@ futura.
 | `product_id` | `uuid` | no | — | FK → `products.id` |
 | `batch_number` | `text` | sí | — | Número de lote del fabricante, opcional ([P-07](#13-preguntas-abiertas)) |
 | `received_on` | `date` | no | hoy (AR) | Fecha de ingreso |
-| `expires_on` | `date` | sí | — | `NULL` = sin vencimiento |
+| `expires_on` | `date` | sí | — | Obligatorio al crear lotes desde la app (v0.4.0, §8.1). `NULL` solo en datos de semilla/migración (= sin vencimiento) |
 | `quantity_initial` | `numeric(12,3)` | no | — | `CHECK (> 0)`; se fija al crear el lote y no cambia |
 | `quantity_available` | `numeric(12,3)` | no | — | `CHECK (>= 0)`. **Solo lo modifican las RPC** |
 | `notes` | `text` | sí | — | Observaciones |
@@ -380,7 +421,8 @@ futura.
 | Columna | Tipo | Null | Default | Restricciones / notas |
 |---|---|---|---|---|
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
-| `idempotency_key` | `uuid` | no | — | `UNIQUE`. Lo genera el cliente una vez por operación y lo reutiliza en los reintentos |
+| `idempotency_key` | `uuid` | no | — | `UNIQUE`. Lo genera el cliente una vez por operación y lo reutiliza en los reintentos. En `register_product_movement` lo genera la base para cada movimiento |
+| `operation_key` | `uuid` | sí | — | v0.4.0. Clave de la operación de `register_product_movement` (§8.7): la comparten todos los movimientos que generó una misma salida. Índice `stock_movements_operation_key_idx` |
 | `product_id` | `uuid` | no | — | — |
 | `batch_id` | `uuid` | no | — | FK compuesta `(batch_id, product_id)` → `product_batches(id, product_id)`: el lote pertenece al producto, garantizado por la base |
 | `movement_type` | `movement_type` | no | — | — |
@@ -432,6 +474,31 @@ En `product_batches` solo se auditan los cambios de `batch_number`, `expires_on`
 y `notes` (v0.3.1): los cambios de saldo ya quedan en `stock_movements` y
 duplicarlos solo agregaría ruido.
 
+El cliente pidió que quede registrado **qué perfil hizo qué cosa** (respuesta
+25): `audit_log.changed_by` y `stock_movements.created_by` lo cubren.
+
+### 5.9 `expiry_alert_settings` (v0.4.0)
+
+Días de alerta de vencimiento. Una fila general (`category_id IS NULL`) y, si
+hace falta, una por categoría (respuesta 6: "distintas por categoría").
+
+| Columna | Tipo | Null | Default | Restricciones / notas |
+|---|---|---|---|---|
+| `id` | `uuid` | no | `gen_random_uuid()` | PK |
+| `category_id` | `uuid` | sí | — | FK → `categories.id`. `NULL` = configuración general. Único: `unique index expiry_alert_settings_category_key on (coalesce(category_id, '00000000-0000-0000-0000-000000000000'))` (una sola fila general y una por categoría) |
+| `urgent_days` | `integer` | no | `7` | `CHECK (urgent_days >= 0)` |
+| `soon_days` | `integer` | no | `15` | `CHECK (soon_days >= urgent_days)` |
+| `notice_days` | `integer` | no | `30` | `CHECK (notice_days >= soon_days and notice_days <= 365)` |
+| columnas comunes | | | | §2.5 |
+
+- La migración crea la fila general con 7 / 15 / 30.
+- La fila general no se puede borrar; las de categoría se borran para volver a
+  la general (única excepción a "no hay borrado físico", porque no es historial).
+- La lee cualquier usuario activo; la crean, editan y borran el encargado y el
+  dueño (§9).
+- `expiry_status` (§4.4) usa los días de la categoría del producto si existe su
+  fila; si no, los generales.
+
 ---
 
 ## 6. Diagrama de relaciones
@@ -441,6 +508,7 @@ auth.users 1─1 profiles
 profiles   1─N (created_by / updated_by en todas las tablas)
 
 categories 1─N products
+categories 1─0..1 expiry_alert_settings   (más una fila general sin categoría)
 brands     1─N products
 suppliers  1─N products        (opcional)
 
@@ -471,6 +539,13 @@ Columnas de `product_batches` más `days_to_expiry integer` (nulo si no vence) y
 | `next_expiry_status` | `expiry_status` (nulable) | Estado del lote que vence primero con stock. Si hay stock pero ningún lote con vencimiento: `no_expiry`. Si no hay ningún lote con stock: `NULL` (v0.3.1) |
 | `active_batches_count` | `integer` | Lotes con `quantity_available > 0` |
 | `is_low_stock` | `boolean` | `stock_quantity <= min_stock` ([P-08](#13-preguntas-abiertas)) |
+| `units_in_boxes` | `numeric(12,3)` | `boxes_quantity * units_per_box` (v0.4.0) |
+| `loose_units` | `numeric(12,3)` | `stock_quantity - units_in_boxes`: unidades sueltas (v0.4.0) |
+| `has_box_mismatch` | `boolean` | `loose_units < 0`: las cajas contadas superan el stock; hay que revisar el conteo (v0.4.0) |
+
+Ejemplo (respuesta 8): 84 unidades de stock, 5 cajas de 12 → `units_in_boxes = 60`,
+`loose_units = 24`. La UI muestra "84 u. (24 sueltas + 5 cajas de 12)". Si
+`has_box_mismatch`, la UI lo marca; la base no corrige nada sola.
 
 La vista incluye **todos** los productos: uno sin lotes tiene `stock_quantity = 0`
 y `active_batches_count = 0`. Consecuencia de P-08: con `min_stock = 0`, un
@@ -478,10 +553,31 @@ producto sin stock figura con `is_low_stock = true`.
 
 ### 7.3 `v_product_list`
 
-Lo que lee la pantalla de listado: columnas de `products` más `category_name`,
-`brand_name`, `supplier_name` y las de `v_product_stock`. La búsqueda, los
-filtros, el orden y la paginación se hacen sobre esta vista; las métricas del
-dashboard también salen de ella, sin repetir las reglas en React.
+Lo que lee la pantalla de listado: columnas de `products` (incluidas
+`sale_price_with_vat` y `units_per_box`) más `category_name`, `brand_name`,
+`supplier_name` y las de `v_product_stock`. La búsqueda, los filtros, el orden y
+la paginación se hacen sobre esta vista, sin repetir las reglas en React.
+
+### 7.4 `v_inventory_summary` (v0.4.0, dashboard)
+
+Una fila con las métricas del dashboard (respuestas 5 y 31). Devuelve filas
+**solo a encargado y dueño**: el filtro está dentro de la vista
+(`WHERE private.is_manager_or_admin()`), no en React.
+
+| Columna | Tipo | Cálculo |
+|---|---|---|
+| `active_products` | `integer` | Productos activos |
+| `low_stock_products` | `integer` | Activos con `is_low_stock` |
+| `expiring_products` | `integer` | Activos con `next_expiry_status` en `expires_urgent`, `expires_soon` o `expires_upcoming` |
+| `expired_batches` | `integer` | Lotes con stock y `expired` |
+| `stock_value_cost` | `numeric(14,2)` | `SUM(stock_quantity * cost_price)` de activos (sin IVA) |
+| `stock_value_sale` | `numeric(14,2)` | `SUM(stock_quantity * sale_price_with_vat)` de activos |
+| `shrinkage_quantity_month` | `numeric(14,3)` | Suma de `shrinkage`, `damage` e `internal_use` del mes actual (Argentina) |
+| `box_mismatch_products` | `integer` | Productos con `has_box_mismatch` |
+
+Los reportes que el cliente pidió como imprescindibles (respuesta 31) son
+**stock bajo** y **por vencer**: salen de `v_product_list` con los filtros que
+ya existen.
 
 ---
 
@@ -504,7 +600,7 @@ receive_stock(
   p_product_id      uuid,
   p_quantity        numeric,
   p_received_on     date    default null,   -- null = hoy (AR)
-  p_expires_on      date    default null,
+  p_expires_on      date    default null,   -- obligatorio desde v0.4.0
   p_batch_number    text    default null,
   p_notes           text    default null
 ) returns stock_movements
@@ -514,7 +610,22 @@ Crea el lote (`quantity_initial = quantity_available = p_quantity`) y el
 movimiento `entry` en una sola transacción. `p_received_on` no puede ser futura
 (`INVALID_DATE`).
 
-### 8.2 `register_stock_movement` — cualquier movimiento sobre un lote existente
+- **Vencimiento obligatorio (v0.4.0, respuesta 11):** `p_expires_on` nulo →
+  `EXPIRY_REQUIRED`. Todos los productos vencen, incluidos limpieza y bazar
+  (aproximadamente cada 2 años).
+- **Ingreso por cajas:** la RPC siempre recibe **unidades de venta**. Si el
+  usuario carga "5 cajas", la UI lo convierte con `units_per_box` y muestra la
+  cuenta antes de confirmar.
+- **Comprobante:** el tipo y número de factura o remito, si se quiere guardar,
+  va en `p_notes`. El registro formal de compras es de una etapa futura.
+- Pueden usarla todos los usuarios activos (el empleado registra ingresos, §9).
+
+### 8.2 `register_stock_movement` — movimiento sobre un lote elegido
+
+Desde v0.4.0 las salidas habituales usan `register_product_movement` (§8.7),
+que elige los lotes solo. Esta RPC queda para **correcciones puntuales sobre un
+lote concreto** (por ejemplo, un ajuste de recuento de un lote) y la usan solo
+encargado y dueño.
 
 ```
 register_stock_movement(
@@ -563,7 +674,6 @@ Reglas (v0.3.1):
 ```
 create_product(
   p_idempotency_key  uuid,
-  p_sku              text,
   p_name             text,
   p_category_id      uuid,
   p_brand_id         uuid,
@@ -575,6 +685,7 @@ create_product(
   p_description      text    default null,
   p_supplier_id      uuid    default null,
   p_boxes_quantity   integer default 0,
+  p_units_per_box    integer default 12,
   p_min_stock        numeric default 0,
   p_is_active        boolean default true,
   p_image_path       text    default null,
@@ -590,15 +701,20 @@ create_product(
 - Es la única forma de dar de alta un producto: el `INSERT` directo sobre
   `products` está revocado. La edición posterior sí es `UPDATE` directo (con
   RLS), y nunca toca stock.
-- Idempotencia (v0.3.1): la clave se guarda **siempre** en
+- **Sin `p_sku` (v0.4.0):** la base asigna el SKU con `products_sku_seq` y lo
+  devuelve en la fila del producto. La UI lo muestra después de guardar.
+- Idempotencia (v0.4.0): la clave se guarda **siempre** en
   `products.creation_key uuid UNIQUE NULL` (nulable para filas viejas o de
   semilla; el cliente nunca la escribe directamente) y, si hay stock inicial,
   también como `idempotency_key` del movimiento `entry`. Un reintento con la
-  misma clave y el mismo SKU (sin distinguir mayúsculas) devuelve el producto ya
-  creado; la misma clave con otro SKU da `IDEMPOTENCY_CONFLICT`; un SKU
-  existente creado con otra clave da `SKU_ALREADY_EXISTS`.
+  misma clave y el mismo nombre (sin distinguir mayúsculas ni espacios de los
+  extremos) devuelve el producto ya creado, con su SKU; la misma clave con otro
+  nombre da `IDEMPOTENCY_CONFLICT`. Un reintento nunca consume otro número de
+  SKU.
 - Un código de barras repetido devuelve `23505` sobre `products_barcode_key`.
-- `p_received_on` no puede ser futura (`INVALID_DATE`).
+- `p_received_on` no puede ser futura (`INVALID_DATE`). Con stock inicial,
+  `p_expires_on` es obligatorio (`EXPIRY_REQUIRED`).
+- Solo encargado y dueño (§9).
 - `p_initial_quantity` nula o 0 → el producto se crea sin lotes (stock 0).
 
 ### 8.5 Idempotencia
@@ -613,7 +729,8 @@ create_product(
   | `receive_stock` | `product_id`, `quantity`, tipo `entry` |
   | `register_stock_movement` | `batch_id`, `movement_type`, `quantity` |
   | `reverse_stock_movement` | `reverses_movement_id` |
-  | `create_product` | `sku` (sin distinguir mayúsculas) |
+  | `create_product` | `name` (sin distinguir mayúsculas; v0.4.0, el SKU ya no lo envía el cliente) |
+  | `register_product_movement` | `product_id`, `movement_type`, cantidad total (§8.7) |
 
   No se comparan `occurred_at`, `received_on`, `reason` ni `notes`: un reintento
   que el servidor resuelve con otra hora no debe dar un conflicto falso.
@@ -634,45 +751,116 @@ El frontend traduce el código a español; no muestra mensajes crudos de la base
 | `PRODUCT_NOT_FOUND` / `BATCH_NOT_FOUND` / `MOVEMENT_NOT_FOUND` | ID inexistente o no visible |
 | `PRODUCT_INACTIVE` | Movimiento sobre un producto inactivo ([P-13](#13-preguntas-abiertas)) |
 | `INVALID_QUANTITY` | Cantidad ≤ 0, o con decimales en una unidad de cantidades enteras (`unit`, `pack`, `box`, `other`) |
-| `SKU_ALREADY_EXISTS` | `create_product` con un SKU que ya existe (y no es un reintento idéntico) |
-| `INSUFFICIENT_STOCK` | La salida dejaría el lote en negativo |
+| `SKU_ALREADY_EXISTS` | Reservado: desde v0.4.0 `create_product` ya no recibe SKU, así que no debería ocurrir |
+| `INSUFFICIENT_STOCK` | La salida dejaría el lote en negativo, o los lotes utilizables del producto no alcanzan (§8.7) |
 | `REASON_REQUIRED` | Falta el motivo en un tipo que lo exige |
 | `INVALID_MOVEMENT_TYPE` | `entry` vía `register_stock_movement` (usar `receive_stock`); revertir un movimiento que ya es una reversión |
 | `ALREADY_REVERSED` | El movimiento ya tiene compensación |
 | `BATCH_EXPIRED` | Salida de un lote vencido con un tipo distinto de `shrinkage`, `damage` o `supplier_return` ([P-15](#13-preguntas-abiertas)) |
 | `IDEMPOTENCY_CONFLICT` | Clave reutilizada con otros datos |
-| `INVALID_DATE` | `occurred_at` futura o con más de 7 días de atraso; `received_on` futura (v0.3.1; **el frontend debe agregar su traducción**) |
+| `INVALID_DATE` | `occurred_at` futura o con más de 7 días de atraso; `received_on` futura (v0.3.1) |
+| `EXPIRY_REQUIRED` | Ingreso de stock (`receive_stock` o `create_product` con stock inicial) sin fecha de vencimiento (v0.4.0) |
 
 Los errores de restricciones (`23505` unique, `23514` check, `23503` FK) se
 mapean en el frontend: por ejemplo, `23505` sobre `products_sku_key` →
 "El SKU ya existe".
 
+### 8.7 `register_product_movement` — salida o entrada por producto, lotes por vencimiento (v0.4.0)
+
+Respuesta 9: el sistema elige solo de qué lote sale la mercadería, empezando por
+el que vence primero (FEFO).
+
+```
+register_product_movement(
+  p_idempotency_key uuid,
+  p_product_id      uuid,
+  p_movement_type   movement_type,
+  p_quantity        numeric,
+  p_reason          text        default null,
+  p_notes           text        default null,
+  p_occurred_at     timestamptz default null   -- null = now()
+) returns setof stock_movements
+```
+
+- **Salidas** (`exit`, `adjustment_out`, `shrinkage`, `damage`,
+  `supplier_return`, `internal_use`): recorre los lotes con stock del producto
+  en orden `expires_on`, `received_on`, `id`, los bloquea con `FOR UPDATE` y
+  descuenta de cada uno lo que tenga hasta completar la cantidad. Si un lote no
+  alcanza, sigue con el siguiente: una salida puede generar **varios
+  movimientos**, uno por lote, todos en la misma transacción.
+- **Lotes vencidos:** para `shrinkage`, `damage` y `supplier_return` se usan
+  primero (son los que vencen antes). Para los demás tipos se **saltean**, porque
+  lo vencido no se vende ni se consume (P-15).
+- Si los lotes que se pueden usar no alcanzan → `INSUFFICIENT_STOCK` y **no se
+  registra nada**. Nunca queda stock negativo.
+- **Entradas** (`adjustment_in`, `customer_return`): van al lote con stock que
+  vence más tarde; si no hay ninguno, al último lote recibido. Si el producto no
+  tiene lotes → `BATCH_NOT_FOUND` (hay que registrar un ingreso con
+  `receive_stock`). `entry` no se acepta (`INVALID_MOVEMENT_TYPE`).
+- **Idempotencia:** `p_idempotency_key` se guarda en la nueva columna
+  `stock_movements.operation_key uuid NULL` de todos los movimientos generados;
+  cada movimiento lleva su propio `idempotency_key` (generado por la base). Un
+  reintento con la misma clave devuelve los mismos movimientos. La
+  serialización usa un bloqueo consultivo sobre la clave.
+- Mismas validaciones que §8.2: cantidad, motivo, fecha, producto inactivo.
+- Permisos (§9): el empleado solo puede usar `internal_use`; el resto de los
+  tipos, encargado y dueño.
+
+### 8.8 Transición desde las migraciones ya fusionadas
+
+Antes de esta versión se fusionaron en `main` las migraciones de enums,
+`profiles` y catálogos (v0.3.1). La v0.4.0 se implementa con **migraciones
+nuevas**, sin reescribir esas:
+
+- `ALTER TYPE public.movement_type ADD VALUE 'internal_use'`.
+- `ALTER TYPE public.expiry_status RENAME VALUE 'expires_7' TO 'expires_urgent'`
+  (y `expires_15` → `expires_soon`, `expires_30` → `expires_upcoming`).
+- Extensión `unaccent`, función `private.unaccent_text()` y recreación de
+  `categories_name_key`, `brands_name_key` y `suppliers_name_key` sin distinguir
+  tildes (mismo nombre de índice). Antes de recrearlos, la migración debe
+  detectar duplicados existentes y fallar con un mensaje claro en lugar de
+  borrar o renombrar datos.
+- Función `private.is_manager_or_admin()` y reemplazo de las políticas de
+  `INSERT`/`UPDATE` de `categories`, `brands` y `suppliers` para que solo
+  escriban encargado y dueño.
+
 ---
 
 ## 9. Seguridad (resumen de RLS propuesta)
 
-RLS activada en todas las tablas del esquema `public`. Desde v0.3.1 (respuesta
-del dueño, [P-10](#13-preguntas-abiertas)) los permisos operativos son iguales
-para todo usuario **activo**; solo la gestión de usuarios y la auditoría quedan
-para `admin`:
+RLS activada en todas las tablas del esquema `public`. Desde v0.4.0 (segunda
+visita, [P-10](#13-preguntas-abiertas)) los permisos se diferencian por rol.
+"Encargado" incluye al dueño: todo lo que puede `manager` también lo puede
+`admin`.
 
-| Tabla | Usuario activo (`staff`, `manager`, `admin`) | Solo `admin` | Usuario inactivo |
-|---|---|---|---|
-| `profiles` | lee todos (`id`, `full_name`, `role`, `is_active`) | edita `full_name`, `role`, `is_active` | lee solo el propio |
-| `categories`, `brands`, `suppliers` | lee / crea / edita | — | — |
-| `products` | lee / crea (solo vía `create_product`) / edita | — | — |
-| `product_batches` | lee; edita `batch_number`, `expires_on`, `notes` | — | — |
-| `stock_movements` | lee; las cuatro RPC, incluida la reversión | — | — |
-| `audit_log` | — | lee | — |
+| Objeto | Empleado (`staff`) | Encargado (`manager`) | Solo dueño (`admin`) | Usuario inactivo |
+|---|---|---|---|---|
+| `profiles` | lee todos (`id`, `full_name`, `role`, `is_active`) | ídem | edita `full_name`, `role`, `is_active` | lee solo el propio |
+| `categories`, `brands`, `suppliers` | lee | lee / crea / edita | — | — |
+| `products` | lee (incluidos costos); edita **solo** `boxes_quantity` | lee / crea (vía `create_product`) / edita todo lo editable, incluidos precios, `min_stock` y `units_per_box` | — | — |
+| `product_batches` | lee | lee; edita `batch_number`, `expires_on`, `notes` | — | — |
+| `stock_movements` | lee; `receive_stock` y `register_product_movement` con `internal_use` | lee; todas las RPC de §8, incluida la reversión | — | — |
+| `expiry_alert_settings` | lee | lee / crea / edita / borra filas de categoría | — | — |
+| `v_inventory_summary` (dashboard) | sin filas | lee | — | — |
+| `audit_log` | — | — | lee | — |
 
+- Para implementarlo: `private.is_manager_or_admin()` (activo y rol `manager` o
+  `admin`) junto a los `private.is_active_user()` e `private.is_admin()` que ya
+  existen. Las RPC devuelven `NOT_AUTHORIZED` si el rol no alcanza.
+- El empleado edita `boxes_quantity` con un permiso por columna
+  (`GRANT UPDATE (boxes_quantity)`) y una política de `UPDATE` para usuarios
+  activos; el resto de las columnas de `products` requiere encargado.
 - Todos los usuarios activos leen los perfiles porque el historial muestra quién
   hizo cada movimiento.
+- Acceso de administrador a las cuentas del proyecto (Supabase, GitHub, copias
+  de seguridad): **dueño y encargado** (respuesta 36). Es configuración de
+  infraestructura, no de la base.
 - Nadie hace `DELETE` desde la app, ni `INSERT`/`UPDATE`/`DELETE` directo sobre
   `stock_movements`, ni escribe `product_batches.quantity_*`.
 - Usuarios `anon`: sin acceso a ninguna tabla, vista ni función.
 - "Activo" se comprueba en la base (`profiles.is_active`) en cada política y en
   cada RPC, no en React.
-- Bucket `product-images`: privado; lectura y escritura para usuarios activos.
+- Bucket `product-images`: privado; lectura para usuarios activos y escritura para encargado y dueño (quienes editan productos).
 
 ---
 
@@ -681,16 +869,17 @@ para `admin`:
 | # | Requisito | Problema | Propuesta |
 |---|---|---|---|
 | I-01 | "Stock actual con una única fuente de verdad" + lotes con cantidad disponible | Si existen `products.stock` y `product_batches.quantity_available`, hay dos verdades que pueden divergir | Ledger + saldo por lote; el stock del producto es una vista (§3) |
-| I-02 | "Lote cuando corresponda" | Movimientos con y sin lote obligan a llevar stock a dos niveles | Todo stock en lotes; los no perecederos usan lotes sin vencimiento |
+| I-02 | "Lote cuando corresponda" | Movimientos con y sin lote obligan a llevar stock a dos niveles | Todo stock en lotes. Desde v0.4.0 todo lote nuevo lleva vencimiento |
 | I-03 | "Ajustes" y "devoluciones" | Dirección ambigua | Tipos separados con dirección fija (§4.3) |
 | I-04 | "Unidad de venta" | Si hay productos por peso, las cantidades enteras no alcanzan | `numeric(12,3)` y validación de enteros para `unit` |
-| I-05 | "Costo y precio de venta" + IVA | No se dice si los precios incluyen IVA | Pregunta P-02; no se asume |
-| I-06 | "Cajas manuales e independientes" | Las cajas no siguen a los movimientos y se desactualizan sin aviso | Columna manual auditada en `audit_log`; la UI muestra cuándo se actualizó |
+| I-05 | "Costo y precio de venta" + IVA | No se dice si los precios incluyen IVA | **Resuelto en v0.4.0:** se cargan sin IVA; la base calcula el precio final (§5.5) |
+| I-06 | "Cajas manuales e independientes" | Las cajas no siguen a los movimientos y se desactualizan sin aviso | Columna manual auditada en `audit_log`. **v0.4.0:** el cliente quiere stock = sueltas + cajas; se resuelve sin doble conteo (§3, §7.2) y la vista marca cuando el conteo de cajas no cierra |
 | I-07 | "Vencido" | `current_date` en UTC adelanta el vencimiento 3 horas | "Hoy" en la zona horaria de Buenos Aires (§2.4) |
 | I-08 | "Stock mínimo" / "stock bajo" | No se define si es `<` o `<=`, ni qué pasa con mínimo 0 | `<=` propuesto; pregunta P-08 |
 | I-09 | "Fecha" del movimiento | ¿Fecha real o de registro? ¿Se permiten fechas pasadas? | `occurred_at` y `created_at` separados; pregunta P-11 |
 | I-10 | "Auditar operaciones relevantes" | Los movimientos se auditan, pero los cambios de precio o cajas no | Tabla `audit_log` (§5.8) |
-| I-11 | "Preparar para futuras ventas" | Una salida sin elegir lote necesita una regla de asignación | Pregunta P-14 (FEFO); por ahora el usuario elige el lote |
+| I-11 | "Preparar para futuras ventas" | Una salida sin elegir lote necesita una regla de asignación | **Resuelto en v0.4.0:** el sistema elige por vencimiento (§8.7); las ventas futuras usarán la misma regla |
+| I-12 | Permisos (v0.3.1 vs. segunda visita) | La primera visita dijo "todos hacen todo"; la segunda, "solo el encargado" | Se adopta la segunda (§4.1, §9) |
 
 ---
 
@@ -701,18 +890,44 @@ clientes y cuentas corrientes; ventas, caja y tickets; ARCA; offline/PWA;
 historial de precios separado del `audit_log`. Todas se agregan después con
 migraciones compatibles hacia atrás.
 
+Anotado en la segunda visita para esas etapas (ver
+`docs/RELEVAMIENTO_RESPUESTAS.md`): alertas por **WhatsApp** (requiere un
+proveedor de mensajería pago), **conteo de stock desde el celular**, **cuenta
+corriente** con alertas de deudores configurables y bloqueo por deuda alta,
+**descuentos** desde 6 unidades y cada 6, **2 cajas** cobrando a la vez, cinco
+medios de pago, y el **código de barras de la balanza** (prefijo `2`, código de
+producto de 6 dígitos y peso en gramos), que necesitará un campo de código de
+balanza por producto.
+
 ---
 
 ## 12. Pruebas que este contrato exige
 
-- SKU duplicado (incluido `abc` vs `ABC`): `SKU_ALREADY_EXISTS` en
-  `create_product`; `23505` sobre `products_sku_key` al editar el SKU de un
-  producto existente.
+- SKU (v0.4.0): `create_product` asigna `000001`, `000002`… en orden; un
+  reintento con la misma clave devuelve el mismo SKU y no consume otro número.
 - Cantidad 0 y negativa → `INVALID_QUANTITY`.
 - Salida mayor al saldo → `INSUFFICIENT_STOCK` y el saldo no cambia.
 - Lote agotado → `depleted` y sin alerta.
-- Producto sin vencimiento → `no_expiry`.
-- Vencimiento pasado → `expired`; vencimiento hoy → `expires_7`.
+- Catálogos: "lacteos" contra "Lácteos" (y "LÁCTEOS") → `23505` sobre `categories_name_key`.
+- Lote de semilla sin vencimiento → `no_expiry`. Ingreso sin vencimiento desde
+  la app → `EXPIRY_REQUIRED`.
+- Vencimiento pasado → `expired`; vencimiento hoy → `expires_urgent`.
+- Alertas por categoría: con la fila general 7/15/30 y una categoría con 10/20/45,
+  un lote de esa categoría que vence en 40 días es `expires_upcoming` y uno de
+  otra categoría es `ok`.
+- FEFO: con lotes A (vence antes, 4 u.) y B (20 u.), una salida de 10 genera
+  4 de A y 6 de B; una salida de 30 → `INSUFFICIENT_STOCK` sin registrar nada;
+  `internal_use` saltea un lote vencido y `shrinkage` lo usa primero.
+- Reintento de `register_product_movement` con la misma clave → mismos
+  movimientos, sin duplicar.
+- Precio final: `sale_price` 1000 con IVA 21 → `sale_price_with_vat` 1210.00;
+  con 10,5 → 1105.00.
+- Cajas: stock 84, 5 cajas de 12 → `loose_units` 24; 8 cajas de 12 →
+  `has_box_mismatch`.
+- Permisos v0.4.0: el empleado registra un ingreso, un `internal_use` y cambia
+  `boxes_quantity`; no puede crear productos, cambiar precios, `units_per_box`
+  ni `min_stock`, registrar mermas ni revertir; no ve filas en
+  `v_inventory_summary`.
 - Lote de otro producto → la FK compuesta lo rechaza.
 - `UPDATE`/`DELETE` sobre `stock_movements` → rechazado.
 - Mismo `idempotency_key` dos veces → un solo movimiento; con otros datos →
@@ -722,7 +937,8 @@ migraciones compatibles hacia atrás.
 - `exit` sobre un lote vencido → `BATCH_EXPIRED`; `shrinkage` sobre el mismo
   lote → permitido.
 - `occurred_at` a futuro o con más de 7 días de atraso → `INVALID_DATE`; con 3
-  días de atraso → permitido para cualquier usuario activo.
+  días de atraso → permitido para cualquier rol que pueda registrar ese
+  movimiento.
 - `received_on` futura → `INVALID_DATE`.
 - Revertir una reversión → `INVALID_MOVEMENT_TYPE`; revertir un `entry` de un
   lote vencido o de un producto inactivo → permitido.
@@ -733,7 +949,8 @@ migraciones compatibles hacia atrás.
 - Cantidad con decimales en producto `unit` → `INVALID_QUANTITY`.
 - Conciliación: `quantity_available` = suma del ledger para todos los lotes.
 - RLS: cada fila de §9 probada con un usuario permitido y uno denegado; `anon`
-  sin acceso; un usuario que no es `admin` no puede cambiar su rol ni el de otro.
+  sin acceso; un usuario que no es `admin` no puede cambiar su rol ni el de otro;
+  un empleado no puede crear ni editar catálogos.
 - Migraciones aplicadas sobre una base con datos ficticios previos: los conteos
   y las relaciones se conservan.
 
@@ -747,22 +964,26 @@ este documento y una migración nueva.
 
 | # | Pregunta | Respuesta | Estado |
 |---|---|---|---|
-| P-01 | ¿Todo stock se registra en lotes, aunque el producto no venza? | Sí | Adoptada |
-| P-02 | ¿`cost_price` y `sale_price` incluyen IVA? | Sin definir: consultar al contador | **Pendiente.** No cambia columnas ni tipos; sí cómo la UI rotula los precios. Debe resolverse antes de mostrar precios como finales y antes de márgenes o ventas |
+| P-01 | ¿Todo stock se registra en lotes, aunque el producto no venza? | Sí. Desde v0.4.0 todos los productos vencen (limpieza y bazar, cada 2 años aprox.) | Adoptada |
+| P-02 | ¿`cost_price` y `sale_price` incluyen IVA? | **No.** Se cargan sin IVA; el precio de góndola lo calcula la base (`sale_price_with_vat`). El negocio es Responsable Inscripto | Adoptada (v0.4.0) |
 | P-03 | ¿Las devoluciones son de clientes, a proveedores o ambas? | Ambas, como tipos separados | Adoptada |
 | P-04 | ¿Hay productos por peso o volumen? ¿Qué unidades? | `unit`, `kg`, `l`, `pack`, `box`, `other` (v0.3.0, pedido del cliente) | Adoptada |
-| P-05 | ¿El SKU tiene formato (largo, caracteres)? ¿Distingue mayúsculas? | 1–40 caracteres, no distingue mayúsculas | Adoptada |
-| P-06 | ¿Categoría y marca son obligatorias? | Ambas obligatorias (v0.3.0: el pedido del cliente no marca la marca como opcional). Para productos sin marca se usa una marca "Sin marca" | Adoptada |
+| P-05 | ¿El SKU tiene formato (largo, caracteres)? ¿Distingue mayúsculas? | v0.4.0: el cliente no tiene código interno; la base genera un número de 6 dígitos (`000001`) | Adoptada |
+| P-06 | ¿Categoría y marca son obligatorias? | Ambas obligatorias. El cliente confirmó que no hay productos sin marca | Adoptada |
 | P-16 | ¿El alta de producto incluye stock inicial? | Sí, opcional, mediante `create_product` (§8.4), que crea lote y movimiento `entry` | Adoptada |
 | P-07 | ¿El número de lote debe ser único por producto? | No (el mismo lote puede llegar en dos entregas) | Adoptada |
 | P-08 | ¿Stock bajo es `<=` o `<` al mínimo? ¿Lo que vence hoy está vencido? | `<=`; lo que vence hoy está por vencer | Adoptada |
 | P-09 | ¿Se rechaza `expires_on` anterior a `received_on`? | No; solo advertencia en la UI | Adoptada |
-| P-10 | ¿Qué roles hay y qué puede hacer cada uno? | Tabla §9. v0.3.1 (dueño): todos los empleados hacen todas las operaciones; `admin` además gestiona usuarios y lee la auditoría | Adoptada. Pendiente de la segunda visita: si el dashboard del negocio es solo para el dueño |
-| P-11 | ¿Se permite cargar movimientos con fecha pasada? ¿Hasta cuánto? | Sí, hasta 7 días, cualquier usuario activo (v0.3.1, consecuencia de P-10); nunca a futuro | Adoptada |
+| P-10 | ¿Qué roles hay y qué puede hacer cada uno? | v0.4.0 (segunda visita): dueño (`admin`), encargado (`manager`) y empleado (`staff`). Productos, precios, ajustes, mermas, reversiones, catálogos y dashboard: encargado y dueño. El empleado consulta (también costos), registra ingresos y consumo interno, y actualiza el conteo de cajas. Tabla §9 | Adoptada |
+| P-11 | ¿Se permite cargar movimientos con fecha pasada? ¿Hasta cuánto? | Sí, hasta 7 días (el cliente carga con hasta una semana de atraso); nunca a futuro | Adoptada |
 | P-12 | ¿Hacen falta subcategorías? | No en la Etapa 1 | Adoptada |
 | P-13 | ¿Se permiten movimientos sobre productos inactivos? | Solo salidas `shrinkage`/`damage`/`supplier_return` | Adoptada |
-| P-14 | En salidas, ¿se elige el lote o se aplica primero el que vence antes (FEFO)? | El usuario elige; la UI sugiere el que vence primero | Adoptada |
-| P-15 | ¿Se puede sacar de un lote vencido algo que no sea merma? | No: solo `shrinkage`, `damage` o `supplier_return` (`BATCH_EXPIRED`). El dueño confirmó que lo vencido se tira y nunca se vende | Adoptada (v0.3.1). Pendiente menor: si algún proveedor retira vencidos (ya cubierto por `supplier_return`) |
+| P-14 | En salidas, ¿se elige el lote o se aplica primero el que vence antes (FEFO)? | v0.4.0: **automático**, el que vence primero; si no alcanza, sigue con el siguiente (§8.7) | Adoptada |
+| P-15 | ¿Se puede sacar de un lote vencido algo que no sea merma? | No: solo `shrinkage`, `damage` o `supplier_return` (`BATCH_EXPIRED`). Lo vencido se tira; ningún proveedor lo retira | Adoptada |
+| P-17 | ¿Cómo se relacionan cajas y stock? | Stock = sueltas + cajas; el stock incluye todo y las cajas son un desglose (§3, §7.2). 12 unidades por caja por defecto; solo encargado o dueño lo cambia | Adoptada (v0.4.0) |
+| P-18 | ¿Hay consumo interno? | Sí: tipo `internal_use` | Adoptada (v0.4.0) |
+| P-19 | ¿Las alertas de vencimiento son iguales para todo? | No: configurables por categoría (§5.9) | Adoptada (v0.4.0) |
+| P-20 | ¿Cuántas sucursales y depósitos? | Una sucursal y un depósito: no hace falta modelar ubicaciones | Adoptada (v0.4.0) |
 
 ---
 
@@ -779,8 +1000,8 @@ volver a registrar la concordancia.
 
 | Responsable | Área | Versión revisada | Fecha | Resultado | Observaciones |
 |---|---|---|---|---|---|
-| `efacelli` | Frontend + aprobación de PR | 0.3.0 | 2026-11-14 | Propone | Delegó la redacción a Claude Code |
-| `ChinoNader18` | Backend | 0.3.1 | 2026-11-14 | Concuerda con observaciones | Las observaciones sobre la v0.3.0 están resueltas en la v0.3.1 (ver historial). Revisión delegada a Claude Code |
+| `efacelli` | Frontend + aprobación de PR | 0.4.0 | 2026-11-15 | Propone | Respuestas de la segunda visita. Redacción delegada a Claude Code |
+| `ChinoNader18` | Backend | 0.3.1 | 2026-11-14 | Concuerda con observaciones | **Falta revisar la v0.4.0** |
 
 ### Historial
 
@@ -790,3 +1011,4 @@ volver a registrar la concordancia.
 | 0.2.0 | 2026-11-14 | Responsables y flujo de aprobación; respuestas P-01 a P-14 adoptadas (salvo P-02); P-15 provisional restrictiva; código `BATCH_EXPIRED` |
 | 0.3.0 | 2026-11-14 | Requisitos del cliente: `sale_unit` agrega `pack`, `box`, `other`; `brand_id` obligatoria; RPC `create_product` con stock inicial opcional y `products.creation_key`; código `SKU_ALREADY_EXISTS`; niveles de alerta en la UI (§4.4) |
 | 0.3.1 | 2026-11-14 | Revisión del backend: permisos iguales para todo usuario activo (§4.1, §9, P-10, P-11); perfiles legibles por todos; origen de `full_name` y primer `admin` (§5.1); columnas de auditoría fijadas por la base (§2.5); nombres de índices únicos (§5.2–5.5); bloqueo de cambio de `sale_unit` con movimientos; reglas de reversión (§5.7, §8.3); fechas con `default null` y código `INVALID_DATE` (§8, §8.6); campos comparados en la idempotencia (§8.5); `creation_key` siempre (§8.4); `next_expiry_status` nulo (§7.2); P-15 adoptada |
+| 0.4.0 | 2026-11-15 | Segunda visita al cliente: permisos por rol dueño/encargado/empleado (§4.1, §9); precios sin IVA y `sale_price_with_vat` (§5.5, P-02); SKU generado por la base (§5.5, §8.4); `units_per_box` y desglose de cajas en `v_product_stock` (§3, §5.5, §7.2); `register_product_movement` con lotes por vencimiento y `operation_key` (§8.7); tipo `internal_use` (§4.3); alertas configurables por categoría con `expiry_alert_settings` y estados `expires_urgent/soon/upcoming` (§4.4, §5.9); vencimiento obligatorio y código `EXPIRY_REQUIRED` (§8.1); dashboard `v_inventory_summary` (§7.4); transición desde las migraciones fusionadas (§8.8); P-17 a P-20; nombres de catálogos únicos sin distinguir tildes (§5.2–5.4) |
