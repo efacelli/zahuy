@@ -67,7 +67,7 @@ export function AlertsPage() {
       minWidth: '14rem',
       render: (r) => (
         <span className={styles.product}>
-          <Link to={`/productos?q=${encodeURIComponent(r.product_sku)}&estado=todos`}>{r.product_name}</Link>
+          <Link to={`/productos/${r.product_id}`}>{r.product_name}</Link>
           <span className={styles.muted}>
             SKU {r.product_sku}
             {!r.product_is_active && ' · inactivo'}

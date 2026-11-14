@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SaleUnit } from '../../domain/units'
+import { toAppError } from '../../lib/errors'
 import type { ProductFormOutput } from './product-form-schema'
 
 /**
@@ -71,6 +73,100 @@ export function toCreateProductParams(values: ProductFormOutput, idempotencyKey:
     p_expires_on: stock?.expires_on ?? null,
     p_batch_number: stock?.batch_number ?? null,
   }
+}
+
+/** Columnas que la app puede editar en `products` (permisos por columna, §5.5 y §9). */
+export interface ProductUpdatePayload {
+  barcode: string | null
+  name: string
+  description: string | null
+  category_id: string
+  brand_id: string
+  supplier_id: string | null
+  sale_unit: string
+  cost_price: number
+  sale_price: number
+  vat_rate: number
+  boxes_quantity: number
+  units_per_box: number
+  min_stock: number
+  is_active: boolean
+}
+
+export function toUpdateProductPayload(values: ProductFormOutput): ProductUpdatePayload {
+  return {
+    barcode: values.barcode,
+    name: values.name,
+    description: values.description,
+    category_id: values.category_id,
+    brand_id: values.brand_id,
+    supplier_id: values.supplier_id,
+    sale_unit: values.sale_unit,
+    cost_price: values.cost_price,
+    sale_price: values.sale_price,
+    vat_rate: values.vat_rate,
+    boxes_quantity: values.boxes_quantity,
+    units_per_box: values.units_per_box,
+    min_stock: values.min_stock,
+    is_active: values.is_active,
+  }
+}
+
+export async function updateProduct(
+  client: SupabaseClient,
+  id: string,
+  payload: ProductUpdatePayload,
+): Promise<CreatedProduct> {
+  const { data, error } = await client.from('products').update(payload).eq('id', id).select('id, sku, name').single()
+  if (error) throw error
+  return data as CreatedProduct
+}
+
+/** Cambia solo el conteo de cajas; lo puede hacer cualquier usuario activo (§9). */
+export async function updateBoxCount(client: SupabaseClient, id: string, boxes: number): Promise<void> {
+  const { error } = await client.from('products').update({ boxes_quantity: boxes }).eq('id', id).select('id').single()
+  if (error) throw error
+}
+
+/** Producto tal como se edita (tabla `products`, §5.5). */
+export interface EditableProductRow {
+  id: string
+  sku: string
+  barcode: string | null
+  name: string
+  description: string | null
+  category_id: string
+  brand_id: string
+  supplier_id: string | null
+  sale_unit: SaleUnit
+  cost_price: number
+  sale_price: number
+  vat_rate: number
+  boxes_quantity: number
+  units_per_box: number
+  min_stock: number
+  is_active: boolean
+}
+
+export async function fetchEditableProduct(client: SupabaseClient, id: string): Promise<EditableProductRow> {
+  const { data, error } = await client
+    .from('products')
+    .select(
+      'id, sku, barcode, name, description, category_id, brand_id, supplier_id, sale_unit, cost_price, sale_price, vat_rate, boxes_quantity, units_per_box, min_stock, is_active',
+    )
+    .eq('id', id)
+    .single()
+  if (error) throw error
+  return data as EditableProductRow
+}
+
+/** Mensaje para errores del alta o la edición de productos. */
+export function productErrorMessage(error: unknown, editing: boolean): string {
+  const e = (typeof error === 'object' && error !== null ? error : {}) as { code?: unknown; message?: unknown }
+  if (editing && e.code === '23514' && typeof e.message === 'string' && e.message.includes('sale_unit')) {
+    return 'No se puede cambiar la unidad de venta: el producto ya tiene movimientos de stock.'
+  }
+  return toAppError(error).message
 }
 
 export interface CreatedProduct {

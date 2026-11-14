@@ -128,6 +128,8 @@ const HISTORY_COLUMNS =
 export interface HistoryParams {
   type: MovementType | null
   page: number
+  /** Solo los movimientos de un producto (ficha del producto). */
+  productId?: string
 }
 
 /** Subconjunto del query builder que usa el historial (facilita las pruebas). */
@@ -139,6 +141,7 @@ export interface HistoryQuery {
 
 export function applyHistoryParams(query: HistoryQuery, p: HistoryParams) {
   let q = query
+  if (p.productId) q = q.eq('product_id', p.productId)
   if (p.type) q = q.eq('movement_type', p.type)
   q = q.order('occurred_at', { ascending: false }).order('created_at', { ascending: false }).order('id', { ascending: true })
   const [from, to] = pageRange(p.page, DEFAULT_PAGE_SIZE)

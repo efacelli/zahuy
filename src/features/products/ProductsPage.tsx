@@ -55,7 +55,11 @@ export function ProductsPage() {
       header: 'Nombre',
       sortable: true,
       minWidth: '14rem',
-      render: (r) => <span className={styles.name}>{r.name}</span>,
+      render: (r) => (
+        <Link to={`/productos/${r.id}`} className={styles.name}>
+          {r.name}
+        </Link>
+      ),
     },
     { key: 'brand_name', header: 'Marca', sortable: true, render: (r) => r.brand_name },
     { key: 'category_name', header: 'Categoría', sortable: true, render: (r) => r.category_name },
