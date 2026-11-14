@@ -3,15 +3,9 @@ import { LoginPage } from '../features/auth/LoginPage'
 import { RequireAuth } from '../features/auth/RequireAuth'
 import { CatalogsPage } from '../features/catalogs/CatalogsPage'
 import { NewProductPage } from '../features/products/NewProductPage'
+import { ProductsPage } from '../features/products/ProductsPage'
 import { AppLayout } from './layout/AppLayout'
-import {
-  AlertsPage,
-  DashboardPage,
-  MovementsPage,
-  NotFoundPage,
-  ProductsPage,
-  RouteErrorPage,
-} from './pages'
+import { AlertsPage, DashboardPage, MovementsPage, NotFoundPage, RouteErrorPage } from './pages'
 
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage />, errorElement: <RouteErrorPage /> },
