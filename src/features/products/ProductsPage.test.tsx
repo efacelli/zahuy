@@ -29,8 +29,10 @@ function row(overrides: Record<string, unknown>) {
     sale_unit: 'unit',
     cost_price: 450.5,
     sale_price: 700,
+    sale_price_with_vat: 847,
     vat_rate: 21,
-    boxes_quantity: 5,
+    boxes_quantity: 0,
+    units_per_box: 12,
     min_stock: 10,
     is_active: true,
     stock_quantity: 55,
@@ -38,6 +40,9 @@ function row(overrides: Record<string, unknown>) {
     next_expiry_status: 'no_expiry',
     active_batches_count: 1,
     is_low_stock: false,
+    units_in_boxes: 0,
+    loose_units: 55,
+    has_box_mismatch: false,
     ...overrides,
   }
 }
@@ -58,8 +63,8 @@ describe('Listado de productos', () => {
       row({ sku: 'ARR-1', name: 'Arroz 1 kg', stock_quantity: 3, is_low_stock: true }),
     ])
     const table = await screen.findByRole('table', { name: 'Listado de productos' })
-    for (const header of ['SKU', 'Código de barras', 'Nombre', 'Marca', 'Categoría', 'Proveedor', 'Costo', 'Precio', 'IVA', 'Stock', 'Cajas', 'Próximo vencimiento', 'Estado']) {
-      expect(within(table).getByRole('columnheader', { name: new RegExp(header) })).toBeInTheDocument()
+    for (const header of ['SKU', 'Código de barras', 'Nombre', 'Marca', 'Categoría', 'Proveedor', 'Costo s/IVA', 'Precio s/IVA', 'Precio final', 'IVA', 'Stock', 'Cajas', 'Próximo vencimiento', 'Estado']) {
+      expect(within(table).getByRole('columnheader', { name: new RegExp(`^${header}`) })).toBeInTheDocument()
     }
     expect(within(table).getByText('Yogur frutilla')).toBeInTheDocument()
     expect(within(table).getByText('Distribuidora Norte')).toBeInTheDocument()
@@ -69,9 +74,31 @@ describe('Listado de productos', () => {
     expect(within(table).getAllByText('21%')).toHaveLength(2)
   })
 
+  it('muestra el precio final que calcula la base', async () => {
+    setup([row({ name: 'Leche', sale_price: 1000, sale_price_with_vat: 1210 })])
+    const table = await screen.findByRole('table')
+    expect(within(table).getByText(/1\.210,00/)).toBeInTheDocument()
+  })
+
+  it('muestra el stock como sueltas + cajas (contrato v0.4.0 §7.2)', async () => {
+    setup([
+      row({ name: 'Yogur', stock_quantity: 84, boxes_quantity: 5, units_per_box: 12, units_in_boxes: 60, loose_units: 24 }),
+    ])
+    expect(await screen.findByText('84 u.')).toBeInTheDocument()
+    expect(screen.getByText(/24 u\. sueltas \+ 5 cajas de 12/)).toBeInTheDocument()
+  })
+
+  it('avisa cuando las cajas contadas superan el stock', async () => {
+    setup([
+      row({ name: 'Arroz', stock_quantity: 50, boxes_quantity: 8, units_per_box: 12, units_in_boxes: 96, loose_units: -46, has_box_mismatch: true }),
+    ])
+    expect(await screen.findByText('Revisar cajas')).toBeInTheDocument()
+    expect(screen.queryByText(/sueltas/)).not.toBeInTheDocument()
+  })
+
   it('muestra el próximo vencimiento con contador de días y nivel de alerta', async () => {
     setup([
-      row({ name: 'Leche', next_expires_on: addDays(TODAY, 5), next_expiry_status: 'expires_7' }),
+      row({ name: 'Leche', next_expires_on: addDays(TODAY, 5), next_expiry_status: 'expires_urgent' }),
       row({ name: 'Queso', next_expires_on: addDays(TODAY, -2), next_expiry_status: 'expired' }),
       row({ name: 'Fideos', next_expires_on: null, next_expiry_status: 'no_expiry' }),
     ])

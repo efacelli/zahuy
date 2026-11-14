@@ -84,7 +84,17 @@ describe('pantallas según el rol', () => {
     const fake = createFakeSupabase(fakeSession())
     fake.setTable('profiles', null, { code: 'PGRST205', message: 'Could not find the table' })
     renderApp('/productos', fake.client)
-    expect(await screen.findByText(/No se pudo cargar tu perfil/)).toBeInTheDocument()
+    expect(await screen.findByText('No se pudo cargar tu perfil')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Salir' })).toBeInTheDocument()
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+  })
+
+  it('si el usuario no tiene perfil, lo explica y deja salir', async () => {
+    const fake = createFakeSupabase(fakeSession())
+    fake.setTable('profiles', [])
+    renderApp('/productos', fake.client)
+    expect(await screen.findByText('Tu usuario no tiene perfil en el sistema')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reintentar' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Salir' })).toBeInTheDocument()
   })
 })

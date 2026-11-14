@@ -84,8 +84,8 @@ export function ProductFilters({ params, onChange }: ProductFiltersProps) {
         onChange={(e) => onChange({ expiry: (e.target.value || null) as ExpiryFilter | null })}
       >
         <option value="">Cualquier vencimiento</option>
-        <option value="por_vencer">Por vencer (30 días o menos)</option>
-        <option value="urgente">Vencimiento urgente (7 días o menos)</option>
+        <option value="por_vencer">Por vencer</option>
+        <option value="urgente">Vencimiento urgente</option>
         <option value="vencido">Con lotes vencidos</option>
       </select>
 

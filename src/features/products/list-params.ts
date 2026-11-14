@@ -13,6 +13,7 @@ export const PRODUCT_SORT_KEYS = [
   'supplier_name',
   'cost_price',
   'sale_price',
+  'sale_price_with_vat',
   'stock_quantity',
   'boxes_quantity',
   'next_expires_on',

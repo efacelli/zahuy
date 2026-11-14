@@ -22,7 +22,7 @@ describe('toAppError', () => {
     const codes = [
       'NOT_AUTHORIZED', 'PRODUCT_NOT_FOUND', 'BATCH_NOT_FOUND', 'MOVEMENT_NOT_FOUND', 'PRODUCT_INACTIVE',
       'INVALID_QUANTITY', 'SKU_ALREADY_EXISTS', 'INSUFFICIENT_STOCK', 'REASON_REQUIRED', 'INVALID_MOVEMENT_TYPE',
-      'ALREADY_REVERSED', 'BATCH_EXPIRED', 'IDEMPOTENCY_CONFLICT', 'INVALID_DATE',
+      'ALREADY_REVERSED', 'BATCH_EXPIRED', 'IDEMPOTENCY_CONFLICT', 'INVALID_DATE', 'EXPIRY_REQUIRED',
     ]
     for (const code of codes) {
       expect(toAppError({ code: 'P0001', message: code }).code).toBe(code)

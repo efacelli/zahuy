@@ -23,10 +23,18 @@ export function RequireAuth() {
 
   if (profile.isPending) return <LoadingState label="Cargando tu perfil…" />
   if (profile.error) {
+    // PGRST116 = no hay fila: el usuario existe en Auth pero no tiene perfil (o fue dado de baja).
+    const missing = (profile.error as { code?: string }).code === 'PGRST116'
     return (
       <ErrorState
-        message={`No se pudo cargar tu perfil. ${toAppError(profile.error).message}`}
-        onRetry={() => void profile.refetch()}
+        title={missing ? 'Tu usuario no tiene perfil en el sistema' : 'No se pudo cargar tu perfil'}
+        message={
+          missing
+            ? 'Hablá con el encargado o el dueño para que revise tu usuario.'
+            : toAppError(profile.error).message
+        }
+        onRetry={missing ? undefined : () => void profile.refetch()}
+        action={<Button onClick={() => void signOut()}>Salir</Button>}
       />
     )
   }

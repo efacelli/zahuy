@@ -109,7 +109,7 @@ describe('consulta a v_product_list', () => {
     expect(calls).toContainEqual(['eq', 'category_id', CAT])
     expect(calls).toContainEqual(['eq', 'supplier_id', SUP])
     expect(calls).toContainEqual(['eq', 'is_low_stock', true])
-    expect(calls).toContainEqual(['in', 'next_expiry_status', ['expires_7', 'expires_15', 'expires_30']])
+    expect(calls).toContainEqual(['in', 'next_expiry_status', ['expires_urgent', 'expires_soon', 'expires_upcoming']])
     expect(calls.some((c) => c[1] === 'is_active')).toBe(false)
   })
 
@@ -119,7 +119,7 @@ describe('consulta a v_product_list', () => {
 
   it('vencidos y urgentes', () => {
     expect(run({ expiry: 'vencido' })).toContainEqual(['in', 'next_expiry_status', ['expired']])
-    expect(run({ expiry: 'urgente' })).toContainEqual(['in', 'next_expiry_status', ['expires_7']])
+    expect(run({ expiry: 'urgente' })).toContainEqual(['in', 'next_expiry_status', ['expires_urgent']])
   })
 
   it('ordena por la columna pedida con desempate estable y pagina', () => {

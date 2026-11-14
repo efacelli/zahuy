@@ -20,10 +20,12 @@ export async function fetchCatalogOptions(client: SupabaseClient, table: Catalog
   return (data ?? []) as CatalogOption[]
 }
 
-/** Parámetros de la RPC `create_product`, con los nombres exactos del contrato. */
+/**
+ * Parámetros de la RPC `create_product`, con los nombres exactos del contrato v0.4.0 (§8.4).
+ * Sin `p_sku`: el SKU lo genera la base y vuelve en la respuesta.
+ */
 export interface CreateProductParams {
   p_idempotency_key: string
-  p_sku: string
   p_name: string
   p_category_id: string
   p_brand_id: string
@@ -35,6 +37,7 @@ export interface CreateProductParams {
   p_description: string | null
   p_supplier_id: string | null
   p_boxes_quantity: number
+  p_units_per_box: number
   p_min_stock: number
   p_is_active: boolean
   p_image_path: string | null
@@ -48,7 +51,6 @@ export function toCreateProductParams(values: ProductFormOutput, idempotencyKey:
   const stock = values.initial_stock
   return {
     p_idempotency_key: idempotencyKey,
-    p_sku: values.sku,
     p_name: values.name,
     p_category_id: values.category_id,
     p_brand_id: values.brand_id,
@@ -60,6 +62,7 @@ export function toCreateProductParams(values: ProductFormOutput, idempotencyKey:
     p_description: values.description,
     p_supplier_id: values.supplier_id,
     p_boxes_quantity: values.boxes_quantity,
+    p_units_per_box: values.units_per_box,
     p_min_stock: values.min_stock,
     p_is_active: values.is_active,
     p_image_path: null,

@@ -65,8 +65,15 @@ export function ProductsPage() {
       sortable: true,
       render: (r) => r.supplier_name ?? <span className={styles.muted}>Sin proveedor</span>,
     },
-    { key: 'cost_price', header: 'Costo', sortable: true, align: 'end', render: (r) => formatMoney(r.cost_price) },
-    { key: 'sale_price', header: 'Precio', sortable: true, align: 'end', render: (r) => formatMoney(r.sale_price) },
+    { key: 'cost_price', header: 'Costo s/IVA', sortable: true, align: 'end', render: (r) => formatMoney(r.cost_price) },
+    { key: 'sale_price', header: 'Precio s/IVA', sortable: true, align: 'end', render: (r) => formatMoney(r.sale_price) },
+    {
+      key: 'sale_price_with_vat',
+      header: 'Precio final',
+      sortable: true,
+      align: 'end',
+      render: (r) => <strong>{formatMoney(r.sale_price_with_vat)}</strong>,
+    },
     { key: 'vat_rate', header: 'IVA', align: 'end', render: (r) => formatVatRate(r.vat_rate) },
     {
       key: 'stock_quantity',
@@ -76,6 +83,17 @@ export function ProductsPage() {
       render: (r) => (
         <span className={styles.stock}>
           {formatQuantity(r.stock_quantity, r.sale_unit)}
+          {r.boxes_quantity > 0 && !r.has_box_mismatch && (
+            <span className={styles.breakdown}>
+              {formatQuantity(r.loose_units, r.sale_unit)} sueltas + {formatNumber(r.boxes_quantity)}{' '}
+              {r.boxes_quantity === 1 ? 'caja' : 'cajas'} de {formatNumber(r.units_per_box)}
+            </span>
+          )}
+          {r.has_box_mismatch && (
+            <Badge tone="urgent" icon="warning">
+              Revisar cajas
+            </Badge>
+          )}
           {r.is_low_stock && <Badge tone="warning" icon="warning">Stock bajo</Badge>}
         </span>
       ),

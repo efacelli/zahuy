@@ -14,7 +14,6 @@ const MAX_QUANTITY = 999_999_999.999
 
 /** Valores tal como están en el formulario (todo texto, como lo escribe el usuario). */
 export interface ProductFormValues {
-  sku: string
   barcode: string
   name: string
   description: string
@@ -26,6 +25,7 @@ export interface ProductFormValues {
   sale_price: string
   vat_rate: string
   boxes_quantity: string
+  units_per_box: string
   min_stock: string
   is_active: boolean
   initial_quantity: string
@@ -36,7 +36,6 @@ export interface ProductFormValues {
 
 export function emptyProductForm(today = todayInAppTimeZone()): ProductFormValues {
   return {
-    sku: '',
     barcode: '',
     name: '',
     description: '',
@@ -48,6 +47,7 @@ export function emptyProductForm(today = todayInAppTimeZone()): ProductFormValue
     sale_price: '',
     vat_rate: '21',
     boxes_quantity: '0',
+    units_per_box: '12',
     min_stock: '0',
     is_active: true,
     initial_quantity: '',
@@ -59,7 +59,6 @@ export function emptyProductForm(today = todayInAppTimeZone()): ProductFormValue
 
 /** Datos validados y normalizados, listos para `create_product`. */
 export interface ProductFormOutput {
-  sku: string
   barcode: string | null
   name: string
   description: string | null
@@ -71,12 +70,13 @@ export interface ProductFormOutput {
   sale_price: number
   vat_rate: number
   boxes_quantity: number
+  units_per_box: number
   min_stock: number
   is_active: boolean
   initial_stock: {
     quantity: number
     received_on: string
-    expires_on: string | null
+    expires_on: string
     batch_number: string | null
   } | null
 }
@@ -91,11 +91,6 @@ const uuidField = (message: string) => z.string().trim().min(1, message).pipe(z.
 export function productFormSchema(today = todayInAppTimeZone()) {
   return z
     .object({
-      sku: z
-        .string()
-        .trim()
-        .min(1, 'Ingresá el SKU.')
-        .max(40, 'El SKU admite hasta 40 caracteres.'),
       barcode: z
         .string()
         .trim()
@@ -110,6 +105,7 @@ export function productFormSchema(today = todayInAppTimeZone()) {
       sale_price: z.string(),
       vat_rate: z.string().refine((v) => VAT_RATES.includes(Number(v) as never), 'Elegí 21% o 10,5%.'),
       boxes_quantity: z.string(),
+      units_per_box: z.string(),
       min_stock: z.string(),
       is_active: z.boolean(),
       initial_quantity: z.string(),
@@ -134,6 +130,11 @@ export function productFormSchema(today = todayInAppTimeZone()) {
 
       const boxes = v.boxes_quantity.trim()
       if (boxes !== '' && !/^\d+$/.test(boxes)) issue('boxes_quantity', 'Ingresá un número entero de cajas (0 o más).')
+
+      // Contrato v0.4.0 §5.5: unidades por caja, entero mayor que cero (12 por defecto).
+      const perBox = v.units_per_box.trim()
+      if (!/^\d+$/.test(perBox) || Number(perBox) <= 0) issue('units_per_box', 'Ingresá cuántas unidades trae cada caja (1 o más).')
+      else if (Number(perBox) > 100_000) issue('units_per_box', 'El número es demasiado grande.')
 
       const integer = isIntegerUnit(v.sale_unit)
       const unitLabel = SALE_UNIT_LABEL[v.sale_unit]
@@ -160,11 +161,12 @@ export function productFormSchema(today = todayInAppTimeZone()) {
       if (!isIsoDate(v.received_on)) issue('received_on', 'Ingresá la fecha de ingreso.')
       else if (v.received_on > today) issue('received_on', 'La fecha de ingreso no puede ser futura.')
 
-      if (v.expires_on !== '' && !isIsoDate(v.expires_on)) issue('expires_on', 'La fecha de vencimiento no es válida.')
+      // Contrato v0.4.0 §8.1: todo ingreso lleva vencimiento (también limpieza y bazar).
+      if (v.expires_on === '') issue('expires_on', 'Indicá la fecha de vencimiento.')
+      else if (!isIsoDate(v.expires_on)) issue('expires_on', 'La fecha de vencimiento no es válida.')
     })
     .transform(
       (v): ProductFormOutput => ({
-        sku: v.sku,
         barcode: optionalText(v.barcode),
         name: v.name,
         description: optionalText(v.description),
@@ -176,6 +178,7 @@ export function productFormSchema(today = todayInAppTimeZone()) {
         sale_price: parseDecimalInput(v.sale_price) ?? 0,
         vat_rate: Number(v.vat_rate),
         boxes_quantity: Number(v.boxes_quantity.trim() || '0'),
+        units_per_box: Number(v.units_per_box.trim()),
         min_stock: parseDecimalInput(v.min_stock.trim() || '0') ?? 0,
         is_active: v.is_active,
         initial_stock:
@@ -184,7 +187,7 @@ export function productFormSchema(today = todayInAppTimeZone()) {
             : {
                 quantity: parseDecimalInput(v.initial_quantity) ?? 0,
                 received_on: v.received_on,
-                expires_on: v.expires_on === '' ? null : v.expires_on,
+                expires_on: v.expires_on,
                 batch_number: optionalText(v.batch_number),
               },
       }),
