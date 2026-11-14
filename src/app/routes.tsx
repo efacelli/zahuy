@@ -1,11 +1,11 @@
 import type { RouteObject } from 'react-router'
 import { LoginPage } from '../features/auth/LoginPage'
 import { RequireAuth } from '../features/auth/RequireAuth'
+import { CatalogsPage } from '../features/catalogs/CatalogsPage'
 import { NewProductPage } from '../features/products/NewProductPage'
 import { AppLayout } from './layout/AppLayout'
 import {
   AlertsPage,
-  CatalogsPage,
   DashboardPage,
   MovementsPage,
   NotFoundPage,
