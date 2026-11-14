@@ -53,7 +53,7 @@ describe('AppLayout', () => {
   })
 
   it('las secciones no muestran datos inventados', async () => {
-    await renderAt('/alertas')
+    await renderAt('/movimientos')
     expect(screen.getByText('Sección en preparación')).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })

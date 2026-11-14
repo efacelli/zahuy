@@ -1,4 +1,5 @@
 import type { RouteObject } from 'react-router'
+import { AlertsPage } from '../features/alerts/AlertsPage'
 import { LoginPage } from '../features/auth/LoginPage'
 import { RequireAuth } from '../features/auth/RequireAuth'
 import { RequirePermission } from '../features/auth/RequirePermission'
@@ -7,7 +8,7 @@ import { NewProductPage } from '../features/products/NewProductPage'
 import { ProductsPage } from '../features/products/ProductsPage'
 import { HomePage } from './HomePage'
 import { AppLayout } from './layout/AppLayout'
-import { AlertsPage, MovementsPage, NotFoundPage, RouteErrorPage } from './pages'
+import { MovementsPage, NotFoundPage, RouteErrorPage } from './pages'
 
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage />, errorElement: <RouteErrorPage /> },
