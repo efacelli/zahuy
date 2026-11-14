@@ -1,26 +1,5 @@
 import { isRouteErrorResponse, Link, useRouteError } from 'react-router'
 import { EmptyState, ErrorState } from '../components/ui/States'
-import { NAV_ITEMS, type NavItem } from './navigation'
-import { SectionPage } from './SectionPage'
-
-function navItem(path: string): NavItem {
-  const item = NAV_ITEMS.find((i) => i.path === path)
-  if (!item) throw new Error(`Sección no definida: ${path}`)
-  return item
-}
-
-export function DashboardPage() {
-  return (
-    <SectionPage
-      item={navItem('/')}
-      upcoming={[
-        'Cantidad de productos activos y con stock bajo.',
-        'Lotes próximos a vencer, con vencimiento urgente y vencidos.',
-        'Últimos movimientos de stock.',
-      ]}
-    />
-  )
-}
 
 export function NotFoundPage() {
   return (
