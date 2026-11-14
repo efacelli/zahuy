@@ -9,8 +9,11 @@ const BRAND = '22222222-2222-4222-8222-222222222222'
 
 function setup() {
   const fake = createFakeSupabase(fakeSession())
-  fake.setTable('categories', [{ id: CAT, name: 'Lácteos' }])
-  fake.setTable('brands', [{ id: BRAND, name: 'La Serenísima' }])
+  fake.setTable('categories', [
+    { id: CAT, name: 'Lácteos', is_active: true },
+    { id: '11111111-1111-4111-8111-999999999999', name: 'Categoría inactiva', is_active: false },
+  ])
+  fake.setTable('brands', [{ id: BRAND, name: 'La Serenísima', is_active: true }])
   fake.setTable('suppliers', [])
   const router = renderApp('/productos/nuevo', fake.client)
   return { fake, router, user: userEvent.setup() }
@@ -31,6 +34,13 @@ describe('Nuevo producto', () => {
     const router = renderApp('/productos', fake.client)
     await userEvent.setup().click(await screen.findByRole('link', { name: /Nuevo producto/ }))
     expect(router.state.location.pathname).toBe('/productos/nuevo')
+  })
+
+  it('solo ofrece categorías activas', async () => {
+    setup()
+    const select = await screen.findByLabelText(/^Categoría/)
+    await within(select).findByRole('option', { name: 'Lácteos' })
+    expect(within(select).queryByRole('option', { name: 'Categoría inactiva' })).not.toBeInTheDocument()
   })
 
   it('muestra los errores de los campos obligatorios', async () => {

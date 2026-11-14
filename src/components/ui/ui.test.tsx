@@ -22,6 +22,15 @@ describe('ConfirmDialog', () => {
     expect(onCancel).toHaveBeenCalledOnce()
   })
 
+  it('al abrir enfoca "Cancelar", no la X de cerrar', () => {
+    render(
+      <ConfirmDialog open title="X" confirmLabel="OK" onConfirm={vi.fn()} onCancel={vi.fn()}>
+        Texto
+      </ConfirmDialog>,
+    )
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveFocus()
+  })
+
   it('cierra con Escape', async () => {
     const user = userEvent.setup()
     const onCancel = vi.fn()

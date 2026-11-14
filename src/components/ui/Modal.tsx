@@ -19,6 +19,8 @@ const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select
 export function Modal({ open, title, onClose, children, footer, busy = false, size = 'md' }: ModalProps) {
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const footerRef = useRef<HTMLElement>(null)
   const onCloseRef = useRef(onClose)
   const busyRef = useRef(busy)
 
@@ -31,7 +33,10 @@ export function Modal({ open, title, onClose, children, footer, busy = false, si
     if (!open) return
     const previouslyFocused = document.activeElement as HTMLElement | null
     const panel = panelRef.current
-    const first = panel?.querySelector<HTMLElement>(FOCUSABLE)
+    // Primero el contenido (por ejemplo, el primer campo de un formulario); si no tiene
+    // nada enfocable, el primer botón del pie (en una confirmación, "Cancelar").
+    const first =
+      bodyRef.current?.querySelector<HTMLElement>(FOCUSABLE) ?? footerRef.current?.querySelector<HTMLElement>(FOCUSABLE)
     ;(first ?? panel)?.focus()
 
     function onKeyDown(event: KeyboardEvent) {
@@ -87,8 +92,14 @@ export function Modal({ open, title, onClose, children, footer, busy = false, si
             <Icon name="close" />
           </button>
         </header>
-        <div className={styles.body}>{children}</div>
-        {footer && <footer className={styles.footer}>{footer}</footer>}
+        <div ref={bodyRef} className={styles.body}>
+          {children}
+        </div>
+        {footer && (
+          <footer ref={footerRef} className={styles.footer}>
+            {footer}
+          </footer>
+        )}
       </div>
     </div>,
     document.body,

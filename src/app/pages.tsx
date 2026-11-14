@@ -66,15 +66,6 @@ export function AlertsPage() {
   )
 }
 
-export function CatalogsPage() {
-  return (
-    <SectionPage
-      item={navItem('/catalogos')}
-      upcoming={['Alta, edición y desactivación de categorías, marcas y proveedores.']}
-    />
-  )
-}
-
 export function NotFoundPage() {
   return (
     <EmptyState
