@@ -23,7 +23,8 @@ export interface AppError {
 }
 
 export const BUSINESS_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHORIZED: 'No tenés permiso para realizar esta operación.',
+  // Desde v0.3.1 también cubre a un usuario desactivado.
+  NOT_AUTHORIZED: 'No tenés permiso para realizar esta operación o tu usuario está desactivado. Hablá con el encargado.',
   PRODUCT_NOT_FOUND: 'El producto no existe o no está disponible.',
   BATCH_NOT_FOUND: 'El lote no existe o no está disponible.',
   MOVEMENT_NOT_FOUND: 'El movimiento no existe o no está disponible.',
@@ -37,6 +38,9 @@ export const BUSINESS_ERROR_MESSAGES: Record<string, string> = {
     'La operación ya se había enviado con otros datos. Recargá la pantalla y revisá el historial antes de repetirla.',
   BATCH_EXPIRED: 'El lote está vencido: solo admite mermas, daños o devoluciones a proveedor.',
   SKU_ALREADY_EXISTS: 'Ya existe un producto con ese SKU.',
+  // Contrato v0.3.1 (§8.6): fecha del movimiento futura o con más de 7 días, o ingreso futuro.
+  INVALID_DATE:
+    'La fecha no es válida: no puede ser futura, y un movimiento se puede cargar con hasta 7 días de atraso.',
 }
 
 /** Mensajes por nombre de restricción única (contrato §5). */

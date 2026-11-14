@@ -11,6 +11,24 @@ describe('toAppError', () => {
     })
   })
 
+  it('traduce INVALID_DATE (contrato v0.3.1)', () => {
+    const error = toAppError({ code: 'P0001', message: 'INVALID_DATE' })
+    expect(error.kind).toBe('business')
+    expect(error.code).toBe('INVALID_DATE')
+    expect(error.message).toMatch(/no puede ser futura/)
+  })
+
+  it('traduce todos los códigos de negocio del contrato §8.6', () => {
+    const codes = [
+      'NOT_AUTHORIZED', 'PRODUCT_NOT_FOUND', 'BATCH_NOT_FOUND', 'MOVEMENT_NOT_FOUND', 'PRODUCT_INACTIVE',
+      'INVALID_QUANTITY', 'SKU_ALREADY_EXISTS', 'INSUFFICIENT_STOCK', 'REASON_REQUIRED', 'INVALID_MOVEMENT_TYPE',
+      'ALREADY_REVERSED', 'BATCH_EXPIRED', 'IDEMPOTENCY_CONFLICT', 'INVALID_DATE',
+    ]
+    for (const code of codes) {
+      expect(toAppError({ code: 'P0001', message: code }).code).toBe(code)
+    }
+  })
+
   it('trata NOT_AUTHORIZED como error de permisos', () => {
     expect(toAppError({ code: 'P0001', message: 'NOT_AUTHORIZED' }).kind).toBe('permission')
   })
