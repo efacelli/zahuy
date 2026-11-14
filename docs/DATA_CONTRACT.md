@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.4.1 |
+| Versión | 0.4.2 |
 | Estado | **PROPUESTO — PENDIENTE DE CONCORDANCIA DEL BACKEND** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -531,6 +531,23 @@ consulta. Sin esto, una vista ignora la RLS.
 Columnas de `product_batches` más `days_to_expiry integer` (nulo si no vence) y
 `expiry_status expiry_status` (§4.4).
 
+Desde v0.4.2, para la pantalla de Alertas (sin consultas extra por fila), también:
+
+| Columna | Tipo | Origen |
+|---|---|---|
+| `product_sku` | `text` | `products.sku` |
+| `product_name` | `text` | `products.name` |
+| `product_is_active` | `boolean` | `products.is_active` |
+| `sale_unit` | `sale_unit` | `products.sale_unit` |
+| `category_id` | `uuid` | `products.category_id` |
+| `category_name` | `text` | `categories.name` |
+
+La pantalla de Alertas filtra `expiry_status IN ('expired', 'expires_urgent',
+'expires_soon', 'expires_upcoming')` (nunca agotados ni sin vencimiento), por
+`category_id` y por texto en `product_name`/`product_sku`/`batch_number`, y ordena
+por `expires_on`, `product_name`, `id`. Conviene un índice que cubra
+`expires_on` de los lotes con stock (ya existe `product_batches_expires_on_idx`).
+
 ### 7.2 `v_product_stock`
 
 | Columna | Tipo | Cálculo |
@@ -1015,3 +1032,4 @@ volver a registrar la concordancia.
 | 0.3.1 | 2026-11-14 | Revisión del backend: permisos iguales para todo usuario activo (§4.1, §9, P-10, P-11); perfiles legibles por todos; origen de `full_name` y primer `admin` (§5.1); columnas de auditoría fijadas por la base (§2.5); nombres de índices únicos (§5.2–5.5); bloqueo de cambio de `sale_unit` con movimientos; reglas de reversión (§5.7, §8.3); fechas con `default null` y código `INVALID_DATE` (§8, §8.6); campos comparados en la idempotencia (§8.5); `creation_key` siempre (§8.4); `next_expiry_status` nulo (§7.2); P-15 adoptada |
 | 0.4.0 | 2026-11-15 | Segunda visita al cliente: permisos por rol dueño/encargado/empleado (§4.1, §9); precios sin IVA y `sale_price_with_vat` (§5.5, P-02); SKU generado por la base (§5.5, §8.4); `units_per_box` y desglose de cajas en `v_product_stock` (§3, §5.5, §7.2); `register_product_movement` con lotes por vencimiento y `operation_key` (§8.7); tipo `internal_use` (§4.3); alertas configurables por categoría con `expiry_alert_settings` y estados `expires_urgent/soon/upcoming` (§4.4, §5.9); vencimiento obligatorio y código `EXPIRY_REQUIRED` (§8.1); dashboard `v_inventory_summary` (§7.4); transición desde las migraciones fusionadas (§8.8); P-17 a P-20; nombres de catálogos únicos sin distinguir tildes (§5.2–5.4) |
 | 0.4.1 | 2026-11-15 | Aclaración: la vista previa del precio final en el formulario de alta (§5.5) |
+| 0.4.2 | 2026-11-15 | `v_batch_status` suma datos del producto y la categoría para la pantalla de Alertas (§7.1) |

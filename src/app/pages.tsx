@@ -34,18 +34,6 @@ export function MovementsPage() {
   )
 }
 
-export function AlertsPage() {
-  return (
-    <SectionPage
-      item={navItem('/alertas')}
-      upcoming={[
-        'Lotes con stock que vencen en 30, 15 o 7 días, y vencidos.',
-        'Filtros por nivel de alerta y acceso directo al producto y al lote.',
-      ]}
-    />
-  )
-}
-
 export function NotFoundPage() {
   return (
     <EmptyState
