@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router'
 import { ToastProvider } from '../components/ui/ToastProvider'
 import { AuthProvider } from '../features/auth/AuthProvider'
 import { requireSupabase, supabaseConfig } from '../lib/supabase'
+import { SupabaseContext } from '../lib/supabase-context'
 import { ConfigErrorScreen } from './ConfigErrorScreen'
 import { createQueryClient } from './queryClient'
 import { routes } from './routes'
@@ -19,12 +20,14 @@ function ConfiguredApp() {
   const [client] = useState(requireSupabase)
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        <AuthProvider client={client}>
-          <RouterProvider router={router} />
-        </AuthProvider>
-      </ToastProvider>
-    </QueryClientProvider>
+    <SupabaseContext.Provider value={client}>
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <AuthProvider client={client}>
+            <RouterProvider router={router} />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryClientProvider>
+    </SupabaseContext.Provider>
   )
 }

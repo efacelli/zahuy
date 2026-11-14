@@ -4,7 +4,15 @@
  * Nunca se muestran al usuario mensajes crudos de la base.
  */
 
-export type AppErrorKind = 'network' | 'auth' | 'permission' | 'business' | 'constraint' | 'unknown'
+export type AppErrorKind =
+  | 'network'
+  | 'auth'
+  | 'permission'
+  | 'business'
+  | 'constraint'
+  /** La tabla o función todavía no existe en la base (el backend no la publicó). */
+  | 'unavailable'
+  | 'unknown'
 
 export interface AppError {
   kind: AppErrorKind
@@ -90,6 +98,16 @@ export function toAppError(error: unknown): AppError {
     case 'PGRST301':
     case 'PGRST302':
       return { kind: 'auth', code, message: 'Tu sesión expiró. Volvé a iniciar sesión.' }
+    // Tabla/vista o función inexistente: el esquema del backend todavía no está publicado.
+    case 'PGRST202':
+    case 'PGRST205':
+    case '42P01':
+    case '42883':
+      return {
+        kind: 'unavailable',
+        code,
+        message: 'Esta función todavía no está disponible en el servidor. Avisá al responsable del sistema.',
+      }
   }
 
   if (e.name === 'AuthApiError' || e.name === 'AuthSessionMissingError') {

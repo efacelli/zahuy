@@ -48,9 +48,41 @@ export function createFakeSupabase(initial: Session | null = null) {
     }),
   }
 
+  /** Filas que devuelve `from(tabla)...`; un `error` simula una tabla inexistente u otro fallo. */
+  const tables: Record<string, { data: unknown[] | null; error: unknown }> = {}
+  const from = vi.fn((table: string) => {
+    const result = Promise.resolve(tables[table] ?? { data: [], error: null })
+    const builder = {
+      select: () => builder,
+      eq: () => builder,
+      order: () => result,
+    }
+    return builder
+  })
+
+  /** Resultado de `rpc(nombre, params).single()`. */
+  const rpcResults: Record<string, { data: unknown; error: unknown }> = {}
+  const rpc = vi.fn((name: string, _params?: unknown) => ({
+    single: () =>
+      Promise.resolve(
+        rpcResults[name] ?? {
+          data: null,
+          error: { code: 'PGRST202', message: `Could not find the function public.${name}` },
+        },
+      ),
+  }))
+
   return {
-    client: { auth } as unknown as SupabaseClient,
+    client: { auth, from, rpc } as unknown as SupabaseClient,
     auth,
+    from,
+    rpc,
+    setTable(table: string, data: unknown[] | null, error: unknown = null) {
+      tables[table] = { data, error }
+    },
+    setRpcResult(name: string, data: unknown, error: unknown = null) {
+      rpcResults[name] = { data, error }
+    },
     /** Simula que la sesión terminó sola (token expirado o revocado). */
     expireSession() {
       session = null

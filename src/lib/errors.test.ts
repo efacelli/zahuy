@@ -49,6 +49,12 @@ describe('toAppError', () => {
     expect(toAppError({ name: 'AuthRetryableFetchError', message: 'x' }).kind).toBe('network')
   })
 
+  it('avisa cuando una tabla o función todavía no existe en el servidor', () => {
+    for (const code of ['PGRST202', 'PGRST205', '42P01', '42883']) {
+      expect(toAppError({ code, message: 'Could not find the function' }).kind).toBe('unavailable')
+    }
+  })
+
   it('detecta sesión expirada', () => {
     expect(toAppError({ code: 'PGRST301', message: 'JWT expired' }).kind).toBe('auth')
   })
