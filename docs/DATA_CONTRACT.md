@@ -2,8 +2,8 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.3.0 |
-| Estado | **PROPUESTO — PENDIENTE DE CONCORDANCIA DEL BACKEND** |
+| Versión | 0.3.1 |
+| Estado | **PROPUESTO — EL BACKEND CONCUERDA CON LAS OBSERVACIONES DE v0.3.1; PENDIENTE DE APROBACIÓN DE `efacelli`** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations` |
 
@@ -16,7 +16,7 @@
 | Área | Responsable | Es dueño de |
 |---|---|---|
 | Frontend | `efacelli` | `src/`, UI, consumo de vistas y RPC, tipos generados |
-| Backend | colega (cuenta GitHub a completar) | `supabase/` (migraciones, RLS, vistas, RPC, seeds, tests de DB) |
+| Backend | `ChinoNader18` | `supabase/` (migraciones, RLS, vistas, RPC, seeds, tests de DB) |
 | Aprobación de PR | `efacelli` | Revisa y fusiona todos los Pull Request |
 
 - El backend implementa este contrato **tal cual**. Si encuentra un problema, no
@@ -115,12 +115,20 @@ Toda tabla editable (no la de movimientos) tiene:
 |---|---|---|---|
 | `id` | `uuid` | no | `gen_random_uuid()` |
 | `created_at` | `timestamptz` | no | `now()` |
-| `created_by` | `uuid` → `profiles.id` | sí* | `auth.uid()` |
+| `created_by` | `uuid` → `profiles.id` | sí* | `auth.uid()` (trigger en INSERT) |
 | `updated_at` | `timestamptz` | no | `now()` (trigger en UPDATE) |
 | `updated_by` | `uuid` → `profiles.id` | sí* | `auth.uid()` (trigger en UPDATE) |
 
 \* Nulable solo para datos de semilla/migración; las escrituras de la app siempre
 lo completan.
+
+Desde v0.3.1: estas columnas **las fija la base, no el cliente**. Un trigger
+`BEFORE INSERT OR UPDATE` escribe `created_at`/`created_by` en el alta y
+`updated_at`/`updated_by` en cada edición, y conserva los valores de creación.
+Además, `authenticated` solo recibe permiso de `INSERT`/`UPDATE` sobre las
+columnas de negocio (permisos por columna), así que un valor enviado por el
+cliente para `id`, `created_*` o `updated_*` se rechaza con `42501`. Sin esto,
+cualquiera podría registrar un cambio a nombre de otro usuario.
 
 ### 2.6 Borrado
 
@@ -160,13 +168,17 @@ quantity_available = SUM(signed_quantity) de sus movimientos
 
 ### 4.1 `app_role`
 
-| Valor | Descripción propuesta |
+| Valor | Descripción |
 |---|---|
-| `admin` | Gestiona usuarios, roles y catálogo; puede revertir movimientos |
-| `manager` | Encargado: catálogo, lotes, todos los movimientos |
-| `staff` | Empleado: consulta, ingresos y salidas; no ajustes ni reversiones |
+| `admin` | Todo lo operativo, y además gestiona usuarios (rol y activo) y lee `audit_log` |
+| `manager` | Mismos permisos operativos que `staff` (reservado para una regla futura) |
+| `staff` | Empleado: todas las operaciones de la Etapa 1 |
 
-Permisos por rol a confirmar ([P-10](#13-preguntas-abiertas)).
+Desde v0.3.1 (respuesta del dueño): **todos los empleados activos pueden hacer
+todas las operaciones** (catálogos, alta y edición de productos, todos los
+movimientos y reversiones, ver costos). Los tres valores del enum se conservan
+para poder diferenciar permisos más adelante (por ejemplo, el rol del dueño)
+sin cambiar el tipo. Ver §9 y [P-10](#13-preguntas-abiertas).
 
 ### 4.2 `sale_unit`
 
@@ -252,6 +264,19 @@ Una fila por usuario de Supabase Auth.
 
 - La fila se crea con un trigger sobre `auth.users`; el usuario **no** puede
   insertar su propio perfil ni elegir su rol.
+- `full_name` inicial (v0.3.1): `raw_user_meta_data->>'full_name'` si no está
+  vacío; si no, la parte del email anterior a la `@`; recortado a 120
+  caracteres. El **rol nunca se lee de los metadatos** del usuario (el usuario
+  puede modificarlos): siempre nace como `staff`.
+- Primer `admin` (v0.3.1): se promueve una única vez por SQL con un rol
+  privilegiado (editor SQL del proyecto o semilla local), procedimiento
+  documentado en `supabase/README.md`. Desde la app, solo un `admin` cambia
+  `role` e `is_active`, y no puede quitarse a sí mismo el rol ni desactivarse
+  (evita quedarse sin administradores).
+- En la Etapa 1 solo un `admin` edita `full_name`.
+- Un usuario con `is_active = false` puede iniciar sesión en Supabase Auth, pero
+  la base solo le deja leer **su propio perfil** (para que la UI le explique por
+  qué no puede operar).
 - Se usa `ON DELETE RESTRICT` porque los movimientos referencian al usuario: no
   se pierde la trazabilidad. Para dar de baja a alguien se usa `is_active = false`.
 
@@ -260,7 +285,7 @@ Una fila por usuario de Supabase Auth.
 | Columna | Tipo | Null | Default | Restricciones / notas |
 |---|---|---|---|---|
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
-| `name` | `text` | no | — | `CHECK (length(trim(name)) between 1 and 80)`; único sin distinguir mayúsculas: `unique index on lower(trim(name))` |
+| `name` | `text` | no | — | `CHECK (length(trim(name)) between 1 and 80)`; único sin distinguir mayúsculas: `unique index categories_name_key on lower(trim(name))` |
 | `is_active` | `boolean` | no | `true` | — |
 | columnas comunes | | | | §2.5 |
 
@@ -268,8 +293,8 @@ Lista plana, sin subcategorías en la Etapa 1 ([P-12](#13-preguntas-abiertas)).
 
 ### 5.3 `brands`
 
-Igual que `categories` (`id`, `name` único sin distinguir mayúsculas,
-`is_active`, columnas comunes).
+Igual que `categories` (`id`, `name` único sin distinguir mayúsculas con el
+índice `brands_name_key`, `is_active`, columnas comunes).
 
 ### 5.4 `suppliers`
 
@@ -279,11 +304,11 @@ futura.
 | Columna | Tipo | Null | Default | Restricciones / notas |
 |---|---|---|---|---|
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
-| `name` | `text` | no | — | 1–120 caracteres; único sin distinguir mayúsculas |
-| `tax_id` | `text` | sí | — | CUIT de 11 dígitos sin guiones: `CHECK (tax_id ~ '^[0-9]{11}$')`; único si no es nulo |
-| `phone` | `text` | sí | — | — |
-| `email` | `text` | sí | — | Validación básica de formato |
-| `notes` | `text` | sí | — | — |
+| `name` | `text` | no | — | 1–120 caracteres; único sin distinguir mayúsculas: `unique index suppliers_name_key on lower(trim(name))` |
+| `tax_id` | `text` | sí | — | CUIT de 11 dígitos sin guiones: `CHECK (tax_id ~ '^[0-9]{11}$')`; único si no es nulo: `unique index suppliers_tax_id_key` |
+| `phone` | `text` | sí | — | Hasta 40 caracteres |
+| `email` | `text` | sí | — | Hasta 254 caracteres; formato básico `algo@algo.algo` sin espacios |
+| `notes` | `text` | sí | — | Hasta 1000 caracteres |
 | `is_active` | `boolean` | no | `true` | — |
 | columnas comunes | | | | §2.5 |
 
@@ -293,7 +318,7 @@ futura.
 |---|---|---|---|---|
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
 | `sku` | `text` | no | — | Único sin distinguir mayúsculas: `unique index products_sku_key on upper(sku)`; `CHECK (sku = trim(sku) and length(sku) between 1 and 40)` ([P-05](#13-preguntas-abiertas)) |
-| `barcode` | `text` | sí | — | `CHECK (barcode ~ '^[0-9]{8,14}$')`; único parcial `WHERE barcode IS NOT NULL`. Sin lector en la Etapa 1 |
+| `barcode` | `text` | sí | — | `CHECK (barcode ~ '^[0-9]{8,14}$')`; único parcial `products_barcode_key` `WHERE barcode IS NOT NULL`. Sin lector en la Etapa 1 |
 | `name` | `text` | no | — | 1–150 caracteres |
 | `description` | `text` | sí | — | — |
 | `category_id` | `uuid` | no | — | FK → `categories.id` ([P-06](#13-preguntas-abiertas)) |
@@ -311,6 +336,16 @@ futura.
 | columnas comunes | | | | §2.5 |
 
 - **No hay** columna de stock (§3).
+- Los nombres de los índices únicos (`products_sku_key`, `products_barcode_key`,
+  `categories_name_key`, `brands_name_key`, `suppliers_name_key`,
+  `suppliers_tax_id_key`) son parte del contrato: el frontend traduce el error
+  `23505` por ese nombre.
+- `sale_unit` no puede cambiarse si el producto ya tiene movimientos (v0.3.1):
+  pasar de `kg` a `unit` con stock fraccionario rompería la regla de cantidades
+  enteras. La base lo rechaza con `23514`.
+- `image_path`, si se informa, no puede ser una URL (`CHECK` que rechaza
+  `http://` y `https://`). La convención de ruta dentro del bucket se define
+  cuando el frontend implemente la carga de imágenes.
 - No hay `CHECK (sale_price >= cost_price)`: vender por debajo del costo puede ser
   legítimo. La UI solo lo advierte.
 - `vat_rate` se guarda como número y no como enum para poder calcular con él;
@@ -330,6 +365,9 @@ futura.
 | `notes` | `text` | sí | — | Observaciones |
 | columnas comunes | | | | §2.5 |
 
+- Los lotes se crean **solo** mediante `receive_stock` o `create_product`: el
+  `INSERT` directo está revocado. El `UPDATE` directo se limita, con permisos
+  por columna, a `batch_number`, `expires_on` y `notes`.
 - No se agrega `CHECK (quantity_available <= quantity_initial)`: un ajuste
   positivo o una devolución puede superar la cantidad inicial.
 - `expires_on < received_on`: la UI lo advierte; si la base debe rechazarlo está
@@ -362,6 +400,9 @@ futura.
   `reverses_movement_id` apuntando al original (por ejemplo, `entry` erróneo →
   `adjustment_out` con `reverses_movement_id`).
 - `INSERT` directo revocado: solo se escribe por RPC.
+- Un movimiento de reversión (con `reverses_movement_id`) **no puede revertirse**
+  a su vez (v0.3.1): si la reversión fue un error, se registra un movimiento
+  nuevo.
 - Índices: `(product_id, occurred_at desc)`, `(batch_id)`, `(created_by)`.
 - Preparación para ventas: más adelante se agregarán columnas nulables de origen
   (por ejemplo `source_type`/`source_id`) con un índice único, para que una venta
@@ -387,6 +428,10 @@ o de cajas no deja rastro.
 Solo se lee (rol `admin`), nunca se escribe desde el cliente. No guarda secretos
 ni tokens.
 
+En `product_batches` solo se auditan los cambios de `batch_number`, `expires_on`
+y `notes` (v0.3.1): los cambios de saldo ya quedan en `stock_movements` y
+duplicarlos solo agregaría ruido.
+
 ---
 
 ## 6. Diagrama de relaciones
@@ -396,7 +441,7 @@ auth.users 1─1 profiles
 profiles   1─N (created_by / updated_by en todas las tablas)
 
 categories 1─N products
-brands     1─N products        (opcional)
+brands     1─N products
 suppliers  1─N products        (opcional)
 
 products        1─N product_batches
@@ -423,9 +468,13 @@ Columnas de `product_batches` más `days_to_expiry integer` (nulo si no vence) y
 | `product_id` | `uuid` | — |
 | `stock_quantity` | `numeric(12,3)` | `COALESCE(SUM(quantity_available), 0)` |
 | `next_expires_on` | `date` | `MIN(expires_on)` de lotes con `quantity_available > 0` |
-| `next_expiry_status` | `expiry_status` | Estado del lote que vence primero con stock |
+| `next_expiry_status` | `expiry_status` (nulable) | Estado del lote que vence primero con stock. Si hay stock pero ningún lote con vencimiento: `no_expiry`. Si no hay ningún lote con stock: `NULL` (v0.3.1) |
 | `active_batches_count` | `integer` | Lotes con `quantity_available > 0` |
 | `is_low_stock` | `boolean` | `stock_quantity <= min_stock` ([P-08](#13-preguntas-abiertas)) |
+
+La vista incluye **todos** los productos: uno sin lotes tiene `stock_quantity = 0`
+y `active_batches_count = 0`. Consecuencia de P-08: con `min_stock = 0`, un
+producto sin stock figura con `is_low_stock = true`.
 
 ### 7.3 `v_product_list`
 
@@ -440,7 +489,12 @@ dashboard también salen de ella, sin repetir las reglas en React.
 
 Todas: `SECURITY DEFINER`, `SET search_path = ''`, nombres calificados, validan
 rol y `is_active` del usuario, una transacción por llamada, `EXECUTE` otorgado
-solo a `authenticated`.
+solo a `authenticated` (revocado explícitamente a `PUBLIC` y `anon`).
+
+Los parámetros de fecha con valor por defecto se declaran `default null` y el
+servidor los resuelve (v0.3.1): `null` en `p_received_on` significa hoy
+(Argentina) y `null` en `p_occurred_at` significa `now()`. Enviar `null`
+explícito es equivalente a omitir el parámetro.
 
 ### 8.1 `receive_stock` — ingreso con lote nuevo
 
@@ -449,7 +503,7 @@ receive_stock(
   p_idempotency_key uuid,
   p_product_id      uuid,
   p_quantity        numeric,
-  p_received_on     date    default hoy (AR),
+  p_received_on     date    default null,   -- null = hoy (AR)
   p_expires_on      date    default null,
   p_batch_number    text    default null,
   p_notes           text    default null
@@ -457,7 +511,8 @@ receive_stock(
 ```
 
 Crea el lote (`quantity_initial = quantity_available = p_quantity`) y el
-movimiento `entry` en una sola transacción.
+movimiento `entry` en una sola transacción. `p_received_on` no puede ser futura
+(`INVALID_DATE`).
 
 ### 8.2 `register_stock_movement` — cualquier movimiento sobre un lote existente
 
@@ -469,13 +524,16 @@ register_stock_movement(
   p_quantity        numeric,
   p_reason          text        default null,
   p_notes           text        default null,
-  p_occurred_at     timestamptz default now()
+  p_occurred_at     timestamptz default null   -- null = now()
 ) returns stock_movements
 ```
 
 `product_id` se toma del lote, no del cliente. Bloquea el lote con
 `FOR UPDATE`, valida que el saldo no quede negativo, actualiza
 `quantity_available` e inserta el movimiento.
+
+`p_occurred_at` (P-11): no puede ser futura (con 5 minutos de tolerancia por
+diferencias de reloj) ni anterior a 7 días; fuera de ese rango → `INVALID_DATE`.
 
 ### 8.3 `reverse_stock_movement`
 
@@ -490,6 +548,15 @@ reverse_stock_movement(
 Crea el movimiento compensatorio (`adjustment_in` o `adjustment_out`) con
 `reverses_movement_id`. Falla si ya fue revertido o si dejaría el lote en
 negativo.
+
+Reglas (v0.3.1):
+
+- `p_reason` es obligatorio (`REASON_REQUIRED`).
+- La reversión **no** aplica `BATCH_EXPIRED` ni `PRODUCT_INACTIVE`: tiene que
+  poder corregirse un ingreso mal cargado aunque el lote esté vencido o el
+  producto inactivo. Solo valida `ALREADY_REVERSED` e `INSUFFICIENT_STOCK`.
+- Revertir un movimiento que ya es una reversión → `INVALID_MOVEMENT_TYPE`.
+- `occurred_at` de la reversión es `now()`.
 
 ### 8.4 `create_product` — alta de producto con stock inicial opcional
 
@@ -512,7 +579,7 @@ create_product(
   p_is_active        boolean default true,
   p_image_path       text    default null,
   p_initial_quantity numeric default null,
-  p_received_on      date    default hoy (AR),
+  p_received_on      date    default null,   -- null = hoy (AR)
   p_expires_on       date    default null,
   p_batch_number     text    default null
 ) returns products
@@ -523,12 +590,15 @@ create_product(
 - Es la única forma de dar de alta un producto: el `INSERT` directo sobre
   `products` está revocado. La edición posterior sí es `UPDATE` directo (con
   RLS), y nunca toca stock.
-- Idempotencia: con stock inicial, la clave queda en el movimiento (§8.5). Sin
-  stock inicial, un reintento con la misma clave y el mismo SKU devuelve el
-  producto ya creado; un SKU existente creado con otra clave da
-  `SKU_ALREADY_EXISTS`. Para eso se guarda la clave en
+- Idempotencia (v0.3.1): la clave se guarda **siempre** en
   `products.creation_key uuid UNIQUE NULL` (nulable para filas viejas o de
-  semilla; el cliente nunca la escribe directamente).
+  semilla; el cliente nunca la escribe directamente) y, si hay stock inicial,
+  también como `idempotency_key` del movimiento `entry`. Un reintento con la
+  misma clave y el mismo SKU (sin distinguir mayúsculas) devuelve el producto ya
+  creado; la misma clave con otro SKU da `IDEMPOTENCY_CONFLICT`; un SKU
+  existente creado con otra clave da `SKU_ALREADY_EXISTS`.
+- Un código de barras repetido devuelve `23505` sobre `products_barcode_key`.
+- `p_received_on` no puede ser futura (`INVALID_DATE`).
 - `p_initial_quantity` nula o 0 → el producto se crea sin lotes (stock 0).
 
 ### 8.5 Idempotencia
@@ -536,6 +606,19 @@ create_product(
 - Si `p_idempotency_key` ya existe **con los mismos datos**, se devuelve el
   movimiento existente sin crear otro (reintento seguro).
 - Si existe **con datos distintos**, se lanza `IDEMPOTENCY_CONFLICT`.
+- "Mismos datos" (v0.3.1) significa que coinciden estos campos:
+
+  | RPC | Campos comparados |
+  |---|---|
+  | `receive_stock` | `product_id`, `quantity`, tipo `entry` |
+  | `register_stock_movement` | `batch_id`, `movement_type`, `quantity` |
+  | `reverse_stock_movement` | `reverses_movement_id` |
+  | `create_product` | `sku` (sin distinguir mayúsculas) |
+
+  No se comparan `occurred_at`, `received_on`, `reason` ni `notes`: un reintento
+  que el servidor resuelve con otra hora no debe dar un conflicto falso.
+- Dos reintentos simultáneos con la misma clave se serializan en la base: uno
+  crea el movimiento y el otro lo recibe como respuesta.
 - El cliente genera la clave con `crypto.randomUUID()` al abrir el formulario y
   la conserva hasta tener una respuesta definitiva. Esto también sirve para la
   futura cola offline.
@@ -547,17 +630,18 @@ El frontend traduce el código a español; no muestra mensajes crudos de la base
 
 | Código | Cuándo |
 |---|---|
-| `NOT_AUTHORIZED` | Rol sin permiso o usuario inactivo |
+| `NOT_AUTHORIZED` | Sin sesión, sin perfil, rol sin permiso o usuario inactivo |
 | `PRODUCT_NOT_FOUND` / `BATCH_NOT_FOUND` / `MOVEMENT_NOT_FOUND` | ID inexistente o no visible |
 | `PRODUCT_INACTIVE` | Movimiento sobre un producto inactivo ([P-13](#13-preguntas-abiertas)) |
 | `INVALID_QUANTITY` | Cantidad ≤ 0, o con decimales en una unidad de cantidades enteras (`unit`, `pack`, `box`, `other`) |
 | `SKU_ALREADY_EXISTS` | `create_product` con un SKU que ya existe (y no es un reintento idéntico) |
 | `INSUFFICIENT_STOCK` | La salida dejaría el lote en negativo |
 | `REASON_REQUIRED` | Falta el motivo en un tipo que lo exige |
-| `INVALID_MOVEMENT_TYPE` | `entry` vía `register_stock_movement` (usar `receive_stock`) |
+| `INVALID_MOVEMENT_TYPE` | `entry` vía `register_stock_movement` (usar `receive_stock`); revertir un movimiento que ya es una reversión |
 | `ALREADY_REVERSED` | El movimiento ya tiene compensación |
 | `BATCH_EXPIRED` | Salida de un lote vencido con un tipo distinto de `shrinkage`, `damage` o `supplier_return` ([P-15](#13-preguntas-abiertas)) |
 | `IDEMPOTENCY_CONFLICT` | Clave reutilizada con otros datos |
+| `INVALID_DATE` | `occurred_at` futura o con más de 7 días de atraso; `received_on` futura (v0.3.1; **el frontend debe agregar su traducción**) |
 
 Los errores de restricciones (`23505` unique, `23514` check, `23503` FK) se
 mapean en el frontend: por ejemplo, `23505` sobre `products_sku_key` →
@@ -567,23 +651,28 @@ mapean en el frontend: por ejemplo, `23505` sobre `products_sku_key` →
 
 ## 9. Seguridad (resumen de RLS propuesta)
 
-RLS activada en todas las tablas del esquema `public`. Propuesta a confirmar en
-[P-10](#13-preguntas-abiertas):
+RLS activada en todas las tablas del esquema `public`. Desde v0.3.1 (respuesta
+del dueño, [P-10](#13-preguntas-abiertas)) los permisos operativos son iguales
+para todo usuario **activo**; solo la gestión de usuarios y la auditoría quedan
+para `admin`:
 
-| Tabla | `staff` | `manager` | `admin` |
+| Tabla | Usuario activo (`staff`, `manager`, `admin`) | Solo `admin` | Usuario inactivo |
 |---|---|---|---|
-| `profiles` | lee el propio | lee todos | lee todos, cambia rol y activo |
-| `categories`, `brands`, `suppliers` | lee | lee / crea / edita | lee / crea / edita |
-| `products` | lee | lee / crea (solo vía `create_product`) / edita | ídem |
-| `product_batches` | lee | lee; edita `batch_number`, `expires_on`, `notes` | ídem |
-| `stock_movements` | lee; RPC `entry`/`exit` | lee; todas las RPC salvo revertir | todas |
-| `audit_log` | — | — | lee |
+| `profiles` | lee todos (`id`, `full_name`, `role`, `is_active`) | edita `full_name`, `role`, `is_active` | lee solo el propio |
+| `categories`, `brands`, `suppliers` | lee / crea / edita | — | — |
+| `products` | lee / crea (solo vía `create_product`) / edita | — | — |
+| `product_batches` | lee; edita `batch_number`, `expires_on`, `notes` | — | — |
+| `stock_movements` | lee; las cuatro RPC, incluida la reversión | — | — |
+| `audit_log` | — | lee | — |
 
-- Ningún rol hace `INSERT`/`UPDATE`/`DELETE` directo sobre `stock_movements` ni
-  sobre `product_batches.quantity_*`.
-- Usuarios `anon`: sin acceso a ninguna tabla.
-- Bucket `product-images`: privado; lectura para `authenticated` y escritura
-  para `manager`/`admin`.
+- Todos los usuarios activos leen los perfiles porque el historial muestra quién
+  hizo cada movimiento.
+- Nadie hace `DELETE` desde la app, ni `INSERT`/`UPDATE`/`DELETE` directo sobre
+  `stock_movements`, ni escribe `product_batches.quantity_*`.
+- Usuarios `anon`: sin acceso a ninguna tabla, vista ni función.
+- "Activo" se comprueba en la base (`profiles.is_active`) en cada política y en
+  cada RPC, no en React.
+- Bucket `product-images`: privado; lectura y escritura para usuarios activos.
 
 ---
 
@@ -616,7 +705,9 @@ migraciones compatibles hacia atrás.
 
 ## 12. Pruebas que este contrato exige
 
-- SKU duplicado (incluido `abc` vs `ABC`) → `23505`.
+- SKU duplicado (incluido `abc` vs `ABC`): `SKU_ALREADY_EXISTS` en
+  `create_product`; `23505` sobre `products_sku_key` al editar el SKU de un
+  producto existente.
 - Cantidad 0 y negativa → `INVALID_QUANTITY`.
 - Salida mayor al saldo → `INSUFFICIENT_STOCK` y el saldo no cambia.
 - Lote agotado → `depleted` y sin alerta.
@@ -630,13 +721,19 @@ migraciones compatibles hacia atrás.
 - Revertir dos veces → `ALREADY_REVERSED`.
 - `exit` sobre un lote vencido → `BATCH_EXPIRED`; `shrinkage` sobre el mismo
   lote → permitido.
-- `occurred_at` a futuro o con más de 7 días de atraso → rechazado; con 3 días
-  de atraso por `staff` → `NOT_AUTHORIZED`.
+- `occurred_at` a futuro o con más de 7 días de atraso → `INVALID_DATE`; con 3
+  días de atraso → permitido para cualquier usuario activo.
+- `received_on` futura → `INVALID_DATE`.
+- Revertir una reversión → `INVALID_MOVEMENT_TYPE`; revertir un `entry` de un
+  lote vencido o de un producto inactivo → permitido.
+- Usuario inactivo: no lee tablas (salvo su perfil) y toda RPC devuelve
+  `NOT_AUTHORIZED`.
+- `created_by`/`updated_by` enviados por el cliente → rechazados.
 - Movimiento `exit` sobre producto inactivo → `PRODUCT_INACTIVE`.
 - Cantidad con decimales en producto `unit` → `INVALID_QUANTITY`.
 - Conciliación: `quantity_available` = suma del ledger para todos los lotes.
 - RLS: cada fila de §9 probada con un usuario permitido y uno denegado; `anon`
-  sin acceso; un `staff` no puede cambiarse el rol.
+  sin acceso; un usuario que no es `admin` no puede cambiar su rol ni el de otro.
 - Migraciones aplicadas sobre una base con datos ficticios previos: los conteos
   y las relaciones se conservan.
 
@@ -660,12 +757,12 @@ este documento y una migración nueva.
 | P-07 | ¿El número de lote debe ser único por producto? | No (el mismo lote puede llegar en dos entregas) | Adoptada |
 | P-08 | ¿Stock bajo es `<=` o `<` al mínimo? ¿Lo que vence hoy está vencido? | `<=`; lo que vence hoy está por vencer | Adoptada |
 | P-09 | ¿Se rechaza `expires_on` anterior a `received_on`? | No; solo advertencia en la UI | Adoptada |
-| P-10 | ¿Qué roles hay y qué puede hacer cada uno? | Tabla §9 | Adoptada |
-| P-11 | ¿Se permite cargar movimientos con fecha pasada? ¿Hasta cuánto? | Sí, hasta 7 días, solo `manager`/`admin`; nunca a futuro | Adoptada |
+| P-10 | ¿Qué roles hay y qué puede hacer cada uno? | Tabla §9. v0.3.1 (dueño): todos los empleados hacen todas las operaciones; `admin` además gestiona usuarios y lee la auditoría | Adoptada. Pendiente de la segunda visita: si el dashboard del negocio es solo para el dueño |
+| P-11 | ¿Se permite cargar movimientos con fecha pasada? ¿Hasta cuánto? | Sí, hasta 7 días, cualquier usuario activo (v0.3.1, consecuencia de P-10); nunca a futuro | Adoptada |
 | P-12 | ¿Hacen falta subcategorías? | No en la Etapa 1 | Adoptada |
 | P-13 | ¿Se permiten movimientos sobre productos inactivos? | Solo salidas `shrinkage`/`damage`/`supplier_return` | Adoptada |
 | P-14 | En salidas, ¿se elige el lote o se aplica primero el que vence antes (FEFO)? | El usuario elige; la UI sugiere el que vence primero | Adoptada |
-| P-15 | ¿Se puede sacar de un lote vencido algo que no sea merma? | No: solo `shrinkage`, `damage` o `supplier_return` (`BATCH_EXPIRED`). Es la opción más restrictiva; se relaja si el dueño lo decide | **Provisional**, a confirmar con el dueño |
+| P-15 | ¿Se puede sacar de un lote vencido algo que no sea merma? | No: solo `shrinkage`, `damage` o `supplier_return` (`BATCH_EXPIRED`). El dueño confirmó que lo vencido se tira y nunca se vende | Adoptada (v0.3.1). Pendiente menor: si algún proveedor retira vencidos (ya cubierto por `supplier_return`) |
 
 ---
 
@@ -683,7 +780,7 @@ volver a registrar la concordancia.
 | Responsable | Área | Versión revisada | Fecha | Resultado | Observaciones |
 |---|---|---|---|---|---|
 | `efacelli` | Frontend + aprobación de PR | 0.3.0 | 2026-11-14 | Propone | Delegó la redacción a Claude Code |
-| _(colega)_ | Backend | | | _pendiente_ | |
+| `ChinoNader18` | Backend | 0.3.1 | 2026-11-14 | Concuerda con observaciones | Las observaciones sobre la v0.3.0 están resueltas en la v0.3.1 (ver historial). Revisión delegada a Claude Code |
 
 ### Historial
 
@@ -692,3 +789,4 @@ volver a registrar la concordancia.
 | 0.1.0 | 2026-11-14 | Borrador inicial propuesto por Claude Code para revisión |
 | 0.2.0 | 2026-11-14 | Responsables y flujo de aprobación; respuestas P-01 a P-14 adoptadas (salvo P-02); P-15 provisional restrictiva; código `BATCH_EXPIRED` |
 | 0.3.0 | 2026-11-14 | Requisitos del cliente: `sale_unit` agrega `pack`, `box`, `other`; `brand_id` obligatoria; RPC `create_product` con stock inicial opcional y `products.creation_key`; código `SKU_ALREADY_EXISTS`; niveles de alerta en la UI (§4.4) |
+| 0.3.1 | 2026-11-14 | Revisión del backend: permisos iguales para todo usuario activo (§4.1, §9, P-10, P-11); perfiles legibles por todos; origen de `full_name` y primer `admin` (§5.1); columnas de auditoría fijadas por la base (§2.5); nombres de índices únicos (§5.2–5.5); bloqueo de cambio de `sale_unit` con movimientos; reglas de reversión (§5.7, §8.3); fechas con `default null` y código `INVALID_DATE` (§8, §8.6); campos comparados en la idempotencia (§8.5); `creation_key` siempre (§8.4); `next_expiry_status` nulo (§7.2); P-15 adoptada |
