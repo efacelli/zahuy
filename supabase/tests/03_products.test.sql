@@ -164,8 +164,8 @@ select lives_ok(
 );
 select throws_ok(
   $$update public.products set sku = 'que-001' where sku = 'LAC-001'$$,
-  '23505', 'duplicate key value violates unique constraint "products_sku_key"',
-  'editar el SKU a uno existente'
+  '42501', null,
+  'el SKU no se edita desde la app (v0.4.0)'
 );
 select throws_ok(
   $$update public.products set creation_key = gen_random_uuid() where sku = 'LAC-001'$$,
