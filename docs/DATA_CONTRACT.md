@@ -308,16 +308,22 @@ Una fila por usuario de Supabase Auth.
 | Columna | Tipo | Null | Default | Restricciones / notas |
 |---|---|---|---|---|
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
-| `name` | `text` | no | — | `CHECK (length(trim(name)) between 1 and 80)`; único sin distinguir mayúsculas: `unique index categories_name_key on lower(trim(name))` |
+| `name` | `text` | no | — | `CHECK (length(trim(name)) between 1 and 80)`; único sin distinguir mayúsculas **ni tildes** (v0.4.0): `unique index categories_name_key on lower(private.unaccent_text(trim(name)))` |
 | `is_active` | `boolean` | no | `true` | — |
 | columnas comunes | | | | §2.5 |
 
 Lista plana, sin subcategorías en la Etapa 1 ([P-12](#13-preguntas-abiertas)).
 
+**Tildes (v0.4.0):** en la prueba con la base real, "lacteos" se guardó como
+una categoría distinta de "Lácteos". Los nombres de `categories`, `brands` y
+`suppliers` pasan a ser únicos también sin distinguir tildes. Se usa la
+extensión `unaccent` envuelta en una función `IMMUTABLE` (`private.unaccent_text`,
+con `search_path` vacío), porque un índice no acepta `unaccent()` directamente.
+
 ### 5.3 `brands`
 
 Igual que `categories` (`id`, `name` único sin distinguir mayúsculas con el
-índice `brands_name_key`, `is_active`, columnas comunes).
+índice `brands_name_key`, que desde v0.4.0 tampoco distingue tildes, `is_active`, columnas comunes).
 
 ### 5.4 `suppliers`
 
@@ -327,7 +333,7 @@ futura.
 | Columna | Tipo | Null | Default | Restricciones / notas |
 |---|---|---|---|---|
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
-| `name` | `text` | no | — | 1–120 caracteres; único sin distinguir mayúsculas: `unique index suppliers_name_key on lower(trim(name))` |
+| `name` | `text` | no | — | 1–120 caracteres; único sin distinguir mayúsculas **ni tildes** (v0.4.0): `unique index suppliers_name_key on lower(private.unaccent_text(trim(name)))` |
 | `tax_id` | `text` | sí | — | CUIT de 11 dígitos sin guiones: `CHECK (tax_id ~ '^[0-9]{11}$')`; único si no es nulo: `unique index suppliers_tax_id_key` |
 | `phone` | `text` | sí | — | Hasta 40 caracteres |
 | `email` | `text` | sí | — | Hasta 254 caracteres; formato básico `algo@algo.algo` sin espacios |
@@ -809,6 +815,11 @@ nuevas**, sin reescribir esas:
 - `ALTER TYPE public.movement_type ADD VALUE 'internal_use'`.
 - `ALTER TYPE public.expiry_status RENAME VALUE 'expires_7' TO 'expires_urgent'`
   (y `expires_15` → `expires_soon`, `expires_30` → `expires_upcoming`).
+- Extensión `unaccent`, función `private.unaccent_text()` y recreación de
+  `categories_name_key`, `brands_name_key` y `suppliers_name_key` sin distinguir
+  tildes (mismo nombre de índice). Antes de recrearlos, la migración debe
+  detectar duplicados existentes y fallar con un mensaje claro en lugar de
+  borrar o renombrar datos.
 - Función `private.is_manager_or_admin()` y reemplazo de las políticas de
   `INSERT`/`UPDATE` de `categories`, `brands` y `suppliers` para que solo
   escriban encargado y dueño.
@@ -897,6 +908,7 @@ balanza por producto.
 - Cantidad 0 y negativa → `INVALID_QUANTITY`.
 - Salida mayor al saldo → `INSUFFICIENT_STOCK` y el saldo no cambia.
 - Lote agotado → `depleted` y sin alerta.
+- Catálogos: "lacteos" contra "Lácteos" (y "LÁCTEOS") → `23505` sobre `categories_name_key`.
 - Lote de semilla sin vencimiento → `no_expiry`. Ingreso sin vencimiento desde
   la app → `EXPIRY_REQUIRED`.
 - Vencimiento pasado → `expired`; vencimiento hoy → `expires_urgent`.
@@ -999,4 +1011,4 @@ volver a registrar la concordancia.
 | 0.2.0 | 2026-11-14 | Responsables y flujo de aprobación; respuestas P-01 a P-14 adoptadas (salvo P-02); P-15 provisional restrictiva; código `BATCH_EXPIRED` |
 | 0.3.0 | 2026-11-14 | Requisitos del cliente: `sale_unit` agrega `pack`, `box`, `other`; `brand_id` obligatoria; RPC `create_product` con stock inicial opcional y `products.creation_key`; código `SKU_ALREADY_EXISTS`; niveles de alerta en la UI (§4.4) |
 | 0.3.1 | 2026-11-14 | Revisión del backend: permisos iguales para todo usuario activo (§4.1, §9, P-10, P-11); perfiles legibles por todos; origen de `full_name` y primer `admin` (§5.1); columnas de auditoría fijadas por la base (§2.5); nombres de índices únicos (§5.2–5.5); bloqueo de cambio de `sale_unit` con movimientos; reglas de reversión (§5.7, §8.3); fechas con `default null` y código `INVALID_DATE` (§8, §8.6); campos comparados en la idempotencia (§8.5); `creation_key` siempre (§8.4); `next_expiry_status` nulo (§7.2); P-15 adoptada |
-| 0.4.0 | 2026-11-15 | Segunda visita al cliente: permisos por rol dueño/encargado/empleado (§4.1, §9); precios sin IVA y `sale_price_with_vat` (§5.5, P-02); SKU generado por la base (§5.5, §8.4); `units_per_box` y desglose de cajas en `v_product_stock` (§3, §5.5, §7.2); `register_product_movement` con lotes por vencimiento y `operation_key` (§8.7); tipo `internal_use` (§4.3); alertas configurables por categoría con `expiry_alert_settings` y estados `expires_urgent/soon/upcoming` (§4.4, §5.9); vencimiento obligatorio y código `EXPIRY_REQUIRED` (§8.1); dashboard `v_inventory_summary` (§7.4); transición desde las migraciones fusionadas (§8.8); P-17 a P-20 |
+| 0.4.0 | 2026-11-15 | Segunda visita al cliente: permisos por rol dueño/encargado/empleado (§4.1, §9); precios sin IVA y `sale_price_with_vat` (§5.5, P-02); SKU generado por la base (§5.5, §8.4); `units_per_box` y desglose de cajas en `v_product_stock` (§3, §5.5, §7.2); `register_product_movement` con lotes por vencimiento y `operation_key` (§8.7); tipo `internal_use` (§4.3); alertas configurables por categoría con `expiry_alert_settings` y estados `expires_urgent/soon/upcoming` (§4.4, §5.9); vencimiento obligatorio y código `EXPIRY_REQUIRED` (§8.1); dashboard `v_inventory_summary` (§7.4); transición desde las migraciones fusionadas (§8.8); P-17 a P-20; nombres de catálogos únicos sin distinguir tildes (§5.2–5.4) |
