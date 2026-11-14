@@ -96,3 +96,10 @@ export async function fetchProductList(client: SupabaseClient, p: ProductListPar
   if (error) throw error
   return { rows: (data ?? []) as ProductListRow[], total: count ?? 0 }
 }
+
+/** Un producto con su stock (ficha del producto). */
+export async function fetchProductSummary(client: SupabaseClient, id: string): Promise<ProductListRow> {
+  const { data, error } = await client.from('v_product_list').select(COLUMNS).eq('id', id).single()
+  if (error) throw error
+  return data as unknown as ProductListRow
+}

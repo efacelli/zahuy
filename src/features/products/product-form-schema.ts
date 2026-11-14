@@ -88,6 +88,46 @@ const optionalText = (value: string): string | null => {
 
 const uuidField = (message: string) => z.string().trim().min(1, message).pipe(z.uuid(message))
 
+/** Valores del formulario a partir de un producto existente (edición). */
+export function productToFormValues(
+  p: {
+    barcode: string | null
+    name: string
+    description: string | null
+    category_id: string
+    brand_id: string
+    supplier_id: string | null
+    sale_unit: SaleUnit
+    cost_price: number
+    sale_price: number
+    vat_rate: number
+    boxes_quantity: number
+    units_per_box: number
+    min_stock: number
+    is_active: boolean
+  },
+  today = todayInAppTimeZone(),
+): ProductFormValues {
+  const num = (n: number) => String(n).replace('.', ',')
+  return {
+    ...emptyProductForm(today),
+    barcode: p.barcode ?? '',
+    name: p.name,
+    description: p.description ?? '',
+    category_id: p.category_id,
+    brand_id: p.brand_id,
+    supplier_id: p.supplier_id ?? '',
+    sale_unit: p.sale_unit,
+    cost_price: num(p.cost_price),
+    sale_price: num(p.sale_price),
+    vat_rate: String(Number(p.vat_rate)),
+    boxes_quantity: String(p.boxes_quantity),
+    units_per_box: String(p.units_per_box),
+    min_stock: num(p.min_stock),
+    is_active: p.is_active,
+  }
+}
+
 export function productFormSchema(today = todayInAppTimeZone()) {
   return z
     .object({

@@ -94,3 +94,14 @@ export async function fetchAlerts(client: SupabaseClient, p: AlertParams) {
   if (error) throw error
   return { rows: (data ?? []) as BatchAlertRow[], total: count ?? 0 }
 }
+
+/** Lotes de un producto, del que vence primero al último (ficha del producto). */
+export async function fetchProductBatches(client: SupabaseClient, productId: string): Promise<BatchAlertRow[]> {
+  const { data, error } = await client
+    .from('v_batch_status')
+    .select(COLUMNS)
+    .eq('product_id', productId)
+    .order('expires_on', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as unknown as BatchAlertRow[]
+}

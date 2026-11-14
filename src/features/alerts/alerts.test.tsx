@@ -105,7 +105,7 @@ describe('pantalla de Alertas', () => {
       batch({ product_name: 'Yogur frutilla' }),
     ])
     const table = await screen.findByRole('table', { name: 'Alertas de vencimiento' })
-    expect(within(table).getByRole('link', { name: 'Leche entera' })).toHaveAttribute('href', '/productos?q=000001&estado=todos')
+    expect(within(table).getByRole('link', { name: 'Leche entera' }).getAttribute('href')).toMatch(/^\/productos\/[0-9a-f-]{36}$/)
     expect(within(table).getByText('Sin número')).toBeInTheDocument()
     expect(within(table).getByText('venció hace 2 días')).toBeInTheDocument()
     expect(within(table).getByText('vence en 5 días')).toBeInTheDocument()

@@ -11,12 +11,18 @@ import { Icon } from '../../components/ui/Icon'
 import { SALE_UNIT_LABEL, SALE_UNITS, formatQuantity, isIntegerUnit } from '../../domain/units'
 import { VAT_RATES, formatVatRate, priceWithVatPreview } from '../../domain/vat'
 import { formatDate, todayInAppTimeZone } from '../../lib/dates'
-import { toAppError } from '../../lib/errors'
 import { formatMoney } from '../../lib/format'
 import { newIdempotencyKey } from '../../lib/idempotency'
 import { parseDecimalInput } from '../../lib/numbers'
 import { useSupabase } from '../../lib/supabase-context'
-import { createProduct, toCreateProductParams, type CreatedProduct } from './api'
+import {
+  createProduct,
+  productErrorMessage,
+  toCreateProductParams,
+  toUpdateProductPayload,
+  updateProduct,
+  type CreatedProduct,
+} from './api'
 import { CatalogSelect } from './CatalogSelect'
 import {
   emptyProductForm,
@@ -27,13 +33,27 @@ import {
 } from './product-form-schema'
 import styles from './ProductForm.module.css'
 
-interface ProductFormProps {
-  onCreated: (product: CreatedProduct) => void
-  onCancel: () => void
+/** Producto a editar: su id, su SKU (solo lectura) y los valores actuales. */
+export interface EditingProduct {
+  id: string
+  sku: string
+  values: ProductFormValues
 }
 
-/** Alta de producto con stock inicial opcional (contrato §8.4, `create_product`). */
-export function ProductForm({ onCreated, onCancel }: ProductFormProps) {
+interface ProductFormProps {
+  onCancel: () => void
+  /** Alta: se llama con el producto creado (trae el SKU asignado por la base). */
+  onCreated?: (product: CreatedProduct) => void
+  /** Edición: si se indica, el formulario edita ese producto en lugar de crear uno. */
+  editing?: EditingProduct
+  onSaved?: (product: CreatedProduct) => void
+}
+
+/**
+ * Alta de producto con stock inicial opcional (contrato §8.4, `create_product`)
+ * o edición de sus datos (UPDATE directo con RLS, §5.5). La edición nunca toca stock.
+ */
+export function ProductForm({ onCreated, onCancel, editing, onSaved }: ProductFormProps) {
   const client = useSupabase()
   const queryClient = useQueryClient()
   const today = todayInAppTimeZone()
@@ -51,7 +71,7 @@ export function ProductForm({ onCreated, onCancel }: ProductFormProps) {
     formState: { errors },
   } = useForm<ProductFormValues, unknown, ProductFormOutput>({
     resolver: zodResolver(schema),
-    defaultValues: emptyProductForm(today),
+    defaultValues: editing?.values ?? emptyProductForm(today),
     mode: 'onTouched',
   })
 
@@ -63,15 +83,19 @@ export function ProductForm({ onCreated, onCancel }: ProductFormProps) {
   const finalPricePreview = salePrice === null ? null : priceWithVatPreview(salePrice, Number(values.vat_rate))
 
   const mutation = useMutation({
-    mutationFn: (output: ProductFormOutput) => createProduct(client, toCreateProductParams(output, idempotencyKey)),
+    mutationFn: (output: ProductFormOutput) =>
+      editing
+        ? updateProduct(client, editing.id, toUpdateProductPayload(output))
+        : createProduct(client, toCreateProductParams(output, idempotencyKey)),
     onSuccess: async (product) => {
       setPending(null)
       await queryClient.invalidateQueries({ queryKey: ['products'] })
-      onCreated(product)
+      if (editing) onSaved?.(product)
+      else onCreated?.(product)
     },
     onError: (error) => {
       setPending(null)
-      setServerError(toAppError(error).message)
+      setServerError(productErrorMessage(error, Boolean(editing)))
     },
   })
 
@@ -99,7 +123,15 @@ export function ProductForm({ onCreated, onCancel }: ProductFormProps) {
 
       <fieldset className={styles.group}>
         <legend>Identificación</legend>
-        <p className={styles.groupHelp}>El código interno (SKU) lo asigna el sistema al guardar.</p>
+        <p className={styles.groupHelp}>
+          {editing ? (
+            <>
+              SKU <strong>{editing.sku}</strong> (lo asignó el sistema; no se cambia).
+            </>
+          ) : (
+            'El código interno (SKU) lo asigna el sistema al guardar.'
+          )}
+        </p>
         <div className={styles.grid}>
           <FormField
             label="Código de barras"
@@ -231,6 +263,7 @@ export function ProductForm({ onCreated, onCancel }: ProductFormProps) {
         </div>
       </fieldset>
 
+      {!editing && (
       <fieldset className={styles.group}>
         <legend>Stock inicial (opcional)</legend>
         <p className={styles.groupHelp}>
@@ -268,6 +301,7 @@ export function ProductForm({ onCreated, onCancel }: ProductFormProps) {
           </FormField>
         </div>
       </fieldset>
+      )}
 
       {warnings.length > 0 && (
         <ul className={styles.warnings} aria-label="Advertencias">
@@ -284,7 +318,7 @@ export function ProductForm({ onCreated, onCancel }: ProductFormProps) {
           Cancelar
         </Button>
         <Button type="submit" variant="primary" loading={mutation.isPending && !pending}>
-          Guardar producto
+          {editing ? 'Guardar cambios' : 'Guardar producto'}
         </Button>
       </div>
 
