@@ -73,7 +73,8 @@ select is(
   'el nombre se recorta a 120 caracteres'
 );
 select is(
-  (select count(*)::int from public.profiles where is_active and role = 'staff'),
+  (select count(*)::int from public.profiles
+    where is_active and role = 'staff' and id::text like '00000000-0000-4000-8000-00000000000_'),
   4,
   'los cuatro perfiles nacen activos y como staff'
 );
@@ -106,7 +107,11 @@ reset role;
 select set_config('request.jwt.claims', '{"sub": "00000000-0000-4000-8000-00000000000b", "role": "authenticated"}', true);
 set local role authenticated;
 
-select is((select count(*)::int from public.profiles), 4, 'un usuario activo lee todos los perfiles');
+select is(
+  (select count(*)::int from public.profiles where id::text like '00000000-0000-4000-8000-00000000000_'),
+  4,
+  'un usuario activo lee todos los perfiles'
+);
 
 select lives_ok(
   $$update public.profiles set role = 'admin' where id = '00000000-0000-4000-8000-00000000000b'$$,

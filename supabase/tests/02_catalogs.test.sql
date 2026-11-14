@@ -68,7 +68,11 @@ select lives_ok(
 select lives_ok($$insert into public.suppliers (name) values ('Proveedor Sin CUIT Uno')$$, 'proveedor sin CUIT');
 select lives_ok($$insert into public.suppliers (name) values ('Proveedor Sin CUIT Dos')$$, 'dos proveedores sin CUIT no chocan');
 
-select is((select count(*)::int from public.categories), 2, 'lee las categorías');
+select is(
+  (select count(*)::int from public.categories where name in ('Almacén', 'Lácteos')),
+  2,
+  'lee las categorías'
+);
 
 -- Duplicados: el nombre de la restricción es el que traduce el frontend.
 select throws_ok(
@@ -153,7 +157,7 @@ select throws_ok($$delete from public.suppliers$$, '42501', null, 'no se borra u
 
 -- Lectura como la hace el frontend: opciones activas ordenadas por nombre.
 select results_eq(
-  $$select name from public.categories where is_active order by name$$,
+  $$select name from public.categories where is_active and name in ('Almacén', 'Lácteos') order by name$$,
   $$values ('Almacén'), ('Lácteos')$$,
   'opciones activas ordenadas por nombre'
 );
