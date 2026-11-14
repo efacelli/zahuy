@@ -1,6 +1,5 @@
 import { isRouteErrorResponse, Link, useRouteError } from 'react-router'
 import { EmptyState, ErrorState } from '../components/ui/States'
-import buttonStyles from './pages.module.css'
 import { NAV_ITEMS, type NavItem } from './navigation'
 import { SectionPage } from './SectionPage'
 
@@ -18,25 +17,6 @@ export function DashboardPage() {
         'Cantidad de productos activos y con stock bajo.',
         'Lotes próximos a vencer, con vencimiento urgente y vencidos.',
         'Últimos movimientos de stock.',
-      ]}
-    />
-  )
-}
-
-export function ProductsPage() {
-  return (
-    <SectionPage
-      item={navItem('/productos')}
-      actions={
-        <Link to="/productos/nuevo" className={buttonStyles.linkButton}>
-          + Nuevo producto
-        </Link>
-      }
-      upcoming={[
-        'Listado con búsqueda por nombre, SKU o código de barras.',
-        'Filtros por proveedor, categoría, stock bajo y vencimiento.',
-        'Alta y edición de productos, con stock inicial opcional.',
-        'Ficha del producto con sus lotes y su historial de movimientos.',
       ]}
     />
   )

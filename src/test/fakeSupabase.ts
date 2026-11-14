@@ -73,7 +73,7 @@ export function createFakeSupabase(initial: Session | null = null) {
       if (entry.error || !entry.data) return { data: null, error: entry.error }
       // Copias: como la base real, cada lectura devuelve objetos nuevos.
       const rows = entry.data.filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v)).map((r) => ({ ...r }))
-      return { data: rows, error: null }
+      return { data: rows, error: null, count: rows.length } as Result
     }
 
     const runWrite = (): Result => {
@@ -102,7 +102,12 @@ export function createFakeSupabase(initial: Session | null = null) {
         filters[column] = value
         return builder
       },
+      // Se registran pero no se aplican: la lógica de filtros se prueba aparte (list-api.test).
+      or: () => builder,
+      is: () => builder,
+      in: () => builder,
       order: () => builder,
+      range: () => builder,
       insert: (values: Row) => {
         op = 'insert'
         payload = values

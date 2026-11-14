@@ -30,6 +30,15 @@ export const ALERT_LEVEL_LABEL: Record<AlertLevel, string> = {
   expired: 'Vencido',
 }
 
+/** Contador de días: "vence hoy", "vence mañana", "vence en 5 días", "venció hace 2 días". */
+export function daysLabel(days: number): string {
+  if (days === 0) return 'vence hoy'
+  if (days === 1) return 'vence mañana'
+  if (days > 1) return `vence en ${days} días`
+  if (days === -1) return 'venció ayer'
+  return `venció hace ${-days} días`
+}
+
 /** Niveles de alerta en la UI (contrato §4.4). `null` = no alerta. */
 export function alertLevelFor(status: ExpiryStatus): AlertLevel | null {
   switch (status) {
