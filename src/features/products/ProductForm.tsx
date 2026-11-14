@@ -191,9 +191,9 @@ export function ProductForm({ onCreated, onCancel }: ProductFormProps) {
             label="Stock mínimo"
             htmlFor="product-min_stock"
             error={err('min_stock')}
-            hint="Debajo de este número se marca como stock bajo."
+            hint="Con este número o menos se marca como stock bajo."
           >
-            <input className="input" inputMode="decimal" autoComplete="off" {...field('min_stock', 'Debajo de este número se marca como stock bajo.')} {...register('min_stock')} />
+            <input className="input" inputMode="decimal" autoComplete="off" {...field('min_stock', 'Con este número o menos se marca como stock bajo.')} {...register('min_stock')} />
           </FormField>
           <FormField
             label="Cantidad de cajas"
