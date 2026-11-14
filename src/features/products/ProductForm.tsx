@@ -1,0 +1,291 @@
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
+import { useForm, useWatch } from 'react-hook-form'
+import { Badge } from '../../components/ui/Badge'
+import { Button } from '../../components/ui/Button'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { FormField } from '../../components/ui/FormField'
+import { describedBy } from '../../components/ui/form-field-ids'
+import { Icon } from '../../components/ui/Icon'
+import { SALE_UNIT_LABEL, SALE_UNITS, formatQuantity, isIntegerUnit } from '../../domain/units'
+import { VAT_RATES, formatVatRate } from '../../domain/vat'
+import { formatDate, todayInAppTimeZone } from '../../lib/dates'
+import { toAppError } from '../../lib/errors'
+import { formatMoney } from '../../lib/format'
+import { newIdempotencyKey } from '../../lib/idempotency'
+import { useSupabase } from '../../lib/supabase-context'
+import { createProduct, toCreateProductParams, type CreatedProduct } from './api'
+import { CatalogSelect } from './CatalogSelect'
+import {
+  emptyProductForm,
+  productFormSchema,
+  productFormWarnings,
+  type ProductFormOutput,
+  type ProductFormValues,
+} from './product-form-schema'
+import styles from './ProductForm.module.css'
+
+interface ProductFormProps {
+  onCreated: (product: CreatedProduct) => void
+  onCancel: () => void
+}
+
+/** Alta de producto con stock inicial opcional (contrato §8.4, `create_product`). */
+export function ProductForm({ onCreated, onCancel }: ProductFormProps) {
+  const client = useSupabase()
+  const queryClient = useQueryClient()
+  const today = todayInAppTimeZone()
+  const schema = useMemo(() => productFormSchema(today), [today])
+
+  // Una clave por intento de alta; se conserva en los reintentos hasta que se crea el producto.
+  const [idempotencyKey] = useState(newIdempotencyKey)
+  const [pending, setPending] = useState<ProductFormOutput | null>(null)
+  const [serverError, setServerError] = useState<string | null>(null)
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors },
+  } = useForm<ProductFormValues, unknown, ProductFormOutput>({
+    resolver: zodResolver(schema),
+    defaultValues: emptyProductForm(today),
+    mode: 'onTouched',
+  })
+
+  const values = useWatch({ control }) as ProductFormValues
+  const warnings = productFormWarnings(values, today)
+  const unit = values.sale_unit ?? 'unit'
+  const hasInitialStock = (values.initial_quantity ?? '').trim() !== ''
+
+  const mutation = useMutation({
+    mutationFn: (output: ProductFormOutput) => createProduct(client, toCreateProductParams(output, idempotencyKey)),
+    onSuccess: async (product) => {
+      setPending(null)
+      await queryClient.invalidateQueries({ queryKey: ['products'] })
+      onCreated(product)
+    },
+    onError: (error) => {
+      setPending(null)
+      setServerError(toAppError(error).message)
+    },
+  })
+
+  const onValid = (output: ProductFormOutput) => {
+    setServerError(null)
+    // Si afecta stock, se confirma antes (CLAUDE.md, UI).
+    if (output.initial_stock) setPending(output)
+    else mutation.mutate(output)
+  }
+
+  const err = (name: keyof ProductFormValues) => errors[name]?.message
+  const field = (name: keyof ProductFormValues, hint?: string) => ({
+    id: `product-${name}`,
+    'aria-invalid': err(name) ? true : undefined,
+    'aria-describedby': describedBy(`product-${name}`, { hint, error: err(name) }),
+  })
+
+  return (
+    <form className={styles.form} onSubmit={handleSubmit(onValid)} noValidate>
+      {serverError && (
+        <p className={styles.serverError} role="alert">
+          <Icon name="error" size={18} /> {serverError}
+        </p>
+      )}
+
+      <fieldset className={styles.group}>
+        <legend>Identificación</legend>
+        <div className={styles.grid}>
+          <FormField label="SKU" htmlFor="product-sku" required error={err('sku')} hint="Código interno único.">
+            <input className="input" autoComplete="off" spellCheck={false} {...field('sku', 'Código interno único.')} {...register('sku')} />
+          </FormField>
+          <FormField
+            label="Código de barras"
+            htmlFor="product-barcode"
+            error={err('barcode')}
+            hint="8 a 14 números (EAN/UPC)."
+          >
+            <input className="input" inputMode="numeric" autoComplete="off" {...field('barcode', '8 a 14 números (EAN/UPC).')} {...register('barcode')} />
+          </FormField>
+          <div className={styles.wide}>
+            <FormField label="Nombre" htmlFor="product-name" required error={err('name')}>
+              <input className="input" autoComplete="off" {...field('name')} {...register('name')} />
+            </FormField>
+          </div>
+          <div className={styles.wide}>
+            <FormField label="Descripción" htmlFor="product-description" error={err('description')}>
+              <textarea className="textarea" rows={2} {...field('description')} {...register('description')} />
+            </FormField>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset className={styles.group}>
+        <legend>Clasificación</legend>
+        <div className={styles.grid}>
+          <CatalogSelect
+            id="product-category_id"
+            label="Categoría"
+            table="categories"
+            required
+            placeholder="Elegí una categoría"
+            error={err('category_id')}
+            registration={register('category_id')}
+          />
+          <CatalogSelect
+            id="product-brand_id"
+            label="Marca"
+            table="brands"
+            required
+            placeholder="Elegí una marca"
+            error={err('brand_id')}
+            registration={register('brand_id')}
+          />
+          <CatalogSelect
+            id="product-supplier_id"
+            label="Proveedor"
+            table="suppliers"
+            required={false}
+            placeholder="Sin proveedor"
+            error={err('supplier_id')}
+            registration={register('supplier_id')}
+          />
+        </div>
+      </fieldset>
+
+      <fieldset className={styles.group}>
+        <legend>Venta y precios</legend>
+        <div className={styles.grid}>
+          <FormField label="Unidad de venta" htmlFor="product-sale_unit" required error={err('sale_unit')}>
+            <select className="select" {...field('sale_unit')} {...register('sale_unit')}>
+              {SALE_UNITS.map((u) => (
+                <option key={u} value={u}>
+                  {SALE_UNIT_LABEL[u]}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="IVA" htmlFor="product-vat_rate" required error={err('vat_rate')}>
+            <select className="select" {...field('vat_rate')} {...register('vat_rate')}>
+              {VAT_RATES.map((r) => (
+                <option key={r} value={String(r)}>
+                  {formatVatRate(r)}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Precio de costo" htmlFor="product-cost_price" required error={err('cost_price')}>
+            <input className="input" inputMode="decimal" autoComplete="off" placeholder="0,00" {...field('cost_price')} {...register('cost_price')} />
+          </FormField>
+          <FormField label="Precio de venta" htmlFor="product-sale_price" required error={err('sale_price')}>
+            <input className="input" inputMode="decimal" autoComplete="off" placeholder="0,00" {...field('sale_price')} {...register('sale_price')} />
+          </FormField>
+        </div>
+      </fieldset>
+
+      <fieldset className={styles.group}>
+        <legend>Stock y estado</legend>
+        <div className={styles.grid}>
+          <FormField
+            label="Stock mínimo"
+            htmlFor="product-min_stock"
+            error={err('min_stock')}
+            hint="Con este número o menos se marca como stock bajo."
+          >
+            <input className="input" inputMode="decimal" autoComplete="off" {...field('min_stock', 'Con este número o menos se marca como stock bajo.')} {...register('min_stock')} />
+          </FormField>
+          <FormField
+            label="Cantidad de cajas"
+            htmlFor="product-boxes_quantity"
+            error={err('boxes_quantity')}
+            hint="Conteo manual; no se calcula desde las unidades."
+          >
+            <input className="input" inputMode="numeric" autoComplete="off" {...field('boxes_quantity', 'Conteo manual; no se calcula desde las unidades.')} {...register('boxes_quantity')} />
+          </FormField>
+          <div className={styles.checkboxField}>
+            <input type="checkbox" id="product-is_active" {...register('is_active')} />
+            <label htmlFor="product-is_active">Producto activo</label>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset className={styles.group}>
+        <legend>Stock inicial (opcional)</legend>
+        <p className={styles.groupHelp}>
+          Si ya hay mercadería, cargala acá: se crea el primer lote y queda registrado el ingreso. Si no, dejá la
+          cantidad vacía y cargá el stock después desde Movimientos.
+        </p>
+        <div className={styles.grid}>
+          <FormField
+            label={`Cantidad (${SALE_UNIT_LABEL[unit].toLowerCase()})`}
+            htmlFor="product-initial_quantity"
+            error={err('initial_quantity')}
+            hint={isIntegerUnit(unit) ? 'Número entero.' : 'Hasta 3 decimales.'}
+          >
+            <input className="input" inputMode="decimal" autoComplete="off" {...field('initial_quantity', isIntegerUnit(unit) ? 'Número entero.' : 'Hasta 3 decimales.')} {...register('initial_quantity')} />
+          </FormField>
+          <FormField label="Fecha de ingreso" htmlFor="product-received_on" required={hasInitialStock} error={err('received_on')}>
+            <input type="date" className="input" max={today} {...field('received_on')} {...register('received_on')} />
+          </FormField>
+          <FormField
+            label="Vencimiento"
+            htmlFor="product-expires_on"
+            error={err('expires_on')}
+            hint="Vacío si el producto no vence."
+          >
+            <input type="date" className="input" {...field('expires_on', 'Vacío si el producto no vence.')} {...register('expires_on')} />
+          </FormField>
+          <FormField label="Número de lote" htmlFor="product-batch_number" error={err('batch_number')}>
+            <input className="input" autoComplete="off" {...field('batch_number')} {...register('batch_number')} />
+          </FormField>
+        </div>
+      </fieldset>
+
+      {warnings.length > 0 && (
+        <ul className={styles.warnings} aria-label="Advertencias">
+          {warnings.map((w) => (
+            <li key={w}>
+              <Badge tone="warning">Revisar</Badge> {w}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className={styles.actions}>
+        <Button onClick={onCancel} disabled={mutation.isPending}>
+          Cancelar
+        </Button>
+        <Button type="submit" variant="primary" loading={mutation.isPending && !pending}>
+          Guardar producto
+        </Button>
+      </div>
+
+      <ConfirmDialog
+        open={pending !== null}
+        title="Confirmar alta con stock"
+        confirmLabel="Crear producto e ingresar stock"
+        busy={mutation.isPending}
+        onConfirm={() => pending && mutation.mutate(pending)}
+        onCancel={() => setPending(null)}
+      >
+        {pending?.initial_stock && (
+          <dl className={styles.summary}>
+            <dt>Producto</dt>
+            <dd>
+              {pending.name} <span className={styles.muted}>(SKU {pending.sku})</span>
+            </dd>
+            <dt>Ingreso</dt>
+            <dd>{formatQuantity(pending.initial_stock.quantity, pending.sale_unit)}</dd>
+            <dt>Fecha de ingreso</dt>
+            <dd>{formatDate(pending.initial_stock.received_on)}</dd>
+            <dt>Vencimiento</dt>
+            <dd>{pending.initial_stock.expires_on ? formatDate(pending.initial_stock.expires_on) : 'Sin vencimiento'}</dd>
+            <dt>Precio de venta</dt>
+            <dd>{formatMoney(pending.sale_price)}</dd>
+          </dl>
+        )}
+      </ConfirmDialog>
+    </form>
+  )
+}

@@ -1,0 +1,17 @@
+/* Enlace con aspecto de botón primario (navegación, no acción). */
+.linkButton {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.linkButton:hover {
+  background: var(--color-primary-hover);
+}
