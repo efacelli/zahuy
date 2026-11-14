@@ -86,7 +86,7 @@ describe('cierre de sesión', () => {
     const user = userEvent.setup()
     const fake = createFakeSupabase(fakeSession('encargado@prueba.test'))
     const router = renderApp('/', fake.client)
-    expect(await screen.findByText('encargado@prueba.test')).toBeInTheDocument()
+    expect(await screen.findByText(/Usuario de prueba/)).toHaveTextContent('Usuario de prueba · Encargado')
     await user.click(screen.getByRole('button', { name: 'Salir' }))
     await screen.findByRole('heading', { name: 'Ingresar al sistema' })
     expect(router.state.location.pathname).toBe('/login')

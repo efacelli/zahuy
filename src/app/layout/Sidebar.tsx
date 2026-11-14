@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router'
 import logoMark from '../../assets/brand/zahuy-logo-mark.png'
 import { Icon } from '../../components/ui/Icon'
+import { usePermissions } from '../../features/auth/useProfile'
 import { NAV_ITEMS } from '../navigation'
 import styles from './Sidebar.module.css'
 
@@ -12,6 +13,8 @@ interface SidebarProps {
 }
 
 export function Sidebar({ id, open, onNavigate, onClose }: SidebarProps) {
+  const permissions = usePermissions()
+  const items = NAV_ITEMS.filter((item) => !item.permission || permissions[item.permission])
   return (
     <aside id={id} className={`${styles.sidebar} ${open ? styles.open : ''}`} aria-label="Menú principal">
       <div className={styles.brand}>
@@ -22,7 +25,7 @@ export function Sidebar({ id, open, onNavigate, onClose }: SidebarProps) {
       </div>
       <nav>
         <ul className={styles.list}>
-          {NAV_ITEMS.map((item) => (
+          {items.map((item) => (
             <li key={item.path}>
               <NavLink
                 to={item.path}

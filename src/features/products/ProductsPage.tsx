@@ -13,6 +13,7 @@ import { todayInAppTimeZone } from '../../lib/dates'
 import { toAppError } from '../../lib/errors'
 import { formatMoney, formatNumber } from '../../lib/format'
 import { useSupabase } from '../../lib/supabase-context'
+import { usePermissions } from '../auth/useProfile'
 import { fetchProductList, type ProductListRow } from './list-api'
 import { hasActiveFilters, parseListParams, serializeListParams, type ProductListParams, type ProductSortKey } from './list-params'
 import { ProductFilters } from './ProductFilters'
@@ -22,6 +23,7 @@ type ColumnKey = ProductSortKey | 'barcode' | 'vat_rate' | 'status'
 
 export function ProductsPage() {
   const client = useSupabase()
+  const canManage = usePermissions().manageInventory
   const [searchParams, setSearchParams] = useSearchParams()
   const params = useMemo(() => parseListParams(searchParams), [searchParams])
   const today = todayInAppTimeZone()
@@ -102,9 +104,11 @@ export function ProductsPage() {
         title="Productos"
         description="Catálogo, stock y próximos vencimientos."
         actions={
-          <Link to="/productos/nuevo" className={pageStyles.linkButton}>
-            + Nuevo producto
-          </Link>
+          canManage && (
+            <Link to="/productos/nuevo" className={pageStyles.linkButton}>
+              + Nuevo producto
+            </Link>
+          )
         }
       />
       <ProductFilters params={params} onChange={update} />
@@ -119,7 +123,13 @@ export function ProductsPage() {
         errorMessage={query.error ? toAppError(query.error).message : null}
         onRetry={() => void query.refetch()}
         emptyTitle={filtered ? 'No hay productos con esos filtros' : 'Todavía no hay productos'}
-        emptyDescription={filtered ? 'Probá con otra búsqueda o limpiá los filtros.' : 'Cargá el primero con "+ Nuevo producto".'}
+        emptyDescription={
+          filtered
+            ? 'Probá con otra búsqueda o limpiá los filtros.'
+            : canManage
+              ? 'Cargá el primero con "+ Nuevo producto".'
+              : 'El encargado todavía no cargó productos.'
+        }
       />
       {total > 0 && (
         <Pagination
