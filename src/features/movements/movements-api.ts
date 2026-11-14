@@ -1,0 +1,153 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { MovementType } from '../../domain/movements'
+import type { SaleUnit } from '../../domain/units'
+import { DEFAULT_PAGE_SIZE, pageRange } from '../../lib/pagination'
+import { sanitizeSearch } from '../products/list-params'
+
+/* ------------------------------------------------------------------ */
+/* Productos para elegir en los formularios                            */
+/* ------------------------------------------------------------------ */
+
+export interface ProductOption {
+  id: string
+  sku: string
+  name: string
+  sale_unit: SaleUnit
+  /** Contrato v0.4.0 §5.5. */
+  units_per_box: number
+}
+
+/** Busca productos activos por nombre, SKU o código de barras (máximo 20). */
+export async function searchProducts(client: SupabaseClient, text: string): Promise<ProductOption[]> {
+  const term = sanitizeSearch(text)
+  let q = client.from('products').select('id, sku, name, sale_unit, units_per_box').eq('is_active', true)
+  if (term) q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`)
+  const { data, error } = await q.order('name').limit(20)
+  if (error) throw error
+  return (data ?? []) as ProductOption[]
+}
+
+/* ------------------------------------------------------------------ */
+/* Escritura: RPC del contrato (§8.1, §8.3, §8.7)                       */
+/* ------------------------------------------------------------------ */
+
+export interface ReceiveStockParams {
+  p_idempotency_key: string
+  p_product_id: string
+  p_quantity: number
+  p_received_on: string | null
+  p_expires_on: string
+  p_batch_number: string | null
+  p_notes: string | null
+}
+
+export interface MovementRow {
+  id: string
+  batch_id: string
+  product_id: string
+  movement_type: MovementType
+  quantity: number
+  batch_quantity_after: number
+}
+
+/** Ingreso de mercadería con lote nuevo (§8.1). */
+export async function receiveStock(client: SupabaseClient, params: ReceiveStockParams): Promise<MovementRow> {
+  const { data, error } = await client.rpc('receive_stock', params).single()
+  if (error) throw error
+  return data as MovementRow
+}
+
+export interface ProductMovementParams {
+  p_idempotency_key: string
+  p_product_id: string
+  p_movement_type: MovementType
+  p_quantity: number
+  p_reason: string | null
+  p_notes: string | null
+  p_occurred_at: string | null
+}
+
+/**
+ * Salida o ajuste por producto; la base elige los lotes por vencimiento (§8.7)
+ * y devuelve un movimiento por lote usado.
+ */
+export async function registerProductMovement(
+  client: SupabaseClient,
+  params: ProductMovementParams,
+): Promise<MovementRow[]> {
+  const { data, error } = await client.rpc('register_product_movement', params)
+  if (error) throw error
+  return (data ?? []) as MovementRow[]
+}
+
+export interface ReverseParams {
+  p_idempotency_key: string
+  p_movement_id: string
+  p_reason: string
+}
+
+/** Movimiento compensatorio de uno mal cargado (§8.3). */
+export async function reverseMovement(client: SupabaseClient, params: ReverseParams): Promise<MovementRow> {
+  const { data, error } = await client.rpc('reverse_stock_movement', params).single()
+  if (error) throw error
+  return data as MovementRow
+}
+
+/* ------------------------------------------------------------------ */
+/* Historial: tabla stock_movements con RLS de lectura (§5.7, §9)      */
+/* ------------------------------------------------------------------ */
+
+export interface MovementHistoryRow {
+  id: string
+  movement_type: MovementType
+  quantity: number
+  signed_quantity: number
+  batch_quantity_after: number
+  reason: string | null
+  notes: string | null
+  occurred_at: string
+  reverses_movement_id: string | null
+  batch: {
+    batch_number: string | null
+    expires_on: string | null
+    product: { sku: string; name: string; sale_unit: SaleUnit } | null
+  } | null
+  author: { full_name: string } | null
+}
+
+/*
+ * stock_movements no tiene FK directa a products: el producto se llega por el
+ * lote (FK compuesta stock_movements_batch_product_fkey). El autor, por
+ * stock_movements_created_by_fkey.
+ */
+const HISTORY_COLUMNS =
+  'id, movement_type, quantity, signed_quantity, batch_quantity_after, reason, notes, occurred_at, reverses_movement_id, ' +
+  'batch:product_batches!stock_movements_batch_product_fkey(batch_number, expires_on, product:products(sku, name, sale_unit)), ' +
+  'author:profiles!stock_movements_created_by_fkey(full_name)'
+
+export interface HistoryParams {
+  type: MovementType | null
+  page: number
+}
+
+/** Subconjunto del query builder que usa el historial (facilita las pruebas). */
+export interface HistoryQuery {
+  eq(column: string, value: unknown): HistoryQuery
+  order(column: string, options: { ascending: boolean }): HistoryQuery
+  range(from: number, to: number): PromiseLike<{ data: unknown; error: unknown; count: number | null }>
+}
+
+export function applyHistoryParams(query: HistoryQuery, p: HistoryParams) {
+  let q = query
+  if (p.type) q = q.eq('movement_type', p.type)
+  q = q.order('occurred_at', { ascending: false }).order('created_at', { ascending: false }).order('id', { ascending: true })
+  const [from, to] = pageRange(p.page, DEFAULT_PAGE_SIZE)
+  return q.range(from, to)
+}
+
+export async function fetchMovementHistory(client: SupabaseClient, p: HistoryParams) {
+  const base = client.from('stock_movements').select(HISTORY_COLUMNS, { count: 'exact' }) as unknown as HistoryQuery
+  const { data, error, count } = await applyHistoryParams(base, p)
+  if (error) throw error
+  return { rows: (data ?? []) as MovementHistoryRow[], total: count ?? 0 }
+}

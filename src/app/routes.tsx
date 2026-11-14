@@ -4,11 +4,12 @@ import { LoginPage } from '../features/auth/LoginPage'
 import { RequireAuth } from '../features/auth/RequireAuth'
 import { RequirePermission } from '../features/auth/RequirePermission'
 import { CatalogsPage } from '../features/catalogs/CatalogsPage'
+import { MovementsPage } from '../features/movements/MovementsPage'
 import { NewProductPage } from '../features/products/NewProductPage'
 import { ProductsPage } from '../features/products/ProductsPage'
 import { HomePage } from './HomePage'
 import { AppLayout } from './layout/AppLayout'
-import { MovementsPage, NotFoundPage, RouteErrorPage } from './pages'
+import { NotFoundPage, RouteErrorPage } from './pages'
 
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage />, errorElement: <RouteErrorPage /> },

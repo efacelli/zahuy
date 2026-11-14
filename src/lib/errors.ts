@@ -104,11 +104,14 @@ export function toAppError(error: unknown): AppError {
     case 'PGRST301':
     case 'PGRST302':
       return { kind: 'auth', code, message: 'Tu sesión expiró. Volvé a iniciar sesión.' }
-    // Tabla/vista o función inexistente: el esquema del backend todavía no está publicado.
+    // Tabla/vista, función, relación o columna inexistente: el esquema del backend
+    // todavía no tiene esa versión del contrato.
     case 'PGRST202':
     case 'PGRST205':
+    case 'PGRST200':
     case '42P01':
     case '42883':
+    case '42703':
       return {
         kind: 'unavailable',
         code,

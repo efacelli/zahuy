@@ -22,18 +22,6 @@ export function DashboardPage() {
   )
 }
 
-export function MovementsPage() {
-  return (
-    <SectionPage
-      item={navItem('/movimientos')}
-      upcoming={[
-        'Ingresos, salidas, ajustes, mermas, daños y devoluciones, con confirmación.',
-        'Historial con producto, lote, cantidad, fecha, usuario y motivo.',
-      ]}
-    />
-  )
-}
-
 export function NotFoundPage() {
   return (
     <EmptyState
