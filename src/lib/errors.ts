@@ -39,6 +39,8 @@ export const BUSINESS_ERROR_MESSAGES: Record<string, string> = {
   BATCH_EXPIRED: 'El lote está vencido: solo admite mermas, daños o devoluciones a proveedor.',
   SKU_ALREADY_EXISTS: 'Ya existe un producto con ese SKU.',
   // Contrato v0.3.1 (§8.6): fecha del movimiento futura o con más de 7 días, o ingreso futuro.
+  // Contrato v0.4.0 (§8.1): todo ingreso de stock lleva vencimiento.
+  EXPIRY_REQUIRED: 'Indicá la fecha de vencimiento: todos los productos se controlan por vencimiento.',
   INVALID_DATE:
     'La fecha no es válida: no puede ser futura, y un movimiento se puede cargar con hasta 7 días de atraso.',
 }

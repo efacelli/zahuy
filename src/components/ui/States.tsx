@@ -35,17 +35,25 @@ export function EmptyState({ title, description, icon = 'inbox', action }: Empty
 interface ErrorStateProps {
   message: string
   onRetry?: () => void
+  title?: string
+  /** Acción adicional (por ejemplo, "Salir"). */
+  action?: ReactNode
 }
 
-export function ErrorState({ message, onRetry }: ErrorStateProps) {
+export function ErrorState({ message, onRetry, title = 'No se pudo cargar la información', action }: ErrorStateProps) {
   return (
     <div className={`${styles.state} ${styles.error}`} role="alert">
       <span className={styles.icon}>
         <Icon name="error" size={32} />
       </span>
-      <p className={styles.title}>No se pudo cargar la información</p>
+      <p className={styles.title}>{title}</p>
       <p className={styles.description}>{message}</p>
-      {onRetry && <Button onClick={onRetry}>Reintentar</Button>}
+      {(onRetry || action) && (
+        <div className={styles.actions}>
+          {onRetry && <Button onClick={onRetry}>Reintentar</Button>}
+          {action}
+        </div>
+      )}
     </div>
   )
 }

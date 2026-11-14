@@ -1,11 +1,14 @@
-/** Contrato §4.4. El valor lo calcula la base (v_batch_status); acá solo se presenta. */
+/**
+ * Contrato v0.4.0 §4.4. El valor lo calcula la base (v_batch_status) con los días
+ * configurados por categoría; acá solo se presenta.
+ */
 export const EXPIRY_STATUSES = [
   'depleted',
   'no_expiry',
   'expired',
-  'expires_7',
-  'expires_15',
-  'expires_30',
+  'expires_urgent',
+  'expires_soon',
+  'expires_upcoming',
   'ok',
 ] as const
 
@@ -15,9 +18,9 @@ export const EXPIRY_STATUS_LABEL: Record<ExpiryStatus, string> = {
   depleted: 'Agotado',
   no_expiry: 'Sin vencimiento',
   expired: 'Vencido',
-  expires_7: 'Vence en 7 días o menos',
-  expires_15: 'Vence en 15 días o menos',
-  expires_30: 'Vence en 30 días o menos',
+  expires_urgent: 'Vencimiento urgente',
+  expires_soon: 'Vence pronto',
+  expires_upcoming: 'Próximo a vencer',
   ok: 'Vigente',
 }
 
@@ -42,10 +45,10 @@ export function daysLabel(days: number): string {
 /** Niveles de alerta en la UI (contrato §4.4). `null` = no alerta. */
 export function alertLevelFor(status: ExpiryStatus): AlertLevel | null {
   switch (status) {
-    case 'expires_30':
-    case 'expires_15':
+    case 'expires_upcoming':
+    case 'expires_soon':
       return 'warning'
-    case 'expires_7':
+    case 'expires_urgent':
       return 'urgent'
     case 'expired':
       return 'expired'

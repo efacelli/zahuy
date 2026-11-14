@@ -1,15 +1,24 @@
 import type { IconName } from '../components/ui/Icon'
+import type { Permissions } from '../domain/roles'
 
 export interface NavItem {
   path: string
   label: string
   icon: IconName
   description: string
+  /** Si se indica, la sección solo aparece en el menú para quien tenga ese permiso. */
+  permission?: keyof Permissions
 }
 
 /** Secciones de la Etapa 1. Ventas, caja, clientes y ARCA quedan fuera hasta su aprobación. */
 export const NAV_ITEMS: NavItem[] = [
-  { path: '/', label: 'Dashboard', icon: 'dashboard', description: 'Resumen del inventario y alertas.' },
+  {
+    path: '/',
+    label: 'Dashboard',
+    icon: 'dashboard',
+    description: 'Resumen del inventario y alertas.',
+    permission: 'viewDashboard',
+  },
   { path: '/productos', label: 'Productos', icon: 'products', description: 'Catálogo, lotes y vencimientos.' },
   {
     path: '/movimientos',

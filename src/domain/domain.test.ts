@@ -6,12 +6,12 @@ import { formatVatRate } from './vat'
 
 describe('alertLevelFor (contrato §4.4)', () => {
   it('agrupa 30 y 15 días como próximo a vencer', () => {
-    expect(alertLevelFor('expires_30')).toBe('warning')
-    expect(alertLevelFor('expires_15')).toBe('warning')
+    expect(alertLevelFor('expires_upcoming')).toBe('warning')
+    expect(alertLevelFor('expires_soon')).toBe('warning')
   })
 
   it('marca 7 días como urgente y vencido como vencido', () => {
-    expect(alertLevelFor('expires_7')).toBe('urgent')
+    expect(alertLevelFor('expires_urgent')).toBe('urgent')
     expect(alertLevelFor('expired')).toBe('expired')
   })
 

@@ -8,6 +8,7 @@ import { useToast } from '../../components/ui/toast-context'
 import { formatCuit } from '../../lib/cuit'
 import { toAppError } from '../../lib/errors'
 import { useSupabase } from '../../lib/supabase-context'
+import { usePermissions } from '../auth/useProfile'
 import { catalogQueryKey } from '../products/useCatalogOptions'
 import { createCatalogItem, listCatalog, updateCatalogItem } from './api'
 import type { CatalogInfo, CatalogRow } from './catalog-config'
@@ -22,6 +23,7 @@ function normalize(text: string): string {
 
 export function CatalogPanel({ info }: { info: CatalogInfo }) {
   const client = useSupabase()
+  const canEdit = usePermissions().manageInventory
   const queryClient = useQueryClient()
   const toast = useToast()
   const queryKey = ['catalog', info.kind] as const
@@ -91,21 +93,30 @@ export function CatalogPanel({ info }: { info: CatalogInfo }) {
       header: 'Estado',
       render: (r) => (r.is_active ? <Badge tone="success">Activo</Badge> : <Badge tone="neutral">Inactivo</Badge>),
     },
-    {
-      key: 'actions',
-      header: 'Acciones',
-      align: 'end',
-      render: (r) => (
-        <div className={styles.rowActions}>
-          <Button size="sm" onClick={() => openForm(r)} aria-label={`Editar ${r.name}`}>
-            Editar
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setToggling(r)} aria-label={`${r.is_active ? 'Desactivar' : 'Activar'} ${r.name}`}>
-            {r.is_active ? 'Desactivar' : 'Activar'}
-          </Button>
-        </div>
-      ),
-    },
+    ...(canEdit
+      ? ([
+          {
+            key: 'actions',
+            header: 'Acciones',
+            align: 'end',
+            render: (r) => (
+              <div className={styles.rowActions}>
+                <Button size="sm" onClick={() => openForm(r)} aria-label={`Editar ${r.name}`}>
+                  Editar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setToggling(r)}
+                  aria-label={`${r.is_active ? 'Desactivar' : 'Activar'} ${r.name}`}
+                >
+                  {r.is_active ? 'Desactivar' : 'Activar'}
+                </Button>
+              </div>
+            ),
+          },
+        ] as Column<CatalogRow, ColumnKey>[])
+      : []),
   ]
 
   function openForm(row: CatalogRow | null) {
@@ -131,9 +142,13 @@ export function CatalogPanel({ info }: { info: CatalogInfo }) {
           <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
           Mostrar inactivos
         </label>
-        <Button variant="primary" onClick={() => openForm(null)} className={styles.newButton}>
-          + {newLabel}
-        </Button>
+        {canEdit ? (
+          <Button variant="primary" onClick={() => openForm(null)} className={styles.newButton}>
+            + {newLabel}
+          </Button>
+        ) : (
+          <span className={styles.readOnly}>Solo lectura: los catálogos los edita el encargado.</span>
+        )}
       </div>
 
       <DataTable
@@ -145,7 +160,7 @@ export function CatalogPanel({ info }: { info: CatalogInfo }) {
         errorMessage={loadError}
         onRetry={() => void query.refetch()}
         emptyTitle={search ? 'No hay resultados para esa búsqueda' : `Todavía no hay ${info.plural.toLowerCase()}`}
-        emptyDescription={search ? undefined : `Creá ${info.article === 'la' ? 'la primera' : 'el primero'} con "${newLabel}".`}
+        emptyDescription={search || !canEdit ? undefined : `Creá ${info.article === 'la' ? 'la primera' : 'el primero'} con "${newLabel}".`}
       />
 
       <CatalogFormModal

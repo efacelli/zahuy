@@ -5,6 +5,8 @@ type Listener = (event: AuthChangeEvent, session: Session | null) => void
 type Row = Record<string, unknown>
 type Result = { data: unknown; error: unknown }
 
+export const FAKE_USER_ID = '00000000-0000-4000-8000-000000000001'
+
 /** Sesión ficticia SOLO para pruebas automáticas. */
 export function fakeSession(email = 'empleado@prueba.test'): Session {
   return {
@@ -13,7 +15,7 @@ export function fakeSession(email = 'empleado@prueba.test'): Session {
     expires_in: 3600,
     token_type: 'bearer',
     user: {
-      id: '00000000-0000-4000-8000-000000000001',
+      id: FAKE_USER_ID,
       email,
       app_metadata: {},
       user_metadata: {},
@@ -34,7 +36,13 @@ export interface RecordedWrite {
  * Doble de prueba del cliente de Supabase: Auth, lecturas/escrituras de tablas y RPC.
  * Permite simular ingreso, expiración de sesión, tablas inexistentes y errores de la base.
  */
-export function createFakeSupabase(initial: Session | null = null) {
+export interface FakeOptions {
+  /** Rol del perfil del usuario de prueba (por defecto, encargado). */
+  role?: 'admin' | 'manager' | 'staff'
+  isActive?: boolean
+}
+
+export function createFakeSupabase(initial: Session | null = null, options: FakeOptions = {}) {
   let session = initial
   const listeners = new Set<Listener>()
   const emit = (event: AuthChangeEvent) => listeners.forEach((l) => l(event, session))
@@ -58,7 +66,20 @@ export function createFakeSupabase(initial: Session | null = null) {
   }
 
   /** Filas por tabla; `error` simula una tabla inexistente u otro fallo de lectura. */
-  const tables: Record<string, { data: Row[] | null; error: unknown }> = {}
+  const tables: Record<string, { data: Row[] | null; error: unknown }> = {
+    // Perfil del usuario de prueba (contrato §5.1); lo lee RequireAuth.
+    profiles: {
+      data: [
+        {
+          id: FAKE_USER_ID,
+          full_name: 'Usuario de prueba',
+          role: options.role ?? 'manager',
+          is_active: options.isActive ?? true,
+        },
+      ],
+      error: null,
+    },
+  }
   /** Resultado forzado para la próxima escritura en una tabla (por ejemplo, un 23505). */
   const writeResults: Record<string, Result> = {}
   const writes: RecordedWrite[] = []
@@ -118,7 +139,17 @@ export function createFakeSupabase(initial: Session | null = null) {
         payload = values
         return builder
       },
-      single: () => Promise.resolve(op === 'select' ? runSelect() : runWrite()),
+      single: () => {
+        if (op !== 'select') return Promise.resolve(runWrite())
+        const result = runSelect()
+        if (result.error) return Promise.resolve(result)
+        const rows = result.data as Row[]
+        return Promise.resolve(
+          rows.length === 1
+            ? { data: rows[0], error: null }
+            : { data: null, error: { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' } },
+        )
+      },
       then: (resolve: (r: Result) => unknown, reject?: (e: unknown) => unknown) =>
         Promise.resolve(op === 'select' ? runSelect() : runWrite()).then(resolve, reject),
     }

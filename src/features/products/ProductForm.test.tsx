@@ -20,8 +20,7 @@ function setup() {
 }
 
 async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(await screen.findByLabelText(/^SKU/), 'YOG-FRU-1')
-  await user.type(screen.getByLabelText(/^Nombre/), 'Yogur de frutilla')
+  await user.type(await screen.findByLabelText(/^Nombre/), 'Yogur de frutilla')
   await user.selectOptions(await screen.findByLabelText(/^Categoría/), 'Lácteos')
   await user.selectOptions(await screen.findByLabelText(/^Marca/), 'La Serenísima')
   await user.type(screen.getByLabelText(/^Precio de costo/), '450,50')
@@ -46,8 +45,8 @@ describe('Nuevo producto', () => {
   it('muestra los errores de los campos obligatorios', async () => {
     const { user, fake } = setup()
     await user.click(await screen.findByRole('button', { name: 'Guardar producto' }))
-    expect(await screen.findByText('Ingresá el SKU.')).toBeInTheDocument()
-    expect(screen.getByText('Ingresá el nombre.')).toBeInTheDocument()
+    expect(await screen.findByText('Ingresá el nombre.')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^SKU/)).not.toBeInTheDocument()
     expect(screen.getByText('Elegí una categoría.')).toBeInTheDocument()
     expect(screen.getByText('Elegí una marca.')).toBeInTheDocument()
     expect(fake.rpc).not.toHaveBeenCalled()
@@ -55,7 +54,7 @@ describe('Nuevo producto', () => {
 
   it('sin stock inicial guarda directo y vuelve al listado', async () => {
     const { user, fake, router } = setup()
-    fake.setRpcResult('create_product', { id: 'p1', sku: 'YOG-FRU-1', name: 'Yogur de frutilla' })
+    fake.setRpcResult('create_product', { id: 'p1', sku: '000001', name: 'Yogur de frutilla' })
     await fillRequired(user)
     await user.click(screen.getByRole('button', { name: 'Guardar producto' }))
 
@@ -63,21 +62,27 @@ describe('Nuevo producto', () => {
     expect(fake.rpc).toHaveBeenCalledOnce()
     const [name, params] = fake.rpc.mock.calls[0] as [string, Record<string, unknown>]
     expect(name).toBe('create_product')
-    expect(params).toMatchObject({ p_sku: 'YOG-FRU-1', p_cost_price: 450.5, p_initial_quantity: null })
+    expect(params).toMatchObject({ p_name: 'Yogur de frutilla', p_cost_price: 450.5, p_units_per_box: 12, p_initial_quantity: null })
+    expect(params).not.toHaveProperty('p_sku')
     expect(params.p_idempotency_key).toMatch(/^[0-9a-f-]{36}$/)
-    expect(await screen.findByText(/Se creó "Yogur de frutilla"/)).toBeInTheDocument()
+    expect(await screen.findByText('Se creó "Yogur de frutilla" (SKU 000001).')).toBeInTheDocument()
   })
 
   it('con stock inicial pide confirmación antes de guardar', async () => {
     const { user, fake } = setup()
-    fake.setRpcResult('create_product', { id: 'p1', sku: 'YOG-FRU-1', name: 'Yogur de frutilla' })
+    fake.setRpcResult('create_product', { id: 'p1', sku: '000001', name: 'Yogur de frutilla' })
     await fillRequired(user)
     await user.type(screen.getByLabelText(/^Cantidad \(/), '30')
+    await user.click(screen.getByRole('button', { name: 'Guardar producto' }))
+    // Sin vencimiento no deja seguir (v0.4.0).
+    expect(await screen.findByText('Indicá la fecha de vencimiento.')).toBeInTheDocument()
+    await user.type(screen.getByLabelText(/^Vencimiento/), '2026-12-15')
     await user.click(screen.getByRole('button', { name: 'Guardar producto' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Confirmar alta con stock' })
     expect(within(dialog).getByText('30 u.')).toBeInTheDocument()
-    expect(within(dialog).getByText('Sin vencimiento')).toBeInTheDocument()
+    expect(within(dialog).getByText('15/12/2026')).toBeInTheDocument()
+    expect(within(dialog).getByText(/847,00/)).toBeInTheDocument()
     expect(fake.rpc).not.toHaveBeenCalled()
 
     await user.click(within(dialog).getByRole('button', { name: 'Crear producto e ingresar stock' }))
@@ -90,7 +95,7 @@ describe('Nuevo producto', () => {
     await fillRequired(user)
     await user.click(screen.getByRole('button', { name: 'Guardar producto' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('todavía no está disponible en el servidor')
-    expect(screen.getByLabelText(/^SKU/)).toHaveValue('YOG-FRU-1')
+    expect(screen.getByLabelText(/^Nombre/)).toHaveValue('Yogur de frutilla')
   })
 
   it('reintentar usa la misma clave de idempotencia', async () => {
@@ -106,12 +111,23 @@ describe('Nuevo producto', () => {
     expect(keys[0]).toBe(keys[1])
   })
 
-  it('muestra el SKU duplicado', async () => {
+  it('muestra el código de barras duplicado', async () => {
     const { user, fake } = setup()
-    fake.setRpcResult('create_product', null, { code: 'P0001', message: 'SKU_ALREADY_EXISTS' })
+    fake.setRpcResult('create_product', null, {
+      code: '23505',
+      message: 'duplicate key value violates unique constraint "products_barcode_key"',
+    })
     await fillRequired(user)
     await user.click(screen.getByRole('button', { name: 'Guardar producto' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Ya existe un producto con ese SKU.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ya existe un producto con ese código de barras.')
+  })
+
+  it('muestra la vista previa del precio final con IVA', async () => {
+    const { user } = setup()
+    await user.type(await screen.findByLabelText(/^Precio de venta/), '1000')
+    expect(screen.getByText(/1\.210,00/)).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText(/^IVA/), '10.5')
+    expect(screen.getByText(/1\.105,00/)).toBeInTheDocument()
   })
 
   it('si no se pueden cargar las categorías, lo avisa y permite reintentar', async () => {

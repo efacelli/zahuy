@@ -4,7 +4,7 @@ import type { SaleUnit } from '../../domain/units'
 import { pageRange } from '../../lib/pagination'
 import { NO_SUPPLIER, sanitizeSearch, type ExpiryFilter, type ProductListParams } from './list-params'
 
-/** Fila de la vista `v_product_list` (contrato §7.3). */
+/** Fila de la vista `v_product_list` (contrato v0.4.0 §7.2 y §7.3). */
 export interface ProductListRow {
   id: string
   sku: string
@@ -17,10 +17,15 @@ export interface ProductListRow {
   supplier_id: string | null
   supplier_name: string | null
   sale_unit: SaleUnit
+  /** Sin IVA (v0.4.0). */
   cost_price: number
+  /** Sin IVA (v0.4.0). */
   sale_price: number
+  /** Precio de góndola, calculado por la base (v0.4.0). */
+  sale_price_with_vat: number
   vat_rate: number
   boxes_quantity: number
+  units_per_box: number
   min_stock: number
   is_active: boolean
   stock_quantity: number
@@ -28,6 +33,12 @@ export interface ProductListRow {
   next_expiry_status: ExpiryStatus | null
   active_batches_count: number
   is_low_stock: boolean
+  /** Unidades dentro de cajas cerradas (`boxes_quantity * units_per_box`). */
+  units_in_boxes: number
+  /** Unidades sueltas (`stock_quantity - units_in_boxes`). */
+  loose_units: number
+  /** Las cajas contadas superan el stock: hay que revisar el conteo. */
+  has_box_mismatch: boolean
 }
 
 export interface ProductListPage {
@@ -37,12 +48,13 @@ export interface ProductListPage {
 
 const COLUMNS =
   'id, sku, barcode, name, category_id, category_name, brand_id, brand_name, supplier_id, supplier_name, ' +
-  'sale_unit, cost_price, sale_price, vat_rate, boxes_quantity, min_stock, is_active, stock_quantity, ' +
-  'next_expires_on, next_expiry_status, active_batches_count, is_low_stock'
+  'sale_unit, cost_price, sale_price, sale_price_with_vat, vat_rate, boxes_quantity, units_per_box, min_stock, ' +
+  'is_active, stock_quantity, next_expires_on, next_expiry_status, active_batches_count, is_low_stock, ' +
+  'units_in_boxes, loose_units, has_box_mismatch'
 
 const EXPIRY_STATUSES_BY_FILTER: Record<ExpiryFilter, ExpiryStatus[]> = {
-  por_vencer: ['expires_7', 'expires_15', 'expires_30'],
-  urgente: ['expires_7'],
+  por_vencer: ['expires_urgent', 'expires_soon', 'expires_upcoming'],
+  urgente: ['expires_urgent'],
   vencido: ['expired'],
 }
 

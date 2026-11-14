@@ -1,4 +1,5 @@
 import type { Session, SupabaseClient } from '@supabase/supabase-js'
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AuthContext, type AuthState, type AuthStatus, type SignedOutReason } from './auth-context'
 import { toAuthError } from './auth-errors'
@@ -19,6 +20,7 @@ export function AuthProvider({ client, children }: AuthProviderProps) {
   const [session, setSession] = useState<Session | null>(null)
   const [signedOutReason, setSignedOutReason] = useState<SignedOutReason>(null)
   const manualSignOut = useRef(false)
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     let active = true
@@ -46,6 +48,8 @@ export function AuthProvider({ client, children }: AuthProviderProps) {
       } else if (event === 'SIGNED_OUT') {
         setSignedOutReason(manualSignOut.current ? 'manual' : 'expired')
         manualSignOut.current = false
+        // Las PC del local son compartidas: al salir no queda nada en caché del usuario anterior.
+        queryClient.clear()
       }
     })
 
@@ -53,7 +57,7 @@ export function AuthProvider({ client, children }: AuthProviderProps) {
       active = false
       data.subscription.unsubscribe()
     }
-  }, [client])
+  }, [client, queryClient])
 
   const signIn = useCallback(
     async (email: string, password: string) => {
