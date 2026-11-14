@@ -49,7 +49,8 @@ prioridad sobre la velocidad de desarrollo.
 -   Supabase PostgreSQL y Supabase Auth.
 -   Row Level Security (RLS) en todas las tablas expuestas.
 -   Vercel o Render para frontend, a definir.
--   GitHub privado.
+-   GitHub (repositorio público por decisión del equipo: nunca subir
+    secretos, datos del negocio ni datos personales).
 -   CSS convencional/modular; no introducir Tailwind sin aprobación.
 -   No agregar Node/Express inicialmente. Evaluar Edge Functions/backend
     solo si se necesita lógica privilegiada o integración segura.
@@ -74,18 +75,21 @@ prioridad sobre la velocidad de desarrollo.
 
 ### Productos
 
--   SKU obligatorio y único.
+-   SKU obligatorio y único, generado por la base (6 dígitos).
 -   Código de barras opcional, pero lector e integración quedan para una
     etapa futura.
 -   Nombre obligatorio; descripción opcional.
 -   Marca y categoría.
 -   Proveedor opcional.
 -   Unidad de venta.
--   Costo y precio de venta.
+-   Costo y precio de venta, ambos sin IVA; el precio final con IVA lo
+    calcula la base.
 -   IVA seleccionable: 21% o 10,5%.
 -   Stock actual con una única fuente de verdad.
--   Cantidad de cajas manual e independiente de unidades; no calcularla
-    automáticamente.
+-   Cantidad de cajas cerradas en depósito: conteo manual. Las unidades de
+    esas cajas forman parte del stock (no son un segundo stock); con las
+    unidades por caja (12 por defecto) se muestra el desglose sueltas +
+    cajas. Ver `docs/DATA_CONTRACT.md` §3 y §7.2.
 -   Stock mínimo configurable.
 -   Estado activo/inactivo e imagen opcional.
 
@@ -94,15 +98,18 @@ prioridad sobre la velocidad de desarrollo.
 -   Un producto puede tener múltiples lotes.
 -   Lote: número opcional, fecha de ingreso, vencimiento, cantidad
     inicial/disponible y observaciones.
--   Productos no perecederos pueden no tener vencimiento.
+-   Todos los productos se controlan por vencimiento (también limpieza y
+    bazar): la fecha es obligatoria al cargar stock.
 -   Cantidad disponible coherente con movimientos.
+-   Las salidas descuentan automáticamente del lote que vence primero.
 -   No alertar por lotes agotados.
--   Alertas iniciales: 30, 15 y 7 días, además de vencidos.
+-   Alertas: 30, 15 y 7 días por defecto, configurables por categoría,
+    además de vencidos.
 -   Distinguir por vencer, vencido, agotado y sin vencimiento.
 
 ### Movimientos
 
--   Entradas, salidas, ajustes, mermas, daños y devoluciones.
+-   Entradas, salidas, ajustes, mermas, daños, devoluciones y consumo interno.
 -   Registrar producto, lote cuando corresponda, tipo, cantidad, fecha,
     usuario y motivo.
 -   No permitir stock negativo salvo aprobación explícita de una regla
@@ -229,7 +236,7 @@ componentes reutilizables y no duplicar lógica de negocio en UI.
 
 ## Git y colaboración
 
-Repositorio privado. Cada integrante usa su propia cuenta. Ramas por
+Repositorio público (ver Stack). Cada integrante usa su propia cuenta. Ramas por
 tarea, commits pequeños y Pull Requests. No trabajar simultáneamente
 sobre los mismos archivos/rama. No subir `.env`, secretos, certificados,
 dumps reales ni temporales. No hacer deploy sin aprobación.
