@@ -47,6 +47,43 @@ repositorio.
 `config.toml` solo gobierna el entorno **local**. Cuando exista un proyecto en
 la nube, estos ajustes hay que repetirlos ahí a mano, con aprobación explícita.
 
+## Permisos: nada queda expuesto por defecto
+
+La primera migración quita los permisos que Supabase otorga por defecto a
+`anon` y `authenticated` sobre los objetos nuevos del esquema `public`. Cada
+migración que crea una tabla, vista o función tiene que:
+
+1. activar RLS en la tabla y crear sus políticas;
+2. otorgar con `GRANT` solo lo que indica el contrato (por columna cuando
+   corresponde);
+3. en las funciones, `REVOKE ALL ... FROM PUBLIC` y `GRANT EXECUTE` solo a
+   `authenticated`.
+
+Las funciones auxiliares viven en el esquema `private`, que no está expuesto
+por la API. Las pruebas verifican que ninguna tabla de `public` quede sin RLS y
+que `anon` no pueda ejecutar ninguna función.
+
+## Usuarios y primer administrador
+
+- No hay registro público. Los usuarios se crean desde el panel de Supabase
+  (Authentication → Users) o con la API de administración.
+- Al crear un usuario, un trigger le crea su fila en `public.profiles` con rol
+  `staff`. El nombre sale de `full_name` en los metadatos o, si falta, del
+  email. El rol nunca se toma de los metadatos.
+- **Primer administrador:** se promueve una única vez por SQL, con un rol
+  privilegiado (editor SQL del proyecto, o `psql` en local):
+
+  ```sql
+  update public.profiles
+  set role = 'admin'
+  where id = (select id from auth.users where email = 'EMAIL_DEL_ADMIN');
+  ```
+
+  Después de eso, los cambios de rol y de estado los hace un `admin` desde la
+  app. Un admin no puede quitarse el rol ni desactivarse a sí mismo.
+- Para dar de baja a alguien se usa `is_active = false`; los usuarios no se
+  borran, porque los movimientos conservan quién los hizo.
+
 ## Reglas
 
 - Migraciones nuevas y versionadas en `supabase/migrations/`; nunca se edita una
