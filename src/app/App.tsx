@@ -2,21 +2,28 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { useState } from 'react'
 import { createBrowserRouter, RouterProvider } from 'react-router'
 import { ToastProvider } from '../components/ui/ToastProvider'
-import { supabaseConfig } from '../lib/supabase'
+import { AuthProvider } from '../features/auth/AuthProvider'
+import { requireSupabase, supabaseConfig } from '../lib/supabase'
 import { ConfigErrorScreen } from './ConfigErrorScreen'
 import { createQueryClient } from './queryClient'
 import { routes } from './routes'
 
 export function App() {
+  if (!supabaseConfig.ok) return <ConfigErrorScreen problems={supabaseConfig.problems} />
+  return <ConfiguredApp />
+}
+
+function ConfiguredApp() {
   const [queryClient] = useState(createQueryClient)
   const [router] = useState(() => createBrowserRouter(routes))
-
-  if (!supabaseConfig.ok) return <ConfigErrorScreen problems={supabaseConfig.problems} />
+  const [client] = useState(requireSupabase)
 
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        <RouterProvider router={router} />
+        <AuthProvider client={client}>
+          <RouterProvider router={router} />
+        </AuthProvider>
       </ToastProvider>
     </QueryClientProvider>
   )

@@ -1,4 +1,6 @@
 import type { RouteObject } from 'react-router'
+import { LoginPage } from '../features/auth/LoginPage'
+import { RequireAuth } from '../features/auth/RequireAuth'
 import { AppLayout } from './layout/AppLayout'
 import {
   AlertsPage,
@@ -11,17 +13,23 @@ import {
 } from './pages'
 
 export const routes: RouteObject[] = [
+  { path: '/login', element: <LoginPage />, errorElement: <RouteErrorPage /> },
   {
-    path: '/',
-    element: <AppLayout />,
+    element: <RequireAuth />,
     errorElement: <RouteErrorPage />,
     children: [
-      { index: true, element: <DashboardPage /> },
-      { path: 'productos', element: <ProductsPage /> },
-      { path: 'movimientos', element: <MovementsPage /> },
-      { path: 'alertas', element: <AlertsPage /> },
-      { path: 'catalogos', element: <CatalogsPage /> },
-      { path: '*', element: <NotFoundPage /> },
+      {
+        path: '/',
+        element: <AppLayout />,
+        children: [
+          { index: true, element: <DashboardPage /> },
+          { path: 'productos', element: <ProductsPage /> },
+          { path: 'movimientos', element: <MovementsPage /> },
+          { path: 'alertas', element: <AlertsPage /> },
+          { path: 'catalogos', element: <CatalogsPage /> },
+          { path: '*', element: <NotFoundPage /> },
+        ],
+      },
     ],
   },
 ]
