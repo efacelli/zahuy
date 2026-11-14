@@ -32,6 +32,9 @@ insert into auth.users (id, email) values
   ('00000000-0000-4000-8000-00000000001a', 'eva.empleada@zahuy.test'),
   ('00000000-0000-4000-8000-00000000001b', 'bruno.empleado@zahuy.test'),
   ('00000000-0000-4000-8000-00000000001c', 'ines.inactiva@zahuy.test');
+-- v0.4.0: los catálogos los escriben encargado y dueño.
+update public.profiles set role = 'manager'
+where id in ('00000000-0000-4000-8000-00000000001a', '00000000-0000-4000-8000-00000000001b');
 update public.profiles set is_active = false where id = '00000000-0000-4000-8000-00000000001c';
 
 -- Semilla o migración (sin sesión): se permite y queda sin autor.

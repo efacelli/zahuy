@@ -32,6 +32,8 @@ select is(
 insert into auth.users (id, email) values
   ('00000000-0000-4000-8000-00000000002a', 'eva.empleada@zahuy.test'),
   ('00000000-0000-4000-8000-00000000002c', 'ines.inactiva@zahuy.test');
+-- v0.4.0: los productos los edita el encargado.
+update public.profiles set role = 'manager' where id = '00000000-0000-4000-8000-00000000002a';
 update public.profiles set is_active = false where id = '00000000-0000-4000-8000-00000000002c';
 
 insert into public.categories (id, name) values ('00000000-0000-4000-8000-0000000000c1', 'Lácteos');

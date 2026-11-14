@@ -13,11 +13,11 @@ select enum_has_labels('public', 'app_role', array['admin', 'manager', 'staff'])
 select enum_has_labels('public', 'sale_unit', array['unit', 'kg', 'l', 'pack', 'box', 'other']);
 select enum_has_labels(
   'public', 'movement_type',
-  array['entry', 'exit', 'adjustment_in', 'adjustment_out', 'shrinkage', 'damage', 'customer_return', 'supplier_return']
+  array['entry', 'exit', 'adjustment_in', 'adjustment_out', 'shrinkage', 'damage', 'customer_return', 'supplier_return', 'internal_use']
 );
 select enum_has_labels(
   'public', 'expiry_status',
-  array['depleted', 'no_expiry', 'expired', 'expires_7', 'expires_15', 'expires_30', 'ok']
+  array['depleted', 'no_expiry', 'expired', 'expires_urgent', 'expires_soon', 'expires_upcoming', 'ok']
 );
 
 select has_table('public', 'profiles', 'existe public.profiles');
