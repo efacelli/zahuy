@@ -16,25 +16,34 @@
   box-shadow: var(--shadow-lg);
 }
 
+/* El logo tiene fondo blanco: se muestra sobre una placa blanca con una franja de marca. */
 .brand {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  height: var(--topbar-height);
-  padding: 0 var(--space-4);
-  font-size: var(--text-lg);
-  font-weight: 700;
-  color: var(--color-sidebar-text-active);
+  justify-content: center;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 4px solid var(--color-brand-red);
+  background: #ffffff;
+}
+
+.logo {
+  display: block;
+  width: 100%;
+  max-width: 180px;
+  height: auto;
 }
 
 .closeButton {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
   display: inline-flex;
-  margin-left: auto;
   padding: var(--space-1);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: inherit;
+  color: var(--color-text);
   cursor: pointer;
 }
 
@@ -69,7 +78,7 @@
 /* Activo: fondo + borde + peso (no depende solo del color). */
 .active {
   background: var(--color-sidebar-item-active);
-  border-left-color: var(--color-sidebar-text-active);
+  border-left-color: var(--color-brand-yellow);
   font-weight: 700;
   color: var(--color-sidebar-text-active);
 }

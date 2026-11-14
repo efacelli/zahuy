@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router'
+import logoMark from '../../assets/brand/zahuy-logo-mark.png'
 import { Icon } from '../../components/ui/Icon'
 import { NAV_ITEMS } from '../navigation'
 import { Sidebar } from './Sidebar'
@@ -47,6 +48,8 @@ export function AppLayout() {
           >
             <Icon name="menu" />
           </button>
+          {/* En celular y tablet el sidebar está oculto: el logo se ve en la barra superior. */}
+          <img src={logoMark} alt="" className={styles.topbarLogo} width={73} height={32} />
           <span className={styles.section}>{current?.label ?? 'Zahuy'}</span>
         </header>
         <main id="main" className={styles.content} tabIndex={-1}>

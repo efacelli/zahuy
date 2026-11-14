@@ -9,18 +9,27 @@
   --color-text-muted: #5b6875;
   --color-text-inverse: #ffffff;
 
-  /* Color: marca */
-  --color-primary: #1f5f8b;
-  --color-primary-hover: #194e73;
-  --color-primary-soft: #e6f0f7;
+  /* Color: marca (medidos del logo de Zahuy Autoservicio) */
+  --color-brand-red: #e40d0b;
+  --color-brand-yellow: #fec504;
+  --color-brand-dark: #2b2f33;
+
+  /*
+   * Acción principal en gris oscuro de marca, no en rojo: el rojo queda
+   * reservado para errores y acciones peligrosas, así "Guardar" y "Eliminar"
+   * no se confunden. Rojo y amarillo se usan como acentos de identidad.
+   */
+  --color-primary: #2b2f33;
+  --color-primary-hover: #16191c;
+  --color-primary-soft: #eceef0;
   --color-focus: #2b7bc0;
 
   /* Color: sidebar */
-  --color-sidebar-bg: #15212c;
-  --color-sidebar-text: #c9d3dc;
+  --color-sidebar-bg: #1b1e21;
+  --color-sidebar-text: #c8ccd0;
   --color-sidebar-text-active: #ffffff;
-  --color-sidebar-item-hover: #1f2f3d;
-  --color-sidebar-item-active: #24384a;
+  --color-sidebar-item-hover: #262a2e;
+  --color-sidebar-item-active: #30353a;
 
   /* Color: estados (siempre acompañados de texto o ícono) */
   --color-success: #1e7a46;

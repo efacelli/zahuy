@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router'
+import logoMark from '../../assets/brand/zahuy-logo-mark.png'
 import { Icon } from '../../components/ui/Icon'
 import { NAV_ITEMS } from '../navigation'
 import styles from './Sidebar.module.css'
@@ -14,8 +15,7 @@ export function Sidebar({ id, open, onNavigate, onClose }: SidebarProps) {
   return (
     <aside id={id} className={`${styles.sidebar} ${open ? styles.open : ''}`} aria-label="Menú principal">
       <div className={styles.brand}>
-        <img src="/favicon.svg" alt="" width={28} height={28} />
-        <span>Zahuy</span>
+        <img src={logoMark} alt="Zahuy Autoservicio" className={styles.logo} width={340} height={149} />
         <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Cerrar menú">
           <Icon name="close" />
         </button>

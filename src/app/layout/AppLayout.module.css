@@ -49,6 +49,12 @@
   background: var(--color-surface);
 }
 
+.topbarLogo {
+  display: block;
+  height: 32px;
+  width: auto;
+}
+
 .menuButton {
   display: inline-flex;
   padding: var(--space-2);
@@ -85,7 +91,8 @@
   }
 
   .menuButton,
-  .backdrop {
+  .backdrop,
+  .topbarLogo {
     display: none;
   }
 }
