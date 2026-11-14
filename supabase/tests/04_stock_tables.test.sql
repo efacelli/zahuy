@@ -36,6 +36,8 @@ insert into auth.users (id, email) values
   ('00000000-0000-4000-8000-00000000003b', 'eva.empleada@zahuy.test'),
   ('00000000-0000-4000-8000-00000000003c', 'ines.inactiva@zahuy.test');
 update public.profiles set role = 'admin' where id = '00000000-0000-4000-8000-00000000003a';
+-- v0.4.0: lotes y productos los edita el encargado.
+update public.profiles set role = 'manager' where id = '00000000-0000-4000-8000-00000000003b';
 update public.profiles set is_active = false where id = '00000000-0000-4000-8000-00000000003c';
 
 insert into public.categories (id, name) values ('00000000-0000-4000-8000-0000000003c1', 'Fiambres de prueba');
