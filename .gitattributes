@@ -1,0 +1,15 @@
+# Fines de línea: siempre LF en el repositorio y en la copia de trabajo,
+# sin importar el sistema operativo de cada integrante.
+* text=auto eol=lf
+
+# Binarios: nunca convertir fines de línea (se corromperían).
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.woff binary
+*.woff2 binary
+*.zip  binary
