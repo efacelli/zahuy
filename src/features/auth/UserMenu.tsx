@@ -3,6 +3,7 @@ import { Button } from '../../components/ui/Button'
 import { useToast } from '../../components/ui/toast-context'
 import { ROLE_LABEL } from '../../domain/roles'
 import { useAuth } from './auth-context'
+import { ChangePasswordDialog } from './ChangePasswordDialog'
 import { useProfile } from './useProfile'
 import styles from './UserMenu.module.css'
 
@@ -11,6 +12,7 @@ export function UserMenu() {
   const { data: profile } = useProfile()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
 
   if (!user) return null
 
@@ -27,9 +29,13 @@ export function UserMenu() {
         {profile?.full_name ?? user.email}
         {profile && <span className={styles.role}> · {ROLE_LABEL[profile.role]}</span>}
       </span>
+      <Button size="sm" variant="ghost" onClick={() => setChangingPassword(true)}>
+        Contraseña
+      </Button>
       <Button size="sm" onClick={handleSignOut} loading={busy}>
         Salir
       </Button>
+      <ChangePasswordDialog open={changingPassword} email={user.email ?? ''} onClose={() => setChangingPassword(false)} />
     </div>
   )
 }
