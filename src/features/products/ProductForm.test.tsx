@@ -19,11 +19,17 @@ function setup() {
   return { fake, router, user: userEvent.setup() }
 }
 
+/** Elige una opción del autocompletado escribiendo parte del nombre. */
+async function pick(user: ReturnType<typeof userEvent.setup>, label: RegExp, typed: string, option: string) {
+  await user.type(await screen.findByRole('combobox', { name: label }), typed)
+  await user.click(await screen.findByRole('option', { name: option }))
+}
+
 async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
   await user.type(await screen.findByLabelText(/^Nombre/), 'Yogur de frutilla')
-  await user.selectOptions(await screen.findByLabelText(/^Categoría/), 'Lácteos')
-  await user.selectOptions(await screen.findByLabelText(/^Marca/), 'La Serenísima')
-  await user.type(screen.getByLabelText(/^Precio de costo/), '450,50')
+  await pick(user, /^Categoría/, 'lac', 'Lácteos')
+  await pick(user, /^Marca/, 'sere', 'La Serenísima')
+  await user.type(screen.getByLabelText(/^Costo/), '450,50')
   await user.type(screen.getByLabelText(/^Precio de venta/), '700')
 }
 
@@ -36,10 +42,11 @@ describe('Nuevo producto', () => {
   })
 
   it('solo ofrece categorías activas', async () => {
-    setup()
-    const select = await screen.findByLabelText(/^Categoría/)
-    await within(select).findByRole('option', { name: 'Lácteos' })
-    expect(within(select).queryByRole('option', { name: 'Categoría inactiva' })).not.toBeInTheDocument()
+    const { user } = setup()
+    await user.click(await screen.findByRole('combobox', { name: /^Categoría/ }))
+    const list = await screen.findByRole('listbox', { name: 'Opciones de categoría' })
+    expect(within(list).getByRole('option', { name: 'Lácteos' })).toBeInTheDocument()
+    expect(within(list).queryByRole('option', { name: 'Categoría inactiva' })).not.toBeInTheDocument()
   })
 
   it('muestra los errores de los campos obligatorios', async () => {
@@ -72,7 +79,7 @@ describe('Nuevo producto', () => {
     const { user, fake } = setup()
     fake.setRpcResult('create_product', { id: 'p1', sku: '000001', name: 'Yogur de frutilla' })
     await fillRequired(user)
-    await user.type(screen.getByLabelText(/^Cantidad \(/), '30')
+    await user.type(screen.getByLabelText(/^Cantidad inicial/), '30')
     await user.click(screen.getByRole('button', { name: 'Guardar producto' }))
     // Sin vencimiento no deja seguir (v0.4.0).
     expect(await screen.findByText('Indicá la fecha de vencimiento.')).toBeInTheDocument()
@@ -135,13 +142,57 @@ describe('Nuevo producto', () => {
     fake.setTable('categories', null, { code: 'PGRST205', message: 'Could not find the table' })
     renderApp('/productos/nuevo', fake.client)
     expect(await screen.findByText(/todavía no está disponible en el servidor/)).toBeInTheDocument()
-    expect(screen.getByLabelText(/^Categoría/)).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /^Categoría/ })).toBeDisabled()
+    expect(screen.getAllByRole('button', { name: 'Reintentar' }).length).toBeGreaterThan(0)
+  })
+
+  it('autocompleta: "ar" muestra primero las que empiezan así', async () => {
+    const { user, fake } = setup()
+    fake.setTable('brands', [
+      { id: 'b1', name: 'Arcor', is_active: true },
+      { id: 'b2', name: 'Bon o Bon Arcor', is_active: true },
+      { id: 'b3', name: 'Ilolay', is_active: true },
+    ])
+    await user.type(await screen.findByRole('combobox', { name: /^Marca/ }), 'ar')
+    const list = await screen.findByRole('listbox', { name: 'Opciones de marca' })
+    expect(within(list).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Arcor',
+      'Bon o Bon Arcor',
+      '+ Crear marca "ar"',
+    ])
+    // Enter elige sin enviar el formulario.
+    await user.keyboard('{Enter}')
+    expect(screen.getByRole('combobox', { name: /^Marca/ })).toHaveValue('Arcor')
+    expect(fake.rpc).not.toHaveBeenCalled()
+  })
+
+  it('crea una marca nueva desde el formulario si no existe', async () => {
+    const { user, fake } = setup()
+    await user.type(await screen.findByRole('combobox', { name: /^Marca/ }), 'Tía Maruca')
+    await user.click(await screen.findByRole('option', { name: '+ Crear marca "Tía Maruca"' }))
+    await waitFor(() => expect(screen.getByRole('combobox', { name: /^Marca/ })).toHaveValue('Tía Maruca'))
+    expect(fake.writes).toContainEqual(
+      expect.objectContaining({ table: 'brands', op: 'insert', payload: { name: 'Tía Maruca' } }),
+    )
+  })
+
+  it('calculadora de precio: ganancia % y precio final llenan el precio sin IVA', async () => {
+    const { user } = setup()
+    await user.type(await screen.findByLabelText(/^Costo/), '712')
+    await user.type(screen.getByLabelText(/^Ganancia/), '35')
+    expect(screen.getByLabelText(/^Precio de venta/)).toHaveValue('961,2')
+    await user.clear(screen.getByLabelText(/^Precio final/))
+    await user.type(screen.getByLabelText(/^Precio final/), '1200')
+    expect(screen.getByLabelText(/^Precio de venta/)).toHaveValue('991,7355')
+    await user.tab()
+    // El precio final queda exacto (P-24).
+    expect(screen.getByLabelText(/^Precio final/)).toHaveValue('1200')
+    expect(screen.getByText('$ 1.200,00')).toBeInTheDocument()
   })
 
   it('avisa si el precio es menor al costo, sin bloquear', async () => {
     const { user } = setup()
-    await user.type(await screen.findByLabelText(/^Precio de costo/), '800')
+    await user.type(await screen.findByLabelText(/^Costo/), '800')
     await user.type(screen.getByLabelText(/^Precio de venta/), '700')
     expect(await screen.findByText('El precio de venta es menor que el costo.')).toBeInTheDocument()
   })

@@ -183,9 +183,10 @@ describe('edición del producto', () => {
     setup('manager', `/productos/${ID}/editar`)
     expect(await screen.findByRole('heading', { level: 1, name: 'Editar: Yogur frutilla 190 g' })).toBeInTheDocument()
     expect(screen.getByLabelText(/^Nombre/)).toHaveValue('Yogur frutilla 190 g')
-    expect(screen.getByLabelText(/^Precio de costo/)).toHaveValue('450,5')
-    expect(screen.getByText('000007')).toBeInTheDocument()
-    expect(screen.queryByText('Stock inicial (opcional)')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/^Costo/)).toHaveValue('450,5')
+    expect(screen.getByText(/SKU 000007/)).toBeInTheDocument()
+    expect(screen.queryByText(/Stock inicial/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Cantidad inicial/)).not.toBeInTheDocument()
   })
 
   it('guarda solo las columnas editables y vuelve a la ficha', async () => {
