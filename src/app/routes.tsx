@@ -4,11 +4,14 @@ import { LoginPage } from '../features/auth/LoginPage'
 import { RequireAuth } from '../features/auth/RequireAuth'
 import { RequirePermission } from '../features/auth/RequirePermission'
 import { CatalogsPage } from '../features/catalogs/CatalogsPage'
+import { MovementsPage } from '../features/movements/MovementsPage'
+import { EditProductPage } from '../features/products/EditProductPage'
 import { NewProductPage } from '../features/products/NewProductPage'
+import { ProductDetailPage } from '../features/products/ProductDetailPage'
 import { ProductsPage } from '../features/products/ProductsPage'
 import { HomePage } from './HomePage'
 import { AppLayout } from './layout/AppLayout'
-import { MovementsPage, NotFoundPage, RouteErrorPage } from './pages'
+import { NotFoundPage, RouteErrorPage } from './pages'
 
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage />, errorElement: <RouteErrorPage /> },
@@ -27,6 +30,15 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePermission permission="manageInventory">
                 <NewProductPage />
+              </RequirePermission>
+            ),
+          },
+          { path: 'productos/:id', element: <ProductDetailPage /> },
+          {
+            path: 'productos/:id/editar',
+            element: (
+              <RequirePermission permission="manageInventory">
+                <EditProductPage />
               </RequirePermission>
             ),
           },

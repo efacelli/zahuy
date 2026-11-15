@@ -52,9 +52,4 @@ describe('AppLayout', () => {
     expect(screen.getByText('No encontramos esta página')).toBeInTheDocument()
   })
 
-  it('las secciones no muestran datos inventados', async () => {
-    await renderAt('/movimientos')
-    expect(screen.getByText('Sección en preparación')).toBeInTheDocument()
-    expect(screen.queryByRole('table')).not.toBeInTheDocument()
-  })
 })

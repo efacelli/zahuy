@@ -1,4 +1,4 @@
-/** Contrato §4.3: cada tipo tiene dirección fija; la cantidad siempre es positiva. */
+/** Contrato v0.4.0 §4.3: cada tipo tiene dirección fija; la cantidad siempre es positiva. */
 export const MOVEMENT_TYPES = [
   'entry',
   'exit',
@@ -8,6 +8,7 @@ export const MOVEMENT_TYPES = [
   'damage',
   'customer_return',
   'supplier_return',
+  'internal_use',
 ] as const
 
 export type MovementType = (typeof MOVEMENT_TYPES)[number]
@@ -28,6 +29,18 @@ export const MOVEMENT_TYPE_INFO: Record<MovementType, MovementTypeInfo> = {
   damage: { label: 'Producto dañado', direction: 'out', reasonRequired: true },
   customer_return: { label: 'Devolución de cliente', direction: 'in', reasonRequired: true },
   supplier_return: { label: 'Devolución a proveedor', direction: 'out', reasonRequired: true },
+  internal_use: { label: 'Consumo interno', direction: 'out', reasonRequired: true },
+}
+
+/**
+ * Tipos que se registran por producto con `register_product_movement` (§8.7):
+ * todos salvo `entry`, que es un ingreso con lote nuevo (`receive_stock`).
+ */
+export const PRODUCT_MOVEMENT_TYPES = MOVEMENT_TYPES.filter((t) => t !== 'entry')
+
+/** Tipos que el empleado puede registrar (§9). El encargado y el dueño, todos. */
+export function movementTypesFor(canRegisterAny: boolean): MovementType[] {
+  return canRegisterAny ? [...PRODUCT_MOVEMENT_TYPES] : ['internal_use']
 }
 
 export function signedQuantity(type: MovementType, quantity: number): number {

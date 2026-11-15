@@ -129,6 +129,7 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
       in: () => builder,
       order: () => builder,
       range: () => builder,
+      limit: () => builder,
       insert: (values: Row) => {
         op = 'insert'
         payload = values
@@ -158,15 +159,19 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
 
   /** Resultado de `rpc(nombre, params).single()`. */
   const rpcResults: Record<string, Result> = {}
-  const rpc = vi.fn((name: string, _params?: unknown) => ({
-    single: () =>
-      Promise.resolve(
-        rpcResults[name] ?? {
-          data: null,
-          error: { code: 'PGRST202', message: `Could not find the function public.${name}` },
-        },
-      ),
-  }))
+  const rpc = vi.fn((name: string, _params?: unknown) => {
+    const result = (): Result =>
+      rpcResults[name] ?? {
+        data: null,
+        error: { code: 'PGRST202', message: `Could not find the function public.${name}` },
+      }
+    // `.single()` para las RPC que devuelven una fila; `await rpc(...)` para las que devuelven varias.
+    return {
+      single: () => Promise.resolve(result()),
+      then: (resolve: (r: Result) => unknown, reject?: (e: unknown) => unknown) =>
+        Promise.resolve(result()).then(resolve, reject),
+    }
+  })
 
   return {
     client: { auth, from, rpc } as unknown as SupabaseClient,

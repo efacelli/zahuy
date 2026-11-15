@@ -68,7 +68,7 @@ describe('toAppError', () => {
   })
 
   it('avisa cuando una tabla o función todavía no existe en el servidor', () => {
-    for (const code of ['PGRST202', 'PGRST205', '42P01', '42883']) {
+    for (const code of ['PGRST202', 'PGRST205', 'PGRST200', '42P01', '42883', '42703']) {
       expect(toAppError({ code, message: 'Could not find the function' }).kind).toBe('unavailable')
     }
   })

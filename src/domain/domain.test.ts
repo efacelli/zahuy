@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { alertLevelFor, EXPIRY_STATUSES } from './expiry'
-import { MOVEMENT_TYPE_INFO, MOVEMENT_TYPES, signedQuantity } from './movements'
+import { MOVEMENT_TYPE_INFO, MOVEMENT_TYPES, movementTypesFor, signedQuantity } from './movements'
 import { formatQuantity, SALE_UNITS, validateQuantity } from './units'
 import { formatVatRate } from './vat'
 
@@ -75,6 +75,17 @@ describe('movimientos (contrato §4.3)', () => {
   it('exigen motivo todos salvo ingreso y salida', () => {
     const withoutReason = MOVEMENT_TYPES.filter((t) => !MOVEMENT_TYPE_INFO[t].reasonRequired)
     expect(withoutReason).toEqual(['entry', 'exit'])
+  })
+
+  it('consumo interno es una salida con motivo (v0.4.0)', () => {
+    expect(MOVEMENT_TYPE_INFO.internal_use).toMatchObject({ direction: 'out', reasonRequired: true })
+    expect(signedQuantity('internal_use', 3)).toBe(-3)
+  })
+
+  it('el empleado solo registra consumo interno; el encargado, todo salvo ingresos', () => {
+    expect(movementTypesFor(false)).toEqual(['internal_use'])
+    expect(movementTypesFor(true)).not.toContain('entry')
+    expect(movementTypesFor(true)).toHaveLength(8)
   })
 })
 
