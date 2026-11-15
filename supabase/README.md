@@ -124,7 +124,7 @@ npm run check
 - Después de una migración que cambie tablas, vistas, funciones o enums de
   `public`: `npm run gen:types`.
 
-Las pruebas de base todavía no corren en el CI.
+El CI corre `db start` y `test db` en cada Pull Request (job "Base de datos (migraciones y pgTAP)"). La prueba de concurrencia no corre en el CI: necesita los usuarios de prueba.
 
 ## Reglas
 
