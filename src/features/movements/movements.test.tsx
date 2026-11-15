@@ -128,6 +128,27 @@ describe('pantalla de Movimientos', () => {
     expect(params).toMatchObject({ p_movement_id: '11111111-2222-4333-8444-555555555555', p_reason: 'Cargado dos veces' })
   })
 
+  it('al anular parte de una salida repartida en lotes, avisa que hay otras filas', async () => {
+    const { user } = setup('manager', [
+      historyRow({ id: 'm-1', movement_type: 'exit', quantity: 5, signed_quantity: -5, operation_key: 'op-1' }),
+      historyRow({ id: 'm-2', movement_type: 'exit', quantity: 30, signed_quantity: -30, operation_key: 'op-1' }),
+    ])
+    await user.click(await screen.findByRole('button', { name: /^Anular salida de 5 u\./ }))
+    const dialog = screen.getByRole('dialog', { name: 'Anular movimiento' })
+    expect(await within(dialog).findByText(/se descontó de 2 lotes/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/devuelve solo las 5 u\. de este lote/)).toBeInTheDocument()
+  })
+
+  it('una salida de un solo lote no muestra el aviso', async () => {
+    const { user } = setup('manager', [
+      historyRow({ id: 'm-1', movement_type: 'exit', quantity: 5, signed_quantity: -5, operation_key: 'op-1' }),
+    ])
+    await user.click(await screen.findByRole('button', { name: /^Anular salida de 5 u\./ }))
+    const dialog = screen.getByRole('dialog', { name: 'Anular movimiento' })
+    await within(dialog).findByLabelText(/^Motivo/)
+    expect(within(dialog).queryByText(/se descontó de/)).not.toBeInTheDocument()
+  })
+
   it('un movimiento ya anulado no ofrece "Anular" otra vez', async () => {
     const original = '11111111-2222-4333-8444-555555555555'
     setup('manager', [

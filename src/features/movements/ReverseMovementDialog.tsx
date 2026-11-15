@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { FormField } from '../../components/ui/FormField'
@@ -11,7 +11,7 @@ import { formatDateTime } from '../../lib/dates'
 import { toAppError } from '../../lib/errors'
 import { newIdempotencyKey } from '../../lib/idempotency'
 import { useSupabase } from '../../lib/supabase-context'
-import { reverseMovement, type MovementHistoryRow } from './movements-api'
+import { countOperationParts, reverseMovement, type MovementHistoryRow } from './movements-api'
 import { useRefreshStock } from './useRefreshStock'
 import styles from './Movements.module.css'
 
@@ -36,6 +36,12 @@ function ReverseContent({ movement, onClose }: { movement: MovementHistoryRow; o
   const [serverError, setServerError] = useState<string | null>(null)
   const product = movement.batch?.product
   const unit = product?.sale_unit ?? 'unit'
+  const operationKey = movement.operation_key ?? null
+  const parts = useQuery({
+    queryKey: ['movements', 'operation-parts', operationKey],
+    queryFn: () => countOperationParts(client, operationKey ?? ''),
+    enabled: operationKey !== null,
+  })
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -94,6 +100,14 @@ function ReverseContent({ movement, onClose }: { movement: MovementHistoryRow; o
         No se borra nada: se registra un movimiento contrario que deja el stock como estaba. Queda en el historial con tu
         nombre.
       </p>
+      {(parts.data ?? 0) > 1 && (
+        <p className={styles.note} role="status">
+          <Icon name="warning" size={18} /> Esta {MOVEMENT_TYPE_INFO[movement.movement_type].label.toLowerCase()} se
+          descontó de {parts.data} lotes. Anular esta fila devuelve solo las{' '}
+          {formatQuantity(movement.quantity, unit)} de este lote; si toda la operación fue un error, anulá también las
+          otras filas.
+        </p>
+      )}
       <FormField label="Motivo de la anulación" htmlFor="reverse-reason" required error={error}>
         <input
           id="reverse-reason"

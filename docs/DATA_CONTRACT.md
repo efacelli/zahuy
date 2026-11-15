@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.4.2 |
+| Versión | 0.4.3 |
 | Estado | **PROPUESTO — PENDIENTE DE CONCORDANCIA DEL BACKEND** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -843,6 +843,49 @@ nuevas**, sin reescribir esas:
   `INSERT`/`UPDATE` de `categories`, `brands` y `suppliers` para que solo
   escriban encargado y dueño.
 
+### 8.9 Aclaraciones de implementación (v0.4.3)
+
+Describen cómo funciona lo ya implementado; no agregan reglas nuevas. Lo que
+requiere una decisión quedó como pregunta abierta (P-21 a P-23).
+
+- **RPC de §8.2, §8.3 y §8.7:** implementadas en la migración
+  `20261116170000_rpc_movements_reverse.sql` (prueba `12_rpc_movements_reverse`).
+- **Huecos en el SKU:** `products_sku_seq` no devuelve números. Un alta que
+  falla después de pedir el número, o una transacción revertida, deja un hueco.
+  El SKU es **único, no correlativo**. Un reintento idempotente de
+  `create_product` no consume otro número (§8.4).
+- **Anular una salida repartida en lotes:** `register_product_movement` puede
+  generar varios movimientos con la misma `operation_key`. La reversión
+  (§8.3) es **por movimiento**: anular uno devuelve solo lo de ese lote. La UI
+  avisa cuántas filas tiene la operación; para deshacerla entera se anula cada
+  fila.
+- **Movimiento ya anulado:** PostgREST no expone la relación inversa de
+  `reverses_movement_id` (FK de la tabla consigo misma). La UI consulta
+  `stock_movements?reverses_movement_id=in.(…)` para saber qué filas ya tienen
+  anulación; la base igual rechaza la segunda (`ALREADY_REVERSED`).
+- **Nombres de FK que usa el frontend** en los `select` embebidos (no
+  renombrarlos sin avisar): `stock_movements_batch_product_fkey` (movimiento →
+  lote → producto) y `stock_movements_created_by_fkey` (movimiento → autor).
+- **Conteo de cajas por el empleado:** permiso por columna
+  `UPDATE (boxes_quantity)` más el trigger `products_restrict_staff_update`, que
+  lanza `NOT_AUTHORIZED` si alguien que no es encargado ni dueño cambia otra
+  columna. Un `UPDATE` que RLS filtra no falla: afecta 0 filas; la UI lo
+  informa como falta de permiso.
+- **Mermas del mes (`v_inventory_summary.shrinkage_quantity_month`):** suma
+  `quantity` de `shrinkage`, `damage` e `internal_use` del mes (hora de Buenos
+  Aires). Suma unidades de productos distintos tal cual (kg y unidades juntos)
+  y **no descuenta** las anulaciones de esos movimientos (ver P-21).
+- **Auditoría de `expiry_alert_settings`:** se auditan altas y ediciones; el
+  **borrado no** se registra en `audit_log` (ver P-22).
+- **`expires_on` al editar un lote:** el permiso por columna deja que encargado
+  y dueño lo cambien, también a `NULL` (ver P-23). Al crear un lote sigue
+  siendo obligatorio (`EXPIRY_REQUIRED`).
+- **Datos locales:** `supabase/seed.sql` carga datos ficticios en `db reset`
+  (solo entorno local) y `npm run db:users` crea los usuarios de prueba.
+  `src/types/database.ts` se genera con `npm run gen:types` y
+  `src/types/contract-check.ts` hace fallar `tsc` si los enums del frontend
+  dejan de coincidir con los de la base.
+
 ---
 
 ## 9. Seguridad (resumen de RLS propuesta)
@@ -1003,6 +1046,9 @@ este documento y una migración nueva.
 | P-18 | ¿Hay consumo interno? | Sí: tipo `internal_use` | Adoptada (v0.4.0) |
 | P-19 | ¿Las alertas de vencimiento son iguales para todo? | No: configurables por categoría (§5.9) | Adoptada (v0.4.0) |
 | P-20 | ¿Cuántas sucursales y depósitos? | Una sucursal y un depósito: no hace falta modelar ubicaciones | Adoptada (v0.4.0) |
+| P-21 | En "Mermas del mes", ¿se descuentan las mermas anuladas? ¿Se muestra en unidades o en dinero? | Hoy: suma unidades sin descontar anulaciones (§8.9). Propuesta: descontar anulaciones y mostrar también el valor a costo, que permite sumar productos distintos | Abierta |
+| P-22 | ¿Se audita el borrado de una configuración de alertas por categoría? | Hoy no (§8.9). Propuesta: sí, con una migración que agregue `delete` al trigger de auditoría | Abierta |
+| P-23 | ¿Se puede quitar el vencimiento (`NULL`) al editar un lote? | Hoy sí (§8.9). Propuesta: no, coherente con P-01 y `EXPIRY_REQUIRED`; requiere migración | Abierta |
 
 ---
 
@@ -1033,3 +1079,4 @@ volver a registrar la concordancia.
 | 0.4.0 | 2026-11-15 | Segunda visita al cliente: permisos por rol dueño/encargado/empleado (§4.1, §9); precios sin IVA y `sale_price_with_vat` (§5.5, P-02); SKU generado por la base (§5.5, §8.4); `units_per_box` y desglose de cajas en `v_product_stock` (§3, §5.5, §7.2); `register_product_movement` con lotes por vencimiento y `operation_key` (§8.7); tipo `internal_use` (§4.3); alertas configurables por categoría con `expiry_alert_settings` y estados `expires_urgent/soon/upcoming` (§4.4, §5.9); vencimiento obligatorio y código `EXPIRY_REQUIRED` (§8.1); dashboard `v_inventory_summary` (§7.4); transición desde las migraciones fusionadas (§8.8); P-17 a P-20; nombres de catálogos únicos sin distinguir tildes (§5.2–5.4) |
 | 0.4.1 | 2026-11-15 | Aclaración: la vista previa del precio final en el formulario de alta (§5.5) |
 | 0.4.2 | 2026-11-15 | `v_batch_status` suma datos del producto y la categoría para la pantalla de Alertas (§7.1) |
+| 0.4.3 | 2026-11-14 | Aclaraciones de implementación sin reglas nuevas (§8.9): RPC de movimientos implementadas, huecos de SKU, anulación por movimiento en salidas repartidas, nombres de FK usados por el frontend, conteo de cajas, métrica de mermas, auditoría de alertas, edición de `expires_on`, seed y tipos generados. Preguntas abiertas P-21 a P-23 |
