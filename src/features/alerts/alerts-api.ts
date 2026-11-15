@@ -16,9 +16,10 @@ export interface BatchAlertRow {
   category_name: string
   batch_number: string | null
   received_on: string
-  expires_on: string
+  /** Nulo solo en lotes de semilla o migración (= sin vencimiento, contrato §5.6). */
+  expires_on: string | null
   quantity_available: number
-  days_to_expiry: number
+  days_to_expiry: number | null
   expiry_status: ExpiryStatus
 }
 

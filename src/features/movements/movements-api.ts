@@ -107,6 +107,8 @@ export interface MovementHistoryRow {
   notes: string | null
   occurred_at: string
   reverses_movement_id: string | null
+  /** La comparten los movimientos de una misma salida repartida en lotes (§8.7). */
+  operation_key?: string | null
   batch: {
     batch_number: string | null
     expires_on: string | null
@@ -124,6 +126,7 @@ export interface MovementHistoryRow {
  */
 const HISTORY_COLUMNS =
   'id, movement_type, quantity, signed_quantity, batch_quantity_after, reason, notes, occurred_at, reverses_movement_id, ' +
+  'operation_key, ' +
   'batch:product_batches!stock_movements_batch_product_fkey(batch_number, expires_on, product:products(sku, name, sale_unit)), ' +
   'author:profiles!stock_movements_created_by_fkey(full_name)'
 
@@ -157,6 +160,16 @@ export async function fetchMovementHistory(client: SupabaseClient, p: HistoryPar
   const rows = (data ?? []) as MovementHistoryRow[]
   const reversed = await fetchReversedIds(client, rows.map((r) => r.id))
   return { rows: rows.map((r) => ({ ...r, is_reversed: reversed.has(r.id) })), total: count ?? 0 }
+}
+
+/** Cuántos movimientos generó la misma operación (una salida FEFO puede tocar varios lotes). */
+export async function countOperationParts(client: SupabaseClient, operationKey: string): Promise<number> {
+  const { count, error } = await client
+    .from('stock_movements')
+    .select('id', { count: 'exact', head: true })
+    .eq('operation_key', operationKey)
+  if (error) throw error
+  return count ?? 0
 }
 
 /**
