@@ -99,6 +99,12 @@ function BoxCountContent({ product, onClose }: { product: NonNullable<BoxCountDi
           aria-invalid={error ? true : undefined}
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !mutation.isPending) {
+              e.preventDefault()
+              save()
+            }
+          }}
         />
       </FormField>
       {inBoxes !== null && inBoxes > product.stock_quantity && (

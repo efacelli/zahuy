@@ -133,6 +133,17 @@ describe('ficha del producto', () => {
     expect(fake.writes[0]).toEqual({ table: 'products', op: 'update', payload: { boxes_quantity: 6 }, filters: { id: ID } })
   })
 
+  it('Enter guarda el conteo de cajas', async () => {
+    const { user, fake } = setup('staff')
+    await user.click(await screen.findByRole('button', { name: 'Actualizar cajas' }))
+    const dialog = screen.getByRole('dialog', { name: 'Actualizar cajas en depósito' })
+    const input = within(dialog).getByLabelText(/^Cajas cerradas/)
+    await user.clear(input)
+    await user.type(input, '3{Enter}')
+    await waitFor(() => expect(fake.writes).toHaveLength(1))
+    expect(fake.writes[0]).toEqual({ table: 'products', op: 'update', payload: { boxes_quantity: 3 }, filters: { id: ID } })
+  })
+
   it('un producto inexistente lo dice', async () => {
     const fake = createFakeSupabase(fakeSession())
     fake.setTable('v_product_list', [])
