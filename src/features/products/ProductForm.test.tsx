@@ -190,6 +190,35 @@ describe('Nuevo producto', () => {
     expect(screen.getByText('$ 1.200,00')).toBeInTheDocument()
   })
 
+  it('Enter pasa al campo siguiente: elige en los autocompletados y nunca guarda solo', async () => {
+    const { user, fake } = setup()
+    await user.type(await screen.findByLabelText(/^Nombre/), 'Yogur{Enter}')
+    expect(screen.getByRole('combobox', { name: /^Categoría/ })).toHaveFocus()
+    await user.keyboard('lac{Enter}')
+    expect(screen.getByRole('combobox', { name: /^Categoría/ })).toHaveValue('Lácteos')
+    expect(screen.getByRole('combobox', { name: /^Marca/ })).toHaveFocus()
+    await user.keyboard('SERE{Enter}')
+    expect(screen.getByRole('combobox', { name: /^Marca/ })).toHaveValue('La Serenísima')
+    // Proveedor vacío: Enter pasa de largo.
+    expect(screen.getByRole('combobox', { name: /^Proveedor/ })).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(screen.getByLabelText(/^Unidad de venta/)).toHaveFocus()
+    await user.keyboard('{Enter}')
+    // La descripción está plegada: se saltea.
+    expect(screen.getByLabelText(/^Costo/)).toHaveFocus()
+    await user.keyboard('450{Enter}')
+    expect(screen.getByLabelText(/^Ganancia/)).toHaveFocus()
+    expect(fake.rpc).not.toHaveBeenCalled()
+  })
+
+  it('Tab con algo escrito en el autocompletado toma la opción marcada', async () => {
+    const { user } = setup()
+    await user.type(await screen.findByRole('combobox', { name: /^Marca/ }), 'sere')
+    await user.tab()
+    expect(screen.getByRole('combobox', { name: /^Marca/ })).toHaveValue('La Serenísima')
+    expect(screen.getByRole('combobox', { name: /^Proveedor/ })).toHaveFocus()
+  })
+
   it('avisa si el precio es menor al costo, sin bloquear', async () => {
     const { user } = setup()
     await user.type(await screen.findByLabelText(/^Costo/), '800')

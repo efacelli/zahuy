@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MovementType } from '../../domain/movements'
 import type { SaleUnit } from '../../domain/units'
 import { DEFAULT_PAGE_SIZE, pageRange } from '../../lib/pagination'
-import { sanitizeSearch } from '../products/list-params'
+import { textSearchFilter } from '../products/list-params'
 
 /* ------------------------------------------------------------------ */
 /* Productos para elegir en los formularios                            */
@@ -28,10 +28,10 @@ export async function searchProducts(
   text: string,
   { includeInactive = false }: { includeInactive?: boolean } = {},
 ): Promise<ProductOption[]> {
-  const term = sanitizeSearch(text)
+  const search = textSearchFilter(text)
   let q = client.from('products').select('id, sku, name, sale_unit, units_per_box, is_active')
   if (!includeInactive) q = q.eq('is_active', true)
-  if (term) q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%,legacy_code.ilike.%${term}%`)
+  if (search) q = q.or(search)
   const { data, error } = await q.order('name').limit(20)
   if (error) throw error
   return (data ?? []) as ProductOption[]

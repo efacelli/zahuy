@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ExpiryStatus } from '../../domain/expiry'
 import type { SaleUnit } from '../../domain/units'
 import { pageRange } from '../../lib/pagination'
-import { NO_SUPPLIER, sanitizeSearch, type ExpiryFilter, type ProductListParams } from './list-params'
+import { NO_SUPPLIER, textSearchFilter, type ExpiryFilter, type ProductListParams } from './list-params'
 
 /** Fila de la vista `v_product_list` (contrato v0.4.0 §7.2 y §7.3). */
 export interface ProductListRow {
@@ -73,8 +73,8 @@ export interface ListQuery {
 /** Aplica búsqueda, filtros, orden y paginación. Todo se resuelve en la base. */
 export function applyListParams(query: ListQuery, p: ProductListParams) {
   let q = query
-  const term = sanitizeSearch(p.search)
-  if (term) q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%,legacy_code.ilike.%${term}%`)
+  const search = textSearchFilter(p.search)
+  if (search) q = q.or(search)
   if (p.categoryId) q = q.eq('category_id', p.categoryId)
   if (p.supplierId === NO_SUPPLIER) q = q.is('supplier_id', null)
   else if (p.supplierId) q = q.eq('supplier_id', p.supplierId)

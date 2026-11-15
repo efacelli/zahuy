@@ -149,14 +149,14 @@ isOneToOne: false
                   ]
                 },"products": {
                   Row: {
-                    "barcode": string | null,"boxes_quantity": number,"brand_id": string,"category_id": string,"cost_price": number,"created_at": string,"created_by": string | null,"creation_key": string | null,"description": string | null,"id": string,"image_path": string | null,"is_active": boolean,"legacy_code": string | null,"min_stock": number,"name": string,"sale_price": number,"sale_price_with_vat": number | null,"sale_unit": Database["public"]['Enums']["sale_unit"],"sku": string,"supplier_id": string | null,"units_per_box": number,"updated_at": string,"updated_by": string | null,"vat_rate": number
+                    "barcode": string | null,"boxes_quantity": number,"brand_id": string,"category_id": string,"cost_price": number,"created_at": string,"created_by": string | null,"creation_key": string | null,"description": string | null,"id": string,"image_path": string | null,"is_active": boolean,"legacy_code": string | null,"min_stock": number,"name": string,"sale_price": number,"sale_price_with_vat": number | null,"sale_unit": Database["public"]['Enums']["sale_unit"],"search_name": string | null,"sku": string,"supplier_id": string | null,"units_per_box": number,"updated_at": string,"updated_by": string | null,"vat_rate": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "barcode"?: string | null,"boxes_quantity"?: number,"brand_id": string,"category_id": string,"cost_price": number,"created_at"?: string,"created_by"?: string | null,"creation_key"?: string | null,"description"?: string | null,"id"?: string,"image_path"?: string | null,"is_active"?: boolean,"legacy_code"?: string | null,"min_stock"?: number,"name": string,"sale_price": number,"sale_price_with_vat"?: never,"sale_unit"?: Database["public"]['Enums']["sale_unit"],"sku"?: string,"supplier_id"?: string | null,"units_per_box"?: number,"updated_at"?: string,"updated_by"?: string | null,"vat_rate"?: number
+                    "barcode"?: string | null,"boxes_quantity"?: number,"brand_id": string,"category_id": string,"cost_price": number,"created_at"?: string,"created_by"?: string | null,"creation_key"?: string | null,"description"?: string | null,"id"?: string,"image_path"?: string | null,"is_active"?: boolean,"legacy_code"?: string | null,"min_stock"?: number,"name": string,"sale_price": number,"sale_price_with_vat"?: never,"sale_unit"?: Database["public"]['Enums']["sale_unit"],"search_name"?: never,"sku"?: string,"supplier_id"?: string | null,"units_per_box"?: number,"updated_at"?: string,"updated_by"?: string | null,"vat_rate"?: number
                   }
                   Update: {
-                    "barcode"?: string | null,"boxes_quantity"?: number,"brand_id"?: string,"category_id"?: string,"cost_price"?: number,"created_at"?: string,"created_by"?: string | null,"creation_key"?: string | null,"description"?: string | null,"id"?: string,"image_path"?: string | null,"is_active"?: boolean,"legacy_code"?: string | null,"min_stock"?: number,"name"?: string,"sale_price"?: number,"sale_price_with_vat"?: never,"sale_unit"?: Database["public"]['Enums']["sale_unit"],"sku"?: string,"supplier_id"?: string | null,"units_per_box"?: number,"updated_at"?: string,"updated_by"?: string | null,"vat_rate"?: number
+                    "barcode"?: string | null,"boxes_quantity"?: number,"brand_id"?: string,"category_id"?: string,"cost_price"?: number,"created_at"?: string,"created_by"?: string | null,"creation_key"?: string | null,"description"?: string | null,"id"?: string,"image_path"?: string | null,"is_active"?: boolean,"legacy_code"?: string | null,"min_stock"?: number,"name"?: string,"sale_price"?: number,"sale_price_with_vat"?: never,"sale_unit"?: Database["public"]['Enums']["sale_unit"],"search_name"?: never,"sku"?: string,"supplier_id"?: string | null,"units_per_box"?: number,"updated_at"?: string,"updated_by"?: string | null,"vat_rate"?: number
                   }
                   Relationships: [
                     {
@@ -326,7 +326,7 @@ isOneToOne: false
                   ]
                 },"v_product_list": {
                   Row: {
-                    "active_batches_count": number | null,"barcode": string | null,"boxes_quantity": number,"brand_id": string,"brand_name": string,"category_id": string,"category_name": string,"cost_price": number,"created_at": string,"description": string | null,"has_box_mismatch": boolean | null,"id": string,"image_path": string | null,"is_active": boolean,"is_low_stock": boolean | null,"legacy_code": string | null,"loose_units": number | null,"min_stock": number,"name": string,"next_expires_on": string | null,"next_expiry_status": Database["public"]['Enums']["expiry_status"] | null,"sale_price": number,"sale_price_with_vat": number | null,"sale_unit": Database["public"]['Enums']["sale_unit"],"sku": string,"stock_quantity": number | null,"supplier_id": string | null,"supplier_name": string | null,"units_in_boxes": number | null,"units_per_box": number,"updated_at": string,"vat_rate": number
+                    "active_batches_count": number | null,"barcode": string | null,"boxes_quantity": number,"brand_id": string,"brand_name": string,"category_id": string,"category_name": string,"cost_price": number,"created_at": string,"description": string | null,"has_box_mismatch": boolean | null,"id": string,"image_path": string | null,"is_active": boolean,"is_low_stock": boolean | null,"legacy_code": string | null,"loose_units": number | null,"min_stock": number,"name": string,"next_expires_on": string | null,"next_expiry_status": Database["public"]['Enums']["expiry_status"] | null,"sale_price": number,"sale_price_with_vat": number | null,"sale_unit": Database["public"]['Enums']["sale_unit"],"search_name": string | null,"sku": string,"stock_quantity": number | null,"supplier_id": string | null,"supplier_name": string | null,"units_in_boxes": number | null,"units_per_box": number,"updated_at": string,"vat_rate": number
                   }
                   ComputedFields: never
                   Relationships: [
@@ -381,6 +381,7 @@ isOneToOne: false
 "sale_price": number,
 "sale_price_with_vat": number | null,
 "sale_unit": Database["public"]['Enums']["sale_unit"],
+"search_name": string | null,
 "sku": string,
 "supplier_id": string | null,
 "units_per_box": number,

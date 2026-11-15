@@ -1,10 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useId, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { useController, type Control, type FieldPath } from 'react-hook-form'
 import { Button } from '../../components/ui/Button'
 import { FormField } from '../../components/ui/FormField'
 import { describedBy } from '../../components/ui/form-field-ids'
 import { toAppError } from '../../lib/errors'
+import { focusNextField } from '../../lib/focus-next'
 import { useSupabase } from '../../lib/supabase-context'
 import { createCatalogItem } from '../catalogs/api'
 import type { CatalogTable } from './api'
@@ -48,6 +49,10 @@ export function CatalogCombobox({ id, label, table, name, control, required, err
   const [active, setActive] = useState(0)
   const [createError, setCreateError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const advance = () => {
+    if (inputRef.current) focusNextField(inputRef.current)
+  }
 
   const shown = text ?? selected?.name ?? ''
   const matches = filterOptions(options, text ?? '')
@@ -72,6 +77,8 @@ export function CatalogCombobox({ id, label, table, name, control, required, err
       await queryClient.invalidateQueries({ queryKey: catalogQueryKey(table) })
       await queryClient.invalidateQueries({ queryKey: ['catalog', table] })
       choose({ id: row.id, name: row.name })
+      // Después de crear, el input se vuelve a habilitar: avanzar en el próximo cuadro.
+      window.requestAnimationFrame(advance)
     } catch (e) {
       setCreateError(toAppError(e).message)
     } finally {
@@ -79,10 +86,12 @@ export function CatalogCombobox({ id, label, table, name, control, required, err
     }
   }
 
-  function pick(item: Item | undefined) {
+  function pick(item: Item | undefined, thenAdvance = false) {
     if (!item) return
-    if (item.kind === 'option') choose(item.option)
-    else void create(item.text)
+    if (item.kind === 'option') {
+      choose(item.option)
+      if (thenAdvance) advance()
+    } else void create(item.text)
   }
 
   function onBlur() {
@@ -111,6 +120,7 @@ export function CatalogCombobox({ id, label, table, name, control, required, err
       <div className={styles.wrap}>
         <input
           id={id}
+          ref={inputRef}
           className="input"
           role="combobox"
           autoComplete="off"
@@ -140,9 +150,14 @@ export function CatalogCombobox({ id, label, table, name, control, required, err
               e.preventDefault()
               setActive((a) => Math.max(a - 1, 0))
             } else if (e.key === 'Enter') {
-              // Enter elige; nunca envía el formulario desde acá.
+              // Enter elige y pasa al campo siguiente; nunca envía el formulario desde acá.
               e.preventDefault()
-              if (open) pick(items[active])
+              if (text !== null && text.trim() !== '' && open) pick(items[active], true)
+              else advance()
+            } else if (e.key === 'Tab') {
+              // Tab con algo escrito toma la opción marcada; vacío, pasa de largo.
+              const item = items[active]
+              if (open && text !== null && text.trim() !== '' && item?.kind === 'option') choose(item.option)
             } else if (e.key === 'Escape') {
               setOpen(false)
               setText(null)
