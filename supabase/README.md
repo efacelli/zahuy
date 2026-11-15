@@ -84,6 +84,38 @@ que `anon` no pueda ejecutar ninguna función.
 - Para dar de baja a alguien se usa `is_active = false`; los usuarios no se
   borran, porque los movimientos conservan quién los hizo.
 
+## Datos y usuarios de prueba (seed)
+
+`npx supabase@3.1.0 db reset` carga `supabase/seed.sql`: datos **ficticios**
+(5 categorías, 5 marcas, 2 proveedores, 12 productos con lotes vencidos, por
+vencer y vigentes, y movimientos de ejemplo) y cuatro usuarios:
+
+| Email | Rol |
+|---|---|
+| `duena@zahuy.test` | Dueña (`admin`) |
+| `encargado@zahuy.test` | Encargado (`manager`) |
+| `empleada@zahuy.test` | Empleada (`staff`) |
+| `inactivo@zahuy.test` | Usuario desactivado |
+
+**Los usuarios se crean sin contraseña**, para que no haya ninguna credencial en
+el repositorio (que es público). Después de cada `db reset`, cada persona les
+pone una en su máquina, eligiendo la clave en el momento:
+
+```bash
+docker exec -i supabase_db_zahuy psql -U postgres -v pw="ELEGI_UNA_CLAVE" -c "update auth.users set encrypted_password = extensions.crypt(:'pw', extensions.gen_salt('bf')) where email like '%@zahuy.test'"
+```
+
+Esa clave vale solo en la base local y se pierde con el próximo `db reset`.
+No usar una contraseña real ni reutilizada.
+
+- El seed usa las mismas RPC que la app, con claves de idempotencia fijas:
+  correrlo dos veces no duplica nada.
+- Las fechas son relativas a hoy, así siempre hay lotes vencidos, urgentes y
+  próximos a vencer.
+- Para arrancar sin datos: `npx supabase@3.1.0 db reset --no-seed`.
+- Las pruebas (`test db`) pasan con o sin el seed cargado.
+- El seed solo se aplica en local. No correrlo contra un proyecto en la nube.
+
 ## Reglas
 
 - Migraciones nuevas y versionadas en `supabase/migrations/`; nunca se edita una

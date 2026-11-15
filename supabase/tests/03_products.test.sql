@@ -36,7 +36,7 @@ insert into auth.users (id, email) values
 update public.profiles set role = 'manager' where id = '00000000-0000-4000-8000-00000000002a';
 update public.profiles set is_active = false where id = '00000000-0000-4000-8000-00000000002c';
 
-insert into public.categories (id, name) values ('00000000-0000-4000-8000-0000000000c1', 'Lácteos');
+insert into public.categories (id, name) values ('00000000-0000-4000-8000-0000000000c1', 'Lácteos T3');
 insert into public.brands (id, name) values ('00000000-0000-4000-8000-0000000000b1', 'Marca Ficticia');
 insert into public.suppliers (id, name) values ('00000000-0000-4000-8000-0000000000d1', 'Distribuidora Ficticia SA');
 

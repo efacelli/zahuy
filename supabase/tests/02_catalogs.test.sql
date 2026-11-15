@@ -38,9 +38,9 @@ where id in ('00000000-0000-4000-8000-00000000001a', '00000000-0000-4000-8000-00
 update public.profiles set is_active = false where id = '00000000-0000-4000-8000-00000000001c';
 
 -- Semilla o migración (sin sesión): se permite y queda sin autor.
-insert into public.categories (name) values ('Almacén');
+insert into public.categories (name) values ('Almacén T2');
 select is(
-  (select created_by from public.categories where name = 'Almacén'),
+  (select created_by from public.categories where name = 'Almacén T2'),
   null,
   'una fila creada sin sesión queda con created_by nulo'
 );
@@ -61,7 +61,7 @@ reset role;
 select set_config('request.jwt.claims', '{"sub": "00000000-0000-4000-8000-00000000001a", "role": "authenticated"}', true);
 set local role authenticated;
 
-select lives_ok($$insert into public.categories (name) values ('Lácteos')$$, 'crea una categoría');
+select lives_ok($$insert into public.categories (name) values ('Lácteos T2')$$, 'crea una categoría');
 select lives_ok($$insert into public.brands (name) values ('La Serenísima Ficticia')$$, 'crea una marca');
 select lives_ok(
   $$insert into public.suppliers (name, tax_id, phone, email, notes)
@@ -72,14 +72,14 @@ select lives_ok($$insert into public.suppliers (name) values ('Proveedor Sin CUI
 select lives_ok($$insert into public.suppliers (name) values ('Proveedor Sin CUIT Dos')$$, 'dos proveedores sin CUIT no chocan');
 
 select is(
-  (select count(*)::int from public.categories where name in ('Almacén', 'Lácteos')),
+  (select count(*)::int from public.categories where name in ('Almacén T2', 'Lácteos T2')),
   2,
   'lee las categorías'
 );
 
 -- Duplicados: el nombre de la restricción es el que traduce el frontend.
 select throws_ok(
-  $$insert into public.categories (name) values ('  LÁCTEOS ')$$,
+  $$insert into public.categories (name) values ('  LÁCTEOS T2 ')$$,
   '23505', 'duplicate key value violates unique constraint "categories_name_key"',
   'categoría duplicada sin distinguir mayúsculas ni espacios'
 );
@@ -145,29 +145,29 @@ select throws_ok(
   '42501', null, 'no se puede enviar id'
 );
 select throws_ok(
-  $$update public.categories set updated_by = '00000000-0000-4000-8000-00000000001b' where name = 'Lácteos'$$,
+  $$update public.categories set updated_by = '00000000-0000-4000-8000-00000000001b' where name = 'Lácteos T2'$$,
   '42501', null, 'no se puede enviar updated_by'
 );
 select throws_ok(
-  $$update public.categories set created_at = '2000-01-01' where name = 'Lácteos'$$,
+  $$update public.categories set created_at = '2000-01-01' where name = 'Lácteos T2'$$,
   '42501', null, 'no se puede enviar created_at'
 );
 
 -- Nadie borra.
-select throws_ok($$delete from public.categories where name = 'Lácteos'$$, '42501', null, 'no se borra una categoría');
+select throws_ok($$delete from public.categories where name = 'Lácteos T2'$$, '42501', null, 'no se borra una categoría');
 select throws_ok($$delete from public.brands$$, '42501', null, 'no se borra una marca');
 select throws_ok($$delete from public.suppliers$$, '42501', null, 'no se borra un proveedor');
 
 -- Lectura como la hace el frontend: opciones activas ordenadas por nombre.
 select results_eq(
-  $$select name from public.categories where is_active and name in ('Almacén', 'Lácteos') order by name$$,
-  $$values ('Almacén'), ('Lácteos')$$,
+  $$select name from public.categories where is_active and name in ('Almacén T2', 'Lácteos T2') order by name$$,
+  $$values ('Almacén T2'), ('Lácteos T2')$$,
   'opciones activas ordenadas por nombre'
 );
 reset role;
 
 select is(
-  (select created_by from public.categories where name = 'Lácteos'),
+  (select created_by from public.categories where name = 'Lácteos T2'),
   '00000000-0000-4000-8000-00000000001a'::uuid,
   'created_by lo fija la base con el usuario de la sesión'
 );
@@ -184,26 +184,26 @@ select set_config('request.jwt.claims', '{"sub": "00000000-0000-4000-8000-000000
 set local role authenticated;
 
 select lives_ok(
-  $$update public.categories set name = 'Lácteos y quesos' where name = 'Lácteos'$$, 'otro empleado renombra'
+  $$update public.categories set name = 'Lácteos T2 y quesos' where name = 'Lácteos T2'$$, 'otro empleado renombra'
 );
 select lives_ok(
   $$update public.suppliers set is_active = false, phone = null where name = 'Distribuidora Ficticia SA'$$,
   'otro empleado desactiva un proveedor'
 );
 select throws_ok(
-  $$update public.categories set name = 'ALMACÉN' where name = 'Lácteos y quesos'$$,
+  $$update public.categories set name = 'ALMACÉN T2' where name = 'Lácteos T2 y quesos'$$,
   '23505', 'duplicate key value violates unique constraint "categories_name_key"',
   'renombrar a un nombre existente'
 );
 select results_eq(
-  $$select name from public.suppliers where is_active and name like 'Distribuidora%'$$,
+  $$select name from public.suppliers where is_active and name = 'Distribuidora Ficticia SA'$$,
   $$select null::text where false$$,
   'el proveedor desactivado no aparece entre los activos'
 );
 reset role;
 
 select results_eq(
-  $$select created_by, updated_by from public.categories where name = 'Lácteos y quesos'$$,
+  $$select created_by, updated_by from public.categories where name = 'Lácteos T2 y quesos'$$,
   $$values ('00000000-0000-4000-8000-00000000001a'::uuid, '00000000-0000-4000-8000-00000000001b'::uuid)$$,
   'created_by se conserva y updated_by registra a quien editó'
 );
