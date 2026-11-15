@@ -9,6 +9,7 @@ import { EditProductPage } from '../features/products/EditProductPage'
 import { NewProductPage } from '../features/products/NewProductPage'
 import { ProductDetailPage } from '../features/products/ProductDetailPage'
 import { ProductsPage } from '../features/products/ProductsPage'
+import { SettingsPage } from '../features/settings/SettingsPage'
 import { HomePage } from './HomePage'
 import { AppLayout } from './layout/AppLayout'
 import { NotFoundPage, RouteErrorPage } from './pages'
@@ -45,6 +46,14 @@ export const routes: RouteObject[] = [
           { path: 'movimientos', element: <MovementsPage /> },
           { path: 'alertas', element: <AlertsPage /> },
           { path: 'catalogos', element: <CatalogsPage /> },
+          {
+            path: 'configuracion',
+            element: (
+              <RequirePermission permission="configureAlerts">
+                <SettingsPage />
+              </RequirePermission>
+            ),
+          },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

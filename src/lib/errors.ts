@@ -53,6 +53,7 @@ export const UNIQUE_CONSTRAINT_MESSAGES: Record<string, string> = {
   brands_name_key: 'Ya existe una marca con ese nombre.',
   suppliers_name_key: 'Ya existe un proveedor con ese nombre.',
   suppliers_tax_id_key: 'Ya existe un proveedor con ese CUIT.',
+  expiry_alert_settings_category_key: 'Esa categoría ya tiene sus propios días de alerta. Editá la fila existente.',
 }
 
 const NETWORK_MESSAGE = 'No se pudo conectar con el servidor. Revisá la conexión a internet e intentá de nuevo.'

@@ -7,6 +7,7 @@ const PATHS = {
   movements: 'M7 4v13M7 17l-3-3M7 17l3-3M17 20V7M17 7l-3 3M17 7l3 3',
   alerts: 'M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15L6 16ZM10 20a2 2 0 0 0 4 0',
   catalogs: 'M4 5h7l9 9-6 6-9-9V5Zm4 4h.01',
+  settings: 'M4 6h9m4 0h3M4 12h3m4 0h9M4 18h11m4 0h1M15 4v4M9 10v4M17 16v4',
   menu: 'M4 6h16M4 12h16M4 18h16',
   close: 'M6 6l12 12M18 6 6 18',
   chevronLeft: 'M15 6l-6 6 6 6',
