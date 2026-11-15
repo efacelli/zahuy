@@ -84,6 +84,48 @@ que `anon` no pueda ejecutar ninguna función.
 - Para dar de baja a alguien se usa `is_active = false`; los usuarios no se
   borran, porque los movimientos conservan quién los hizo.
 
+## Pruebas de la base
+
+Antes de cada Pull Request que toque `supabase/`, desde la raíz del repo:
+
+```bash
+npx supabase@3.1.0 db reset
+```
+
+```bash
+npx supabase@3.1.0 test db
+```
+
+```bash
+npm run check
+```
+
+- **pgTAP** (`supabase/tests/*.test.sql`): cada archivo corre en una transacción
+  que se revierte, con datos ficticios propios. Pasan con o sin el seed.
+- **`14_security_matrix.test.sql`** revisa todo el esquema: RLS en cada tabla,
+  `security_invoker` en cada vista, `SECURITY DEFINER` con `search_path` vacío
+  en cada función, nada accesible para `anon` y la matriz de permisos de §9.
+  **Al agregar una tabla nueva hay que sumarla a esa matriz**, o la prueba falla.
+- **Concurrencia** (`supabase/scripts/concurrency-test.mjs`): pgTAP usa una sola
+  sesión, así que los pedidos simultáneos se prueban por la API. Después de
+  `db reset` y `npm run db:users` (y de esperar unos segundos a que la API
+  termine de levantar):
+
+  ```bash
+  node supabase/scripts/concurrency-test.mjs
+  ```
+
+  Lee `.env.local` y `.env.test.local`, solo acepta una URL local y deja
+  movimientos ficticios (el ledger no se borra): correr `db reset` al terminar.
+- **Migración sobre datos existentes:** antes de subir una migración, aplicarla
+  con `npx supabase@3.1.0 migration up` sobre la base local con el seed cargado
+  y comparar conteos antes y después. Una migración nunca borra ni reescribe
+  datos; si encuentra datos incompatibles tiene que fallar con un mensaje claro.
+- Después de una migración que cambie tablas, vistas, funciones o enums de
+  `public`: `npm run gen:types`.
+
+El CI corre `db start` y `test db` en cada Pull Request (job "Base de datos (migraciones y pgTAP)"). La prueba de concurrencia no corre en el CI: necesita los usuarios de prueba.
+
 ## Reglas
 
 - Migraciones nuevas y versionadas en `supabase/migrations/`; nunca se edita una

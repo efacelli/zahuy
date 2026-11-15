@@ -40,7 +40,7 @@ Ya hecho o que Claude puede dejar listo en el repo:
 - [x] Versión de Node fijada (`.node-version` y `engines`).
 - [x] CI corre también las pruebas de la base (job "Base de datos (migraciones y pgTAP)").
 - [ ] 🔒 Marcar ese job como obligatorio en la protección de `main` (cambio de configuración del repo).
-- [ ] PR del bucket privado `product-images` (pendiente del backend).
+- [x] Bucket privado `product-images` con sus políticas (migración `20261116230000`).
 
 ---
 
