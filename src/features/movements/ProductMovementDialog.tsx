@@ -5,7 +5,12 @@ import { FormField } from '../../components/ui/FormField'
 import { Icon } from '../../components/ui/Icon'
 import { Modal } from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/toast-context'
-import { MOVEMENT_TYPE_INFO, type MovementType } from '../../domain/movements'
+import {
+  INACTIVE_PRODUCT_MOVEMENT_TYPES,
+  MOVEMENT_TYPE_INFO,
+  movementTypesForProduct,
+  type MovementType,
+} from '../../domain/movements'
 import { SALE_UNIT_LABEL, formatQuantity } from '../../domain/units'
 import { formatDateTime } from '../../lib/dates'
 import { toAppError } from '../../lib/errors'
@@ -62,6 +67,17 @@ function ProductMovementContent({ types, onClose }: { types: MovementType[]; onC
 
   const info = MOVEMENT_TYPE_INFO[values.movement_type]
   const quantity = parseDecimalInput(values.quantity) ?? 0
+  // Si el rol puede dar de baja (merma, daño, devolución), también ve los inactivos (P-13).
+  const canDispose = types.some((t) => INACTIVE_PRODUCT_MOVEMENT_TYPES.includes(t))
+  const availableTypes = product ? movementTypesForProduct(types, product.is_active) : types
+
+  function pickProduct(next: ProductOption | null) {
+    setProduct(next)
+    if (next && !next.is_active) {
+      const allowed = movementTypesForProduct(types, false)
+      if (!allowed.includes(values.movement_type) && allowed[0]) set('movement_type', allowed[0])
+    }
+  }
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -167,8 +183,20 @@ function ProductMovementContent({ types, onClose }: { types: MovementType[]; onC
       ) : (
         <div className={styles.form}>
           <FormField label="Producto" htmlFor="movement-product" required error={errors.product}>
-            <ProductPicker id="movement-product" value={product} onChange={setProduct} error={errors.product} />
+            <ProductPicker
+              id="movement-product"
+              value={product}
+              onChange={pickProduct}
+              error={errors.product}
+              includeInactive={canDispose}
+            />
           </FormField>
+          {product && !product.is_active && (
+            <p className={styles.note} role="status">
+              <Icon name="info" size={18} /> Producto inactivo: solo se puede registrar merma, daño o devolución a
+              proveedor para dar de baja lo que quedó.
+            </p>
+          )}
           <div className={styles.grid}>
             <FormField label="Tipo de movimiento" htmlFor="movement-type" required>
               <select
@@ -177,7 +205,7 @@ function ProductMovementContent({ types, onClose }: { types: MovementType[]; onC
                 value={values.movement_type}
                 onChange={(e) => set('movement_type', e.target.value as MovementType)}
               >
-                {types.map((t) => (
+                {availableTypes.map((t) => (
                   <option key={t} value={t}>
                     {MOVEMENT_TYPE_INFO[t].label} ({MOVEMENT_TYPE_INFO[t].direction === 'out' ? 'resta' : 'suma'})
                   </option>

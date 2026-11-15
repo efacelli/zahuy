@@ -10,6 +10,7 @@ import { occurredAtParam, receiveQuantity, validateMovement, validateReceive, em
 const TODAY = todayInAppTimeZone()
 const PRODUCT = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', sku: '000001', name: 'Yogur frutilla', sale_unit: 'unit', units_per_box: 12, is_active: true }
 const CHEESE = { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', sku: '000002', name: 'Queso cremoso', sale_unit: 'kg', units_per_box: 1, is_active: true }
+const DISCONTINUED = { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', sku: '000003', name: 'Jugo discontinuado', sale_unit: 'unit', units_per_box: 12, is_active: false }
 
 describe('validaciones de los formularios', () => {
   it('ingreso: cantidad según la unidad, cajas enteras y vencimiento obligatorio', () => {
@@ -226,6 +227,31 @@ describe('pantalla de Movimientos', () => {
       p_occurred_at: null,
     })
     expect(await screen.findByText('Merma: 1,25 kg de "Queso cremoso" (2 lotes).')).toBeInTheDocument()
+  })
+
+  it('producto inactivo: el encargado lo encuentra y solo puede darlo de baja (P-13)', async () => {
+    const { user, fake } = setup('manager')
+    fake.setTable('products', [PRODUCT, CHEESE, DISCONTINUED])
+    await user.click(await screen.findByRole('button', { name: 'Salida o ajuste' }))
+    const dialog = screen.getByRole('dialog')
+    await user.click(await within(dialog).findByRole('button', { name: /Jugo discontinuado.*\(inactivo\)/ }))
+    expect(within(dialog).getByText(/Producto inactivo: solo se puede registrar merma/)).toBeInTheDocument()
+    const select = within(dialog).getByLabelText(/^Tipo de movimiento/)
+    expect(within(select).getAllByRole('option').map((o) => (o as HTMLOptionElement).value)).toEqual([
+      'shrinkage',
+      'damage',
+      'supplier_return',
+    ])
+    expect(select).toHaveValue('shrinkage')
+  })
+
+  it('el empleado no ve productos inactivos al registrar consumo interno', async () => {
+    const { user, fake } = setup('staff')
+    fake.setTable('products', [PRODUCT, DISCONTINUED])
+    await user.click(await screen.findByRole('button', { name: 'Consumo interno' }))
+    const dialog = screen.getByRole('dialog')
+    expect(await within(dialog).findByRole('button', { name: /Yogur frutilla/ })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: /Jugo discontinuado/ })).not.toBeInTheDocument()
   })
 
   it('muestra el stock insuficiente que devuelve la base sin perder lo cargado', async () => {

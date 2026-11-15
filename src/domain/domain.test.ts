@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { alertLevelFor, EXPIRY_STATUSES } from './expiry'
-import { MOVEMENT_TYPE_INFO, MOVEMENT_TYPES, movementTypesFor, signedQuantity } from './movements'
+import { MOVEMENT_TYPE_INFO, MOVEMENT_TYPES, movementTypesFor, movementTypesForProduct, signedQuantity } from './movements'
 import { formatQuantity, SALE_UNITS, validateQuantity } from './units'
 import { formatVatRate } from './vat'
 
@@ -86,6 +86,12 @@ describe('movimientos (contrato §4.3)', () => {
     expect(movementTypesFor(false)).toEqual(['internal_use'])
     expect(movementTypesFor(true)).not.toContain('entry')
     expect(movementTypesFor(true)).toHaveLength(8)
+  })
+
+  it('un producto inactivo solo admite merma, daño y devolución a proveedor (P-13)', () => {
+    expect(movementTypesForProduct(movementTypesFor(true), false)).toEqual(['shrinkage', 'damage', 'supplier_return'])
+    expect(movementTypesForProduct(movementTypesFor(true), true)).toHaveLength(8)
+    expect(movementTypesForProduct(movementTypesFor(false), false)).toEqual([])
   })
 })
 
