@@ -27,7 +27,7 @@ export function fakeSession(email = 'empleado@prueba.test'): Session {
 
 export interface RecordedWrite {
   table: string
-  op: 'insert' | 'update'
+  op: 'insert' | 'update' | 'delete'
   payload: Row
   filters: Record<string, unknown>
 }
@@ -85,7 +85,7 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
   const writes: RecordedWrite[] = []
 
   const from = vi.fn((table: string) => {
-    let op: 'select' | 'insert' | 'update' = 'select'
+    let op: 'select' | 'insert' | 'update' | 'delete' = 'select'
     let payload: Row = {}
     const filters: Record<string, unknown> = {}
 
@@ -98,7 +98,7 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
     }
 
     const runWrite = (): Result => {
-      writes.push({ table, op: op as 'insert' | 'update', payload, filters: { ...filters } })
+      writes.push({ table, op: op as 'insert' | 'update' | 'delete', payload, filters: { ...filters } })
       const forced = writeResults[table]
       if (forced) {
         delete writeResults[table]
@@ -110,6 +110,11 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
         const row = { id: `00000000-0000-4000-8000-${String(rows.length + 100).padStart(12, '0')}`, is_active: true, ...payload }
         rows.push(row)
         return { data: { ...row }, error: null }
+      }
+      if (op === 'delete') {
+        const index = rows.findIndex((r) => r.id === filters.id)
+        if (index >= 0) rows.splice(index, 1)
+        return { data: null, error: null }
       }
       const row = rows.find((r) => r.id === filters.id)
       if (!row) return { data: null, error: { code: 'PGRST116', message: 'No rows' } }
@@ -138,6 +143,10 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
       update: (values: Row) => {
         op = 'update'
         payload = values
+        return builder
+      },
+      delete: () => {
+        op = 'delete'
         return builder
       },
       single: () => {

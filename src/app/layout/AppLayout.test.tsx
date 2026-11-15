@@ -15,7 +15,7 @@ describe('AppLayout', () => {
   it('muestra las secciones de la Etapa 1 en el menú', async () => {
     await renderAt('/')
     const nav = screen.getByRole('navigation')
-    for (const label of ['Dashboard', 'Productos', 'Movimientos de stock', 'Alertas', 'Catálogos']) {
+    for (const label of ['Dashboard', 'Productos', 'Movimientos de stock', 'Alertas', 'Catálogos', 'Configuración']) {
       expect(nav).toHaveTextContent(label)
     }
   })
