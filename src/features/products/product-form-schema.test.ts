@@ -75,6 +75,12 @@ describe('productFormSchema', () => {
     expect(errorsOf(valid({ cost_price: '-5' })).cost_price).toBeDefined()
   })
 
+  it('el precio sin IVA admite 4 decimales para que el precio final sea exacto (P-24)', () => {
+    expect(errorsOf(valid({ sale_price: '991,7355' }))).toEqual({})
+    expect(productFormSchema(TODAY).parse(valid({ sale_price: '991,7355' })).sale_price).toBe(991.7355)
+    expect(errorsOf(valid({ sale_price: '1,23456' })).sale_price).toMatch(/4 decimales/)
+  })
+
   it('solo admite IVA 21% o 10,5%', () => {
     expect(productFormSchema(TODAY).parse(valid({ vat_rate: '10.5' })).vat_rate).toBe(10.5)
     expect(errorsOf(valid({ vat_rate: '27' })).vat_rate).toBeDefined()

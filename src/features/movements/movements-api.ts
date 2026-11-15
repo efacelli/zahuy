@@ -31,7 +31,7 @@ export async function searchProducts(
   const term = sanitizeSearch(text)
   let q = client.from('products').select('id, sku, name, sale_unit, units_per_box, is_active')
   if (!includeInactive) q = q.eq('is_active', true)
-  if (term) q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`)
+  if (term) q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%,legacy_code.ilike.%${term}%`)
   const { data, error } = await q.order('name').limit(20)
   if (error) throw error
   return (data ?? []) as ProductOption[]

@@ -127,9 +127,12 @@ export function ProductsPage() {
         description="Catálogo, stock y próximos vencimientos."
         actions={
           canManage && (
-            <Link to="/productos/nuevo" className={pageStyles.linkButton}>
-              + Nuevo producto
-            </Link>
+            <>
+              <Link to="/productos/importar">Importar</Link>
+              <Link to="/productos/nuevo" className={pageStyles.linkButton}>
+                + Nuevo producto
+              </Link>
+            </>
           )
         }
       />
