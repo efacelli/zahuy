@@ -119,11 +119,70 @@ npx supabase@3.1.0 db push                                  # aplica las migraci
 | Backup automático | Diario, incluido en Supabase Pro. **El plan gratuito no lo tiene** | Solo con Pro |
 | Backup manual semanal | `npx supabase@3.1.0 db dump --linked -f zahuy-esquema-AAAA-MM-DD.sql` y `npx supabase@3.1.0 db dump --linked --data-only -f zahuy-datos-AAAA-MM-DD.sql` (piden la contraseña de la base). Guardar en una carpeta privada (no el repo, no un chat), idealmente también en la nube del negocio | Una vez por semana mientras se use el plan gratuito |
 | Backup manual | `npx supabase@3.1.0 db dump --linked -f <archivo>.sql` (esquema) y `--data-only` (datos), guardado **fuera del repo**, cifrado | Antes de cada migración en producción |
-| Restaurar | Panel de Supabase → Backups, o el dump manual en un proyecto nuevo | Solo ante pérdida de datos, con aprobación |
+| Restaurar | Panel de Supabase → Backups (solo con Pro), o el backup manual en un proyecto nuevo siguiendo §7.1 | Solo ante pérdida de datos, con aprobación |
 
 - Un rollback del frontend es volver a desplegar la versión anterior en Render (un clic).
 - Un rollback de código **no** revierte una migración. Por eso las migraciones son aditivas (expandir-migrar-contraer) y se prueban antes en staging.
 - Nunca `DROP`, `TRUNCATE` ni `DELETE` masivo en producción sin backup confirmado y aprobación.
+
+### 7.1 Restaurar un backup manual (procedimiento probado)
+
+Probado en la base local con datos ficticios (noviembre de 2026): se tomó la
+huella, se hizo el backup, se recreó la base desde cero y se restauró. La huella
+quedó idéntica, la base restaurada pasó todas las pruebas pgTAP y un usuario
+restaurado pudo ingresar y operar. **Falta probarlo una vez en staging** antes de
+depender de él.
+
+**Al hacer cada backup** (además de los dos archivos de la tabla de arriba):
+
+```bash
+psql "<conexión de la base>" -At -f supabase/scripts/backup-fingerprint.sql > zahuy-huella-AAAA-MM-DD.txt
+```
+
+Guardar esa huella junto al backup. No contiene datos del negocio: solo
+cantidades de filas y un resumen por tabla.
+
+**Para restaurar en un proyecto nuevo** 🔒:
+
+1. Crear el proyecto y aplicar las migraciones (`db push`, §4). No cargar el seed.
+2. Correr `supabase/scripts/restore-prepare.sql`. Quita las pocas filas que las
+   migraciones crean solas (configuración general de alertas, su registro de
+   auditoría y el bucket de imágenes), que el backup trae con sus valores
+   reales. Si la base ya tiene usuarios, productos, lotes o movimientos, se
+   detiene sin tocar nada.
+3. Cargar el archivo de datos: `psql "<conexión>" -f zahuy-datos-AAAA-MM-DD.sql`.
+   Revisar que la salida no tenga ninguna línea `ERROR`.
+4. Volver a correr `backup-fingerprint.sql` y comparar con la huella guardada:
+   tienen que ser iguales, y `descuadres` tiene que ser 0.
+5. Ingresar con un usuario real y revisar un producto y su historial.
+
+**Por qué importa el paso 2.** Sin él, la restauración parece funcionar pero
+pierde datos: en la prueba, la tabla de auditoría quedó con 1 fila en lugar de
+37 y se perdieron las alertas por categoría. El archivo de datos carga cada
+tabla en una sola sentencia; si una fila choca con otra que ya existe, esa tabla
+entera no se carga y el resto sigue. Productos, lotes, movimientos y usuarios
+sí se restauraban bien.
+
+**Lo que el backup no trae:**
+
+- **Las imágenes de productos.** El archivo de datos guarda qué imágenes
+  existen, no los archivos. Si se usan imágenes, hay que copiarlas aparte desde
+  Storage.
+- **Las claves y la configuración del proyecto** (Auth, URLs, variables de
+  Render): se cargan de nuevo a mano (§3 y §5).
+
+**Detalles técnicos:**
+
+- El archivo de datos restaura con los triggers desactivados
+  (`session_replication_role = replica`), así que respeta las fechas y autores
+  originales y no genera auditoría duplicada. Hay que cargarlo con un rol que
+  pueda cambiar ese ajuste (el rol `postgres` del proyecto).
+- Trae también los usuarios de Auth con su contraseña cifrada: después de
+  restaurar, cada persona entra con su contraseña de siempre.
+- La secuencia del SKU se restaura con su valor; además, la base saltea un SKU
+  que ya exista, así que no se repiten.
+- En la CLI 3.1.0, `--linked` sigue funcionando pero está marcado para
+  eliminarse en la versión 4; el reemplazo es `--remote`.
 
 ## 8. Rutina para cada cambio posterior
 
