@@ -94,6 +94,7 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
     let payload: Row = {}
     const filters: Record<string, unknown> = {}
     const ilikeFilters: Record<string, string> = {}
+    const inFilters: Record<string, readonly unknown[]> = {}
 
     const runSelect = (): Result => {
       const entry = tables[table] ?? { data: [], error: null }
@@ -125,6 +126,13 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
         if (index >= 0) rows.splice(index, 1)
         return { data: null, error: null }
       }
+      if (op === 'update' && inFilters.id) {
+        const ids = inFilters.id
+        const matched = rows.filter((r) => ids.includes(r.id))
+        matched.forEach((r) => Object.assign(r, payload))
+        writes[writes.length - 1]!.filters = { ...filters, id: [...ids] }
+        return { data: matched.map((r) => ({ id: r.id })), error: null }
+      }
       const row = rows.find((r) => r.id === filters.id)
       if (!row) return { data: null, error: { code: 'PGRST116', message: 'No rows' } }
       Object.assign(row, payload)
@@ -145,7 +153,11 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
         return builder
       },
       is: () => builder,
-      in: () => builder,
+      // En lecturas se registra pero no se aplica; en un UPDATE por ids, sí.
+      in: (column: string, values: readonly unknown[]) => {
+        inFilters[column] = values
+        return builder
+      },
       order: () => builder,
       range: () => builder,
       limit: () => builder,

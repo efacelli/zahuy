@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import pageStyles from '../../app/pages.module.css'
 import { ExpiryBadge } from '../../components/domain/ExpiryBadge'
@@ -16,6 +16,7 @@ import { useSupabase } from '../../lib/supabase-context'
 import { usePermissions } from '../auth/useProfile'
 import { fetchProductList, type ProductListRow } from './list-api'
 import { hasActiveFilters, parseListParams, serializeListParams, type ProductListParams, type ProductSortKey } from './list-params'
+import { BulkClassifyDialog } from './BulkClassifyDialog'
 import { ProductFilters } from './ProductFilters'
 import styles from './ProductsPage.module.css'
 
@@ -27,6 +28,7 @@ export function ProductsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const params = useMemo(() => parseListParams(searchParams), [searchParams])
   const today = todayInAppTimeZone()
+  const [classifying, setClassifying] = useState(false)
 
   const query = useQuery({
     queryKey: ['products', 'list', params],
@@ -137,6 +139,20 @@ export function ProductsPage() {
         }
       />
       <ProductFilters params={params} onChange={update} />
+      {canManage && total > 0 && (
+        <div className={styles.bulkBar}>
+          <button type="button" className={styles.bulkButton} onClick={() => setClassifying(true)}>
+            Clasificar los {formatNumber(total)} del listado
+          </button>
+        </div>
+      )}
+      <BulkClassifyDialog
+        open={classifying}
+        params={params}
+        total={total}
+        filtered={filtered}
+        onClose={() => setClassifying(false)}
+      />
       <DataTable
         caption="Listado de productos"
         columns={columns}

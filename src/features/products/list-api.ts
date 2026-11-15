@@ -105,3 +105,52 @@ export async function fetchProductSummary(client: SupabaseClient, id: string): P
   if (error) throw error
   return data as unknown as ProductListRow
 }
+
+/* ------------------------------------------------------------------ */
+/* Clasificación en lote (encargado y dueño)                           */
+/* ------------------------------------------------------------------ */
+
+const ID_PAGE = 1000
+
+/** Todos los ids que coinciden con el filtro actual (sin paginar), con el mismo filtro del listado. */
+export async function fetchMatchingIds(client: SupabaseClient, p: ProductListParams): Promise<string[]> {
+  const ids: string[] = []
+  for (let page = 1; ; page++) {
+    const base = client.from('v_product_list').select('id', { count: 'exact' }) as unknown as ListQuery
+    const { data, error } = await applyListParams(base, { ...p, page, pageSize: ID_PAGE })
+    if (error) throw error
+    const rows = (data ?? []) as { id: string }[]
+    rows.forEach((r) => ids.push(r.id))
+    if (rows.length < ID_PAGE) return ids
+  }
+}
+
+export interface ClassificationChange {
+  category_id?: string
+  brand_id?: string
+}
+
+const UPDATE_CHUNK = 200
+
+/**
+ * Cambia categoría y/o marca de muchos productos, de a tandas. Es un UPDATE
+ * con RLS (solo encargado y dueño) y cada fila queda en audit_log. Si la base
+ * actualiza menos filas que las pedidas, es falta de permiso.
+ */
+export async function bulkClassify(
+  client: SupabaseClient,
+  ids: string[],
+  change: ClassificationChange,
+  onProgress?: (done: number) => void,
+): Promise<number> {
+  let done = 0
+  for (let i = 0; i < ids.length; i += UPDATE_CHUNK) {
+    const chunk = ids.slice(i, i + UPDATE_CHUNK)
+    const { data, error } = await client.from('products').update(change).in('id', chunk).select('id')
+    if (error) throw error
+    if (((data ?? []) as unknown[]).length < chunk.length) throw { code: '42501', message: 'UPDATE_NO_ROWS' }
+    done += chunk.length
+    onProgress?.(done)
+  }
+  return done
+}
