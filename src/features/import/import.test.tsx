@@ -16,7 +16,7 @@ const CSV = [
 function setup(role: 'manager' | 'staff' = 'manager') {
   const fake = createFakeSupabase(fakeSession(), { role })
   fake.setTable('products', [{ id: 'p-777', legacy_code: '777' }])
-  fake.setTable('categories', [{ id: 'cat-sc', name: 'Sin clasificar' }])
+  fake.setTable('categories', [{ id: 'cat-sc', name: 'Otros' }])
   fake.setTable('brands', [])
   fake.setRpcResult('create_product', { id: 'nuevo', sku: '000100', name: 'x' })
   const router = renderApp('/productos/importar', fake.client)
@@ -49,7 +49,7 @@ describe('importar productos del sistema anterior', () => {
     expect(screen.getByRole('button', { name: 'Importar 3 productos' })).toBeInTheDocument()
   })
 
-  it('importa con precio sin IVA de 4 decimales, código anterior y "Sin clasificar"', async () => {
+  it('importa con precio sin IVA de 4 decimales, código anterior, categoría "Otros" y marca "Sin clasificar"', async () => {
     const { user, fake } = setup()
     await upload(user)
     await user.click(await screen.findByRole('button', { name: 'Importar 2 productos' }))

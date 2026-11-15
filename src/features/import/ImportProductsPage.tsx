@@ -12,7 +12,7 @@ import { toAppError } from '../../lib/errors'
 import { formatMoney, formatNumber } from '../../lib/format'
 import { useSupabase } from '../../lib/supabase-context'
 import {
-  UNCLASSIFIED,
+  DEFAULT_NAMES,
   ensureUnclassified,
   fetchExistingLegacyCodes,
   runImport,
@@ -157,7 +157,7 @@ export function ImportProductsPage() {
             </dd>
           </dl>
           <p className={styles.note}>
-            Todos quedan activos, por unidad, con categoría y marca “{UNCLASSIFIED}” para ordenar después. El precio final
+            Todos quedan activos, por unidad, con categoría “{DEFAULT_NAMES.categories}” y marca “{DEFAULT_NAMES.brands}” para ordenar después. El precio final
             queda igual al del sistema anterior.
           </p>
 
@@ -249,8 +249,8 @@ export function ImportProductsPage() {
         onCancel={() => setConfirming(false)}
       >
         <p>
-          Se van a crear <strong>{formatNumber(toImport.length)} productos</strong> sin stock, con categoría y marca “
-          {UNCLASSIFIED}”. Puede tardar unos minutos; no cierres esta pestaña. Si se corta, se puede repetir sin duplicar.
+          Se van a crear <strong>{formatNumber(toImport.length)} productos</strong> sin stock, con categoría “{DEFAULT_NAMES.categories}” y marca “
+          {DEFAULT_NAMES.brands}”. Puede tardar unos minutos; no cierres esta pestaña. Si se corta, se puede repetir sin duplicar.
         </p>
       </ConfirmDialog>
     </>
