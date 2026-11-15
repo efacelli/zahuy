@@ -88,12 +88,16 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
     let op: 'select' | 'insert' | 'update' | 'delete' = 'select'
     let payload: Row = {}
     const filters: Record<string, unknown> = {}
+    const ilikeFilters: Record<string, string> = {}
 
     const runSelect = (): Result => {
       const entry = tables[table] ?? { data: [], error: null }
       if (entry.error || !entry.data) return { data: null, error: entry.error }
       // Copias: como la base real, cada lectura devuelve objetos nuevos.
-      const rows = entry.data.filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v)).map((r) => ({ ...r }))
+      const rows = entry.data
+        .filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v))
+        .filter((r) => Object.entries(ilikeFilters).every(([k, v]) => String(r[k] ?? '').toLowerCase() === v))
+        .map((r) => ({ ...r }))
       return { data: rows, error: null, count: rows.length } as Result
     }
 
@@ -130,6 +134,11 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
       },
       // Se registran pero no se aplican: la lógica de filtros se prueba aparte (list-api.test).
       or: () => builder,
+      not: () => builder,
+      ilike: (column: string, value: unknown) => {
+        ilikeFilters[column] = String(value).toLowerCase()
+        return builder
+      },
       is: () => builder,
       in: () => builder,
       order: () => builder,

@@ -41,7 +41,7 @@ export function ProductFilters({ params, onChange }: ProductFiltersProps) {
       <input
         type="search"
         className={`input ${styles.search}`}
-        placeholder="Buscar por nombre, SKU o código de barras"
+        placeholder="Buscar por nombre, SKU, código de barras o código anterior"
         aria-label="Buscar por nombre, SKU o código de barras"
         value={search}
         onChange={(e) => setSearch(e.target.value)}

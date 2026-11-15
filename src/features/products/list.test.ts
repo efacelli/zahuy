@@ -95,12 +95,12 @@ describe('consulta a v_product_list', () => {
   })
 
   it('busca por nombre, SKU o código de barras', () => {
-    expect(run({ search: 'yogur' })).toContainEqual(['or', 'name.ilike.%yogur%,sku.ilike.%yogur%,barcode.ilike.%yogur%'])
+    expect(run({ search: 'yogur' })).toContainEqual(['or', 'name.ilike.%yogur%,sku.ilike.%yogur%,barcode.ilike.%yogur%,legacy_code.ilike.%yogur%'])
   })
 
   it('no inyecta filtros con la búsqueda', () => {
     const or = run({ search: 'x,is_active.eq.false' }).find((c) => c[0] === 'or')
-    expect(or?.[1]).toBe('name.ilike.%x is active eq false%,sku.ilike.%x is active eq false%,barcode.ilike.%x is active eq false%')
+    expect(or?.[1]).toBe('name.ilike.%x is active eq false%,sku.ilike.%x is active eq false%,barcode.ilike.%x is active eq false%,legacy_code.ilike.%x is active eq false%')
     expect(run({ search: 'x,is_active.eq.false' }).filter((c) => c[1] === 'is_active')).toEqual([['eq', 'is_active', true]])
   })
 

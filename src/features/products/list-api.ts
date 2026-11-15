@@ -39,6 +39,8 @@ export interface ProductListRow {
   loose_units: number
   /** Las cajas contadas superan el stock: hay que revisar el conteo. */
   has_box_mismatch: boolean
+  /** Código propio del sistema anterior (v0.5.0, P-25). */
+  legacy_code: string | null
 }
 
 export interface ProductListPage {
@@ -50,7 +52,7 @@ const COLUMNS =
   'id, sku, barcode, name, category_id, category_name, brand_id, brand_name, supplier_id, supplier_name, ' +
   'sale_unit, cost_price, sale_price, sale_price_with_vat, vat_rate, boxes_quantity, units_per_box, min_stock, ' +
   'is_active, stock_quantity, next_expires_on, next_expiry_status, active_batches_count, is_low_stock, ' +
-  'units_in_boxes, loose_units, has_box_mismatch'
+  'units_in_boxes, loose_units, has_box_mismatch, legacy_code'
 
 const EXPIRY_STATUSES_BY_FILTER: Record<ExpiryFilter, ExpiryStatus[]> = {
   por_vencer: ['expires_urgent', 'expires_soon', 'expires_upcoming'],
@@ -72,7 +74,7 @@ export interface ListQuery {
 export function applyListParams(query: ListQuery, p: ProductListParams) {
   let q = query
   const term = sanitizeSearch(p.search)
-  if (term) q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`)
+  if (term) q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%,legacy_code.ilike.%${term}%`)
   if (p.categoryId) q = q.eq('category_id', p.categoryId)
   if (p.supplierId === NO_SUPPLIER) q = q.is('supplier_id', null)
   else if (p.supplierId) q = q.eq('supplier_id', p.supplierId)

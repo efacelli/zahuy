@@ -1,6 +1,7 @@
 import type { RouteObject } from 'react-router'
 import { AlertsPage } from '../features/alerts/AlertsPage'
 import { AuditPage } from '../features/audit/AuditPage'
+import { ImportProductsPage } from '../features/import/ImportProductsPage'
 import { LoginPage } from '../features/auth/LoginPage'
 import { RequireAuth } from '../features/auth/RequireAuth'
 import { RequirePermission } from '../features/auth/RequirePermission'
@@ -32,6 +33,14 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePermission permission="manageInventory">
                 <NewProductPage />
+              </RequirePermission>
+            ),
+          },
+          {
+            path: 'productos/importar',
+            element: (
+              <RequirePermission permission="manageInventory">
+                <ImportProductsPage />
               </RequirePermission>
             ),
           },

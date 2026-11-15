@@ -15,7 +15,7 @@ select hasnt_column('public', 'products', 'stock_quantity', 'products no tiene s
 select index_is_unique('public', 'products', 'products_sku_key', 'products_sku_key es único');
 select index_is_unique('public', 'products', 'products_barcode_key', 'products_barcode_key es único');
 select col_type_is('public', 'products', 'cost_price', 'numeric(12,2)', 'cost_price es numeric(12,2)');
-select col_type_is('public', 'products', 'sale_price', 'numeric(12,2)', 'sale_price es numeric(12,2)');
+select col_type_is('public', 'products', 'sale_price', 'numeric(12,4)', 'sale_price es numeric(12,4) (v0.5.0, P-24)');
 select col_type_is('public', 'products', 'min_stock', 'numeric(12,3)', 'min_stock es numeric(12,3)');
 select col_type_is('public', 'products', 'vat_rate', 'numeric(4,2)', 'vat_rate es numeric(4,2)');
 
@@ -113,7 +113,7 @@ select is(pg_temp.try_product($$vat_rate = 21$$), 'ok', 'IVA 21%');
 select is(pg_temp.try_product($$cost_price = -0.01$$), '23514', 'costo negativo');
 select is(pg_temp.try_product($$sale_price = -1$$), '23514', 'precio negativo');
 select is(pg_temp.try_product($$cost_price = 0, sale_price = 0$$), 'ok', 'costo y precio en cero');
-select is(pg_temp.try_product($$sale_price = 99999999999.99$$), '22003', 'importe fuera de numeric(12,2)');
+select is(pg_temp.try_product($$sale_price = 99999999999.99$$), '22003', 'importe fuera de rango');
 select is(pg_temp.try_product($$boxes_quantity = -1$$), '23514', 'cajas negativas');
 select is(pg_temp.try_product($$min_stock = -0.001$$), '23514', 'stock mínimo negativo');
 select is(pg_temp.try_product($$min_stock = 2.5$$), 'ok', 'stock mínimo con decimales');

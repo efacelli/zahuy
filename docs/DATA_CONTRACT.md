@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.4.4 |
+| Versión | 0.5.0 |
 | Estado | **PROPUESTO — PENDIENTE DE CONCORDANCIA DEL BACKEND** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -347,7 +347,8 @@ futura.
 |---|---|---|---|---|
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
 | `sku` | `text` | no | generado | **Lo genera la base** (v0.4.0): `lpad(nextval('products_sku_seq')::text, 6, '0')` → `000001`, `000002`… Único: `unique index products_sku_key on upper(sku)`; `CHECK (sku = trim(sku) and length(sku) between 1 and 40)`. No se edita desde la app ([P-05](#13-preguntas-abiertas)) |
-| `barcode` | `text` | sí | — | `CHECK (barcode ~ '^[0-9]{8,14}$')`; único parcial `products_barcode_key` `WHERE barcode IS NOT NULL`. Sin lector en la Etapa 1 |
+| `barcode` | `text` | sí | — | `CHECK (barcode ~ '^[0-9]{8,14}$')`; único parcial `products_barcode_key` `WHERE barcode IS NOT NULL`. Se lee con el lector USB |
+| `legacy_code` | `text` | sí | — | v0.5.0 (P-25): código propio del sistema anterior del cliente (ej. `31884325`, `001`). `CHECK (legacy_code = trim(legacy_code) and length(legacy_code) between 1 and 40)`; único parcial `products_legacy_code_key` sobre `upper(legacy_code)` `WHERE legacy_code IS NOT NULL`. Se busca igual que el SKU. Lo edita encargado o dueño |
 | `name` | `text` | no | — | 1–150 caracteres |
 | `description` | `text` | sí | — | — |
 | `category_id` | `uuid` | no | — | FK → `categories.id` ([P-06](#13-preguntas-abiertas)) |
@@ -355,7 +356,7 @@ futura.
 | `supplier_id` | `uuid` | sí | — | FK → `suppliers.id`; proveedor habitual |
 | `sale_unit` | `sale_unit` | no | `'unit'` | — |
 | `cost_price` | `numeric(12,2)` | no | — | `CHECK (cost_price >= 0)`. Costo **sin IVA** (v0.4.0) |
-| `sale_price` | `numeric(12,2)` | no | — | `CHECK (sale_price >= 0)`. Precio de venta **sin IVA**, el que se carga (v0.4.0) |
+| `sale_price` | `numeric(12,4)` | no | — | `CHECK (sale_price >= 0)`. Precio de venta **sin IVA**, el que se carga (v0.4.0). **4 decimales desde v0.5.0 (P-24)**: así cualquier precio final con centavos se reproduce exacto en `sale_price_with_vat` |
 | `vat_rate` | `numeric(4,2)` | no | `21.00` | `CHECK (vat_rate in (10.50, 21.00))` ([P-02](#13-preguntas-abiertas)) |
 | `sale_price_with_vat` | `numeric(12,2)` | no | generada | Precio final de góndola (v0.4.0): `GENERATED ALWAYS AS (round(sale_price * (1 + vat_rate / 100), 2)) STORED`. No se escribe |
 | `boxes_quantity` | `integer` | no | `0` | `CHECK (>= 0)`. Conteo manual de **cajas cerradas en depósito**; lo actualiza cualquier usuario activo |
@@ -376,9 +377,13 @@ futura.
   del stock** (§3). `boxes_quantity` dice cuántas de esas unidades están en cajas
   cerradas; no suma stock por sí sola. Ver §7.2.
 - **SKU (v0.4.0):** generado por la base con la secuencia `products_sku_seq`.
-  El cliente no tiene código interno propio; el SKU de 6 dígitos sirve también
-  para los productos sin código de barras y, más adelante, como código en la
-  balanza.
+  El SKU de 6 dígitos sirve también para los productos sin código de barras y,
+  más adelante, como código en la balanza. El código propio del sistema
+  anterior se conserva aparte en `legacy_code` (v0.5.0, P-25); no reemplaza al SKU.
+- **Precio final exacto (v0.5.0, P-24):** con `sale_price` de 4 decimales,
+  `sale_price = round(precio_final / (1 + vat_rate / 100), 4)` hace que
+  `sale_price_with_vat` devuelva exactamente `precio_final` (el error máximo,
+  0,00006, no alcanza a mover el redondeo a centavos).
 - Los nombres de los índices únicos (`products_sku_key`, `products_barcode_key`,
   `categories_name_key`, `brands_name_key`, `suppliers_name_key`,
   `suppliers_tax_id_key`) son parte del contrato: el frontend traduce el error
@@ -577,7 +582,7 @@ producto sin stock figura con `is_low_stock = true`.
 ### 7.3 `v_product_list`
 
 Lo que lee la pantalla de listado: columnas de `products` (incluidas
-`sale_price_with_vat` y `units_per_box`) más `category_name`, `brand_name`,
+`sale_price_with_vat`, `units_per_box` y, desde v0.5.0, `legacy_code` al final) más `category_name`, `brand_name`,
 `supplier_name` y las de `v_product_stock`. La búsqueda, los filtros, el orden y
 la paginación se hacen sobre esta vista, sin repetir las reglas en React.
 
@@ -716,7 +721,8 @@ create_product(
   p_initial_quantity numeric default null,
   p_received_on      date    default null,   -- null = hoy (AR)
   p_expires_on       date    default null,
-  p_batch_number     text    default null
+  p_batch_number     text    default null,
+  p_legacy_code      text    default null    -- v0.5.0 (P-25)
 ) returns products
 ```
 
@@ -1051,6 +1057,9 @@ este documento y una migración nueva.
 | P-20 | ¿Cuántas sucursales y depósitos? | Una sucursal y un depósito: no hace falta modelar ubicaciones | Adoptada (v0.4.0) |
 | P-21 | En "Mermas del mes", ¿se descuentan las mermas anuladas? ¿Se muestra en unidades o en dinero? | Se descuentan los movimientos anulados y se agrega `shrinkage_value_month` (valor a costo) a `v_inventory_summary` (§7.4) | Adoptada (v0.4.4) |
 | P-22 | ¿Se audita el borrado de una configuración de alertas por categoría? | Sí: el borrado queda en `audit_log` con `action = 'delete'` (§5.8) | Adoptada (v0.4.4) |
+| P-24 | ¿El precio final de góndola tiene que quedar exactamente igual al del sistema anterior? | Sí: `sale_price` pasa a `numeric(12,4)` (§5.5). Con 2 decimales, 2.272 de 13.288 productos del sistema anterior quedaban un centavo distintos | Adoptada (v0.5.0) |
+| P-25 | ¿Se conserva el código propio del sistema anterior? | Sí, en `products.legacy_code`, único y buscable; el SKU sigue siendo el de la base (§5.5) | Adoptada (v0.5.0) |
+| P-26 | ¿Qué productos del sistema anterior se importan y con qué catálogos? | Los actualizados desde 2025 (unos 3.000 de 13.288 cargados desde 2003), con categoría y marca "Sin clasificar" porque la exportación no las trae; se ordenan después | Adoptada (v0.5.0) |
 | P-23 | ¿Se puede quitar el vencimiento (`NULL`) al editar un lote? | Sí: el encargado o el dueño puede quitarlo al editar un lote; queda auditado. La obligación aplica solo al crear lotes (`EXPIRY_REQUIRED`). Se rechazó la propuesta de prohibirlo | Adoptada (v0.4.4) |
 
 ---
@@ -1084,3 +1093,4 @@ volver a registrar la concordancia.
 | 0.4.2 | 2026-11-15 | `v_batch_status` suma datos del producto y la categoría para la pantalla de Alertas (§7.1) |
 | 0.4.3 | 2026-11-14 | Aclaraciones de implementación sin reglas nuevas (§8.9): RPC de movimientos implementadas, huecos de SKU, anulación por movimiento en salidas repartidas, nombres de FK usados por el frontend, conteo de cajas, métrica de mermas, auditoría de alertas, edición de `expires_on`, seed y tipos generados. Preguntas abiertas P-21 a P-23 |
 | 0.4.4 | 2026-11-14 | Decisiones de `efacelli`: P-21 adoptada (mermas del mes sin anuladas y `shrinkage_value_month`, §7.4); P-22 adoptada (`audit_log` admite `delete` y audita el borrado de `expiry_alert_settings`, §5.8); P-23: se mantiene permitido quitar `expires_on` al editar un lote. Migración `20261116200000` |
+| 0.5.0 | 2026-11-15 | Importación del sistema anterior: `products.legacy_code` (P-25), `sale_price` con 4 decimales para precio final exacto (P-24), `create_product` recibe `p_legacy_code`, `v_product_list` expone `legacy_code`; criterios de importación (P-26). Migración `20261116210000` |
