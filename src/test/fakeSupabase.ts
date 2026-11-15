@@ -53,11 +53,16 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
       listeners.add(listener)
       return { data: { subscription: { unsubscribe: () => listeners.delete(listener) } } }
     }),
-    signInWithPassword: vi.fn(async ({ email }: { email: string; password: string }) => {
+    signInWithPassword: vi.fn(async ({ email, password }: { email: string; password: string }) => {
+      // Contraseña que simula credenciales incorrectas.
+      if (password === 'incorrecta') {
+        return { data: { session: null, user: null }, error: { status: 400, code: 'invalid_credentials', message: 'Invalid login credentials' } }
+      }
       session = fakeSession(email)
       emit('SIGNED_IN')
       return { data: { session, user: session.user }, error: null }
     }),
+    updateUser: vi.fn(async (_attrs: { password?: string }) => ({ data: { user: session?.user ?? null }, error: null })),
     signOut: vi.fn(async () => {
       session = null
       emit('SIGNED_OUT')
