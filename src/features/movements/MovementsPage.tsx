@@ -116,8 +116,15 @@ export function MovementsPage() {
             header: 'Acciones',
             align: 'end',
             render: (r) =>
-              r.reverses_movement_id ? null : (
-                <Button size="sm" variant="ghost" onClick={() => setReversing(r)} aria-label={`Anular movimiento del ${formatDateTime(r.occurred_at)}`}>
+              r.reverses_movement_id ? null : r.is_reversed ? (
+                <span className={styles.muted}>Anulado</span>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setReversing(r)}
+                  aria-label={`Anular ${MOVEMENT_TYPE_INFO[r.movement_type].label.toLowerCase()} de ${formatQuantity(r.quantity, r.batch?.product?.sale_unit ?? 'unit')} de ${r.batch?.product?.name ?? 'producto'}, ${formatDateTime(r.occurred_at)}`}
+                >
                   Anular
                 </Button>
               ),

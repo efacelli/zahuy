@@ -113,6 +113,8 @@ export interface MovementHistoryRow {
     product: { sku: string; name: string; sale_unit: SaleUnit } | null
   } | null
   author: { full_name: string } | null
+  /** Calculado en el cliente: ya existe un movimiento que lo anula. */
+  is_reversed?: boolean
 }
 
 /*
@@ -152,5 +154,19 @@ export async function fetchMovementHistory(client: SupabaseClient, p: HistoryPar
   const base = client.from('stock_movements').select(HISTORY_COLUMNS, { count: 'exact' }) as unknown as HistoryQuery
   const { data, error, count } = await applyHistoryParams(base, p)
   if (error) throw error
-  return { rows: (data ?? []) as MovementHistoryRow[], total: count ?? 0 }
+  const rows = (data ?? []) as MovementHistoryRow[]
+  const reversed = await fetchReversedIds(client, rows.map((r) => r.id))
+  return { rows: rows.map((r) => ({ ...r, is_reversed: reversed.has(r.id) })), total: count ?? 0 }
+}
+
+/**
+ * De estos movimientos, cuáles ya tienen anulación. PostgREST no expone la
+ * relación inversa de reverses_movement_id (FK de la tabla consigo misma), así
+ * que se consulta aparte; la base igual rechaza anular dos veces (ALREADY_REVERSED).
+ */
+async function fetchReversedIds(client: SupabaseClient, ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set()
+  const { data, error } = await client.from('stock_movements').select('reverses_movement_id').in('reverses_movement_id', ids)
+  if (error) throw error
+  return new Set(((data ?? []) as { reverses_movement_id: string | null }[]).flatMap((r) => r.reverses_movement_id ?? []))
 }

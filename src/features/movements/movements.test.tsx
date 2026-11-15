@@ -116,7 +116,7 @@ describe('pantalla de Movimientos', () => {
   it('el encargado puede anular, con motivo obligatorio', async () => {
     const { user, fake } = setup('manager', [historyRow({ id: '11111111-2222-4333-8444-555555555555' })])
     fake.setRpcResult('reverse_stock_movement', { id: 'r1' })
-    await user.click(await screen.findByRole('button', { name: /Anular movimiento/ }))
+    await user.click(await screen.findByRole('button', { name: /^Anular ingreso de 30 u\. de Yogur frutilla/ }))
     const dialog = screen.getByRole('dialog', { name: 'Anular movimiento' })
     await user.click(within(dialog).getByRole('button', { name: 'Anular' }))
     expect(within(dialog).getByText('Indicá por qué se anula.')).toBeInTheDocument()
@@ -126,6 +126,17 @@ describe('pantalla de Movimientos', () => {
     const [name, params] = fake.rpc.mock.calls[0] as [string, Record<string, unknown>]
     expect(name).toBe('reverse_stock_movement')
     expect(params).toMatchObject({ p_movement_id: '11111111-2222-4333-8444-555555555555', p_reason: 'Cargado dos veces' })
+  })
+
+  it('un movimiento ya anulado no ofrece "Anular" otra vez', async () => {
+    const original = '11111111-2222-4333-8444-555555555555'
+    setup('manager', [
+      historyRow({ id: 'r-1', movement_type: 'adjustment_out', signed_quantity: -30, reason: 'Duplicado', reverses_movement_id: original }),
+      historyRow({ id: original }),
+    ])
+    const table = await screen.findByRole('table', { name: 'Historial de movimientos' })
+    expect(await within(table).findByText('Anulado')).toBeInTheDocument()
+    expect(within(table).queryByRole('button', { name: /^Anular/ })).not.toBeInTheDocument()
   })
 
   it('ingreso por cajas: convierte, pide vencimiento, confirma y llama a receive_stock', async () => {
