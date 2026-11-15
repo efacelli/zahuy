@@ -68,10 +68,10 @@ export function AlertSettingsPanel() {
   })
 
   const columns: Column<Row, ColumnKey>[] = [
-    { key: 'scope', header: 'Aplica a', render: (r) => (r.category_id ? r.label : <strong>{r.label}</strong>), minWidth: '14rem' },
-    { key: 'urgent', header: EXPIRY_STATUS_LABEL.expires_urgent, align: 'end', render: (r) => `${r.urgent_days} días` },
-    { key: 'soon', header: EXPIRY_STATUS_LABEL.expires_soon, align: 'end', render: (r) => `${r.soon_days} días` },
-    { key: 'notice', header: EXPIRY_STATUS_LABEL.expires_upcoming, align: 'end', render: (r) => `${r.notice_days} días` },
+    { key: 'scope', header: 'Aplica a', render: (r) => (r.category_id ? r.label : <strong>{r.label}</strong>), minWidth: '11rem' },
+    { key: 'urgent', header: 'Urgente', align: 'end', render: (r) => `${r.urgent_days} días` },
+    { key: 'soon', header: 'Pronto', align: 'end', render: (r) => `${r.soon_days} días` },
+    { key: 'notice', header: 'Aviso', align: 'end', render: (r) => `${r.notice_days} días` },
     {
       key: 'actions',
       header: 'Acciones',

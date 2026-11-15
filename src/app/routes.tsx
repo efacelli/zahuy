@@ -1,5 +1,6 @@
 import type { RouteObject } from 'react-router'
 import { AlertsPage } from '../features/alerts/AlertsPage'
+import { AuditPage } from '../features/audit/AuditPage'
 import { LoginPage } from '../features/auth/LoginPage'
 import { RequireAuth } from '../features/auth/RequireAuth'
 import { RequirePermission } from '../features/auth/RequirePermission'
@@ -51,6 +52,14 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePermission permission="configureAlerts">
                 <SettingsPage />
+              </RequirePermission>
+            ),
+          },
+          {
+            path: 'auditoria',
+            element: (
+              <RequirePermission permission="manageUsers">
+                <AuditPage />
               </RequirePermission>
             ),
           },
