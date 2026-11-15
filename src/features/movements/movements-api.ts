@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MovementType } from '../../domain/movements'
 import type { SaleUnit } from '../../domain/units'
 import { DEFAULT_PAGE_SIZE, pageRange } from '../../lib/pagination'
-import { sanitizeSearch } from '../products/list-params'
+import { textSearchFilter } from '../products/list-params'
 
 /* ------------------------------------------------------------------ */
 /* Productos para elegir en los formularios                            */
@@ -15,16 +15,39 @@ export interface ProductOption {
   sale_unit: SaleUnit
   /** Contrato v0.4.0 §5.5. */
   units_per_box: number
+  is_active: boolean
 }
 
-/** Busca productos activos por nombre, SKU o código de barras (máximo 20). */
-export async function searchProducts(client: SupabaseClient, text: string): Promise<ProductOption[]> {
-  const term = sanitizeSearch(text)
-  let q = client.from('products').select('id, sku, name, sale_unit, units_per_box').eq('is_active', true)
-  if (term) q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`)
+/**
+ * Busca productos por nombre, SKU o código de barras (máximo 20). Por defecto
+ * solo activos; `includeInactive` los suma para dar de baja stock de productos
+ * discontinuados (P-13).
+ */
+export async function searchProducts(
+  client: SupabaseClient,
+  text: string,
+  { includeInactive = false }: { includeInactive?: boolean } = {},
+): Promise<ProductOption[]> {
+  const search = textSearchFilter(text)
+  let q = client.from('products').select('id, sku, name, sale_unit, units_per_box, is_active')
+  if (!includeInactive) q = q.eq('is_active', true)
+  if (search) q = q.or(search)
   const { data, error } = await q.order('name').limit(20)
   if (error) throw error
   return (data ?? []) as ProductOption[]
+}
+
+/** Producto con ese código de barras exacto (lector USB), o null. */
+export async function findProductByBarcode(
+  client: SupabaseClient,
+  code: string,
+  { includeInactive = false }: { includeInactive?: boolean } = {},
+): Promise<ProductOption | null> {
+  let q = client.from('products').select('id, sku, name, sale_unit, units_per_box, is_active').eq('barcode', code)
+  if (!includeInactive) q = q.eq('is_active', true)
+  const { data, error } = await q.limit(1)
+  if (error) throw error
+  return ((data ?? []) as ProductOption[])[0] ?? null
 }
 
 /* ------------------------------------------------------------------ */
@@ -107,6 +130,8 @@ export interface MovementHistoryRow {
   notes: string | null
   occurred_at: string
   reverses_movement_id: string | null
+  /** La comparten los movimientos de una misma salida repartida en lotes (§8.7). */
+  operation_key?: string | null
   batch: {
     batch_number: string | null
     expires_on: string | null
@@ -124,6 +149,7 @@ export interface MovementHistoryRow {
  */
 const HISTORY_COLUMNS =
   'id, movement_type, quantity, signed_quantity, batch_quantity_after, reason, notes, occurred_at, reverses_movement_id, ' +
+  'operation_key, ' +
   'batch:product_batches!stock_movements_batch_product_fkey(batch_number, expires_on, product:products(sku, name, sale_unit)), ' +
   'author:profiles!stock_movements_created_by_fkey(full_name)'
 
@@ -157,6 +183,16 @@ export async function fetchMovementHistory(client: SupabaseClient, p: HistoryPar
   const rows = (data ?? []) as MovementHistoryRow[]
   const reversed = await fetchReversedIds(client, rows.map((r) => r.id))
   return { rows: rows.map((r) => ({ ...r, is_reversed: reversed.has(r.id) })), total: count ?? 0 }
+}
+
+/** Cuántos movimientos generó la misma operación (una salida FEFO puede tocar varios lotes). */
+export async function countOperationParts(client: SupabaseClient, operationKey: string): Promise<number> {
+  const { count, error } = await client
+    .from('stock_movements')
+    .select('id', { count: 'exact', head: true })
+    .eq('operation_key', operationKey)
+  if (error) throw error
+  return count ?? 0
 }
 
 /**

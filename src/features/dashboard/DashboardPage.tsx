@@ -109,8 +109,8 @@ function SummaryTiles({ s }: { s: NonNullable<Awaited<ReturnType<typeof fetchInv
       <StatTile label="Valor del stock a precio de venta" value={formatMoney(s.stock_value_sale)} detail="Productos activos, con IVA." />
       <StatTile
         label="Mermas del mes"
-        value={formatNumber(s.shrinkage_quantity_month)}
-        detail="Suma de mermas, daños y consumo interno de este mes (en unidades de cada producto)."
+        value={formatMoney(s.shrinkage_value_month)}
+        detail={`${formatNumber(s.shrinkage_quantity_month)} u. entre mermas, daños y consumo interno de este mes, sin las anuladas. Valor a costo, sin IVA.`}
         to="/movimientos?tipo=shrinkage"
         linkLabel="Ver mermas"
       />

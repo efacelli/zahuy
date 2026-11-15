@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.4.2 |
+| Versión | 0.5.1 |
 | Estado | **PROPUESTO — PENDIENTE DE CONCORDANCIA DEL BACKEND** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -347,15 +347,17 @@ futura.
 |---|---|---|---|---|
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
 | `sku` | `text` | no | generado | **Lo genera la base** (v0.4.0): `lpad(nextval('products_sku_seq')::text, 6, '0')` → `000001`, `000002`… Único: `unique index products_sku_key on upper(sku)`; `CHECK (sku = trim(sku) and length(sku) between 1 and 40)`. No se edita desde la app ([P-05](#13-preguntas-abiertas)) |
-| `barcode` | `text` | sí | — | `CHECK (barcode ~ '^[0-9]{8,14}$')`; único parcial `products_barcode_key` `WHERE barcode IS NOT NULL`. Sin lector en la Etapa 1 |
+| `barcode` | `text` | sí | — | `CHECK (barcode ~ '^[0-9]{8,14}$')`; único parcial `products_barcode_key` `WHERE barcode IS NOT NULL`. Se lee con el lector USB |
+| `legacy_code` | `text` | sí | — | v0.5.0 (P-25): código propio del sistema anterior del cliente (ej. `31884325`, `001`). `CHECK (legacy_code = trim(legacy_code) and length(legacy_code) between 1 and 40)`; único parcial `products_legacy_code_key` sobre `upper(legacy_code)` `WHERE legacy_code IS NOT NULL`. Se busca igual que el SKU. Lo edita encargado o dueño |
 | `name` | `text` | no | — | 1–150 caracteres |
+| `search_name` | `text` | no | generada | v0.5.1: `GENERATED ALWAYS AS (lower(private.unaccent_text(name))) STORED`. Nombre sin tildes y en minúscula para buscar ("lacteos" encuentra "Lácteos"). No se escribe |
 | `description` | `text` | sí | — | — |
 | `category_id` | `uuid` | no | — | FK → `categories.id` ([P-06](#13-preguntas-abiertas)) |
 | `brand_id` | `uuid` | no | — | FK → `brands.id` (obligatoria desde v0.3.0, [P-06](#13-preguntas-abiertas)) |
 | `supplier_id` | `uuid` | sí | — | FK → `suppliers.id`; proveedor habitual |
 | `sale_unit` | `sale_unit` | no | `'unit'` | — |
 | `cost_price` | `numeric(12,2)` | no | — | `CHECK (cost_price >= 0)`. Costo **sin IVA** (v0.4.0) |
-| `sale_price` | `numeric(12,2)` | no | — | `CHECK (sale_price >= 0)`. Precio de venta **sin IVA**, el que se carga (v0.4.0) |
+| `sale_price` | `numeric(12,4)` | no | — | `CHECK (sale_price >= 0)`. Precio de venta **sin IVA**, el que se carga (v0.4.0). **4 decimales desde v0.5.0 (P-24)**: así cualquier precio final con centavos se reproduce exacto en `sale_price_with_vat` |
 | `vat_rate` | `numeric(4,2)` | no | `21.00` | `CHECK (vat_rate in (10.50, 21.00))` ([P-02](#13-preguntas-abiertas)) |
 | `sale_price_with_vat` | `numeric(12,2)` | no | generada | Precio final de góndola (v0.4.0): `GENERATED ALWAYS AS (round(sale_price * (1 + vat_rate / 100), 2)) STORED`. No se escribe |
 | `boxes_quantity` | `integer` | no | `0` | `CHECK (>= 0)`. Conteo manual de **cajas cerradas en depósito**; lo actualiza cualquier usuario activo |
@@ -376,9 +378,13 @@ futura.
   del stock** (§3). `boxes_quantity` dice cuántas de esas unidades están en cajas
   cerradas; no suma stock por sí sola. Ver §7.2.
 - **SKU (v0.4.0):** generado por la base con la secuencia `products_sku_seq`.
-  El cliente no tiene código interno propio; el SKU de 6 dígitos sirve también
-  para los productos sin código de barras y, más adelante, como código en la
-  balanza.
+  El SKU de 6 dígitos sirve también para los productos sin código de barras y,
+  más adelante, como código en la balanza. El código propio del sistema
+  anterior se conserva aparte en `legacy_code` (v0.5.0, P-25); no reemplaza al SKU.
+- **Precio final exacto (v0.5.0, P-24):** con `sale_price` de 4 decimales,
+  `sale_price = round(precio_final / (1 + vat_rate / 100), 4)` hace que
+  `sale_price_with_vat` devuelva exactamente `precio_final` (el error máximo,
+  0,00006, no alcanza a mover el redondeo a centavos).
 - Los nombres de los índices únicos (`products_sku_key`, `products_barcode_key`,
   `categories_name_key`, `brands_name_key`, `suppliers_name_key`,
   `suppliers_tax_id_key`) son parte del contrato: el frontend traduce el error
@@ -463,7 +469,7 @@ o de cajas no deja rastro.
 | `id` | `bigint` identity | no | PK |
 | `table_name` | `text` | no | — |
 | `record_id` | `uuid` | no | — |
-| `action` | `text` | no | `CHECK (action in ('insert','update'))` |
+| `action` | `text` | no | `CHECK (action in ('insert','update','delete'))` (`delete` desde v0.4.4, P-22) |
 | `old_data` | `jsonb` | sí | — |
 | `new_data` | `jsonb` | sí | — |
 | `changed_by` | `uuid` | sí | `auth.uid()` |
@@ -475,6 +481,10 @@ ni tokens.
 En `product_batches` solo se auditan los cambios de `batch_number`, `expires_on`
 y `notes` (v0.3.1): los cambios de saldo ya quedan en `stock_movements` y
 duplicarlos solo agregaría ruido.
+
+Borrados (v0.4.4, P-22): `expiry_alert_settings` es la única tabla en la que
+la app borra filas; su borrado queda con `action = 'delete'`, `old_data` con la
+fila borrada y `new_data` nulo.
 
 El cliente pidió que quede registrado **qué perfil hizo qué cosa** (respuesta
 25): `audit_log.changed_by` y `stock_movements.created_by` lo cubren.
@@ -573,7 +583,7 @@ producto sin stock figura con `is_low_stock = true`.
 ### 7.3 `v_product_list`
 
 Lo que lee la pantalla de listado: columnas de `products` (incluidas
-`sale_price_with_vat` y `units_per_box`) más `category_name`, `brand_name`,
+`sale_price_with_vat`, `units_per_box` y, desde v0.5.0, `legacy_code` al final; desde v0.5.1, `search_name` después de `legacy_code`). La búsqueda por texto normaliza lo escrito igual (sin tildes, minúscula) y compara contra `search_name`, `sku`, `barcode` y `legacy_code` más `category_name`, `brand_name`,
 `supplier_name` y las de `v_product_stock`. La búsqueda, los filtros, el orden y
 la paginación se hacen sobre esta vista, sin repetir las reglas en React.
 
@@ -591,8 +601,9 @@ Una fila con las métricas del dashboard (respuestas 5 y 31). Devuelve filas
 | `expired_batches` | `integer` | Lotes con stock y `expired` |
 | `stock_value_cost` | `numeric(14,2)` | `SUM(stock_quantity * cost_price)` de activos (sin IVA) |
 | `stock_value_sale` | `numeric(14,2)` | `SUM(stock_quantity * sale_price_with_vat)` de activos |
-| `shrinkage_quantity_month` | `numeric(14,3)` | Suma de `shrinkage`, `damage` e `internal_use` del mes actual (Argentina) |
+| `shrinkage_quantity_month` | `numeric(14,3)` | Suma de `quantity` de `shrinkage`, `damage` e `internal_use` del mes actual (Argentina), **sin los movimientos anulados** (v0.4.4, P-21). Mezcla unidades de productos distintos |
 | `box_mismatch_products` | `integer` | Productos con `has_box_mismatch` |
+| `shrinkage_value_month` | `numeric(14,2)` | v0.4.4 (P-21): mismos movimientos que `shrinkage_quantity_month`, valuados `quantity * cost_price` (costo actual del producto, sin IVA; no hay costo por lote todavía). Va al final para no alterar el orden de columnas |
 
 Los reportes que el cliente pidió como imprescindibles (respuesta 31) son
 **stock bajo** y **por vencer**: salen de `v_product_list` con los filtros que
@@ -711,7 +722,8 @@ create_product(
   p_initial_quantity numeric default null,
   p_received_on      date    default null,   -- null = hoy (AR)
   p_expires_on       date    default null,
-  p_batch_number     text    default null
+  p_batch_number     text    default null,
+  p_legacy_code      text    default null    -- v0.5.0 (P-25)
 ) returns products
 ```
 
@@ -842,6 +854,47 @@ nuevas**, sin reescribir esas:
 - Función `private.is_manager_or_admin()` y reemplazo de las políticas de
   `INSERT`/`UPDATE` de `categories`, `brands` y `suppliers` para que solo
   escriban encargado y dueño.
+
+### 8.9 Aclaraciones de implementación (v0.4.3)
+
+Describen cómo funciona lo ya implementado; no agregan reglas nuevas. Lo que
+requiere una decisión quedó como pregunta abierta (P-21 a P-23).
+
+- **RPC de §8.2, §8.3 y §8.7:** implementadas en la migración
+  `20261116170000_rpc_movements_reverse.sql` (prueba `12_rpc_movements_reverse`).
+- **Huecos en el SKU:** `products_sku_seq` no devuelve números. Un alta que
+  falla después de pedir el número, o una transacción revertida, deja un hueco.
+  El SKU es **único, no correlativo**. Un reintento idempotente de
+  `create_product` no consume otro número (§8.4).
+- **Anular una salida repartida en lotes:** `register_product_movement` puede
+  generar varios movimientos con la misma `operation_key`. La reversión
+  (§8.3) es **por movimiento**: anular uno devuelve solo lo de ese lote. La UI
+  avisa cuántas filas tiene la operación; para deshacerla entera se anula cada
+  fila.
+- **Movimiento ya anulado:** PostgREST no expone la relación inversa de
+  `reverses_movement_id` (FK de la tabla consigo misma). La UI consulta
+  `stock_movements?reverses_movement_id=in.(…)` para saber qué filas ya tienen
+  anulación; la base igual rechaza la segunda (`ALREADY_REVERSED`).
+- **Nombres de FK que usa el frontend** en los `select` embebidos (no
+  renombrarlos sin avisar): `stock_movements_batch_product_fkey` (movimiento →
+  lote → producto) y `stock_movements_created_by_fkey` (movimiento → autor).
+- **Conteo de cajas por el empleado:** permiso por columna
+  `UPDATE (boxes_quantity)` más el trigger `products_restrict_staff_update`, que
+  lanza `NOT_AUTHORIZED` si alguien que no es encargado ni dueño cambia otra
+  columna. Un `UPDATE` que RLS filtra no falla: afecta 0 filas; la UI lo
+  informa como falta de permiso.
+- **Mermas del mes:** desde v0.4.4 no cuentan los movimientos anulados y se
+  muestran también a costo (§7.4, P-21).
+- **Auditoría de `expiry_alert_settings`:** altas, ediciones y, desde v0.4.4,
+  borrados (§5.8, P-22).
+- **`expires_on` al editar un lote:** el permiso por columna deja que encargado
+  y dueño lo cambien, también a `NULL`; se mantiene así por decisión (P-23). Al
+  crear un lote sigue siendo obligatorio (`EXPIRY_REQUIRED`).
+- **Datos locales:** `supabase/seed.sql` carga datos ficticios en `db reset`
+  (solo entorno local) y `npm run db:users` crea los usuarios de prueba.
+  `src/types/database.ts` se genera con `npm run gen:types` y
+  `src/types/contract-check.ts` hace fallar `tsc` si los enums del frontend
+  dejan de coincidir con los de la base.
 
 ---
 
@@ -1003,6 +1056,12 @@ este documento y una migración nueva.
 | P-18 | ¿Hay consumo interno? | Sí: tipo `internal_use` | Adoptada (v0.4.0) |
 | P-19 | ¿Las alertas de vencimiento son iguales para todo? | No: configurables por categoría (§5.9) | Adoptada (v0.4.0) |
 | P-20 | ¿Cuántas sucursales y depósitos? | Una sucursal y un depósito: no hace falta modelar ubicaciones | Adoptada (v0.4.0) |
+| P-21 | En "Mermas del mes", ¿se descuentan las mermas anuladas? ¿Se muestra en unidades o en dinero? | Se descuentan los movimientos anulados y se agrega `shrinkage_value_month` (valor a costo) a `v_inventory_summary` (§7.4) | Adoptada (v0.4.4) |
+| P-22 | ¿Se audita el borrado de una configuración de alertas por categoría? | Sí: el borrado queda en `audit_log` con `action = 'delete'` (§5.8) | Adoptada (v0.4.4) |
+| P-24 | ¿El precio final de góndola tiene que quedar exactamente igual al del sistema anterior? | Sí: `sale_price` pasa a `numeric(12,4)` (§5.5). Con 2 decimales, 2.272 de 13.288 productos del sistema anterior quedaban un centavo distintos | Adoptada (v0.5.0) |
+| P-25 | ¿Se conserva el código propio del sistema anterior? | Sí, en `products.legacy_code`, único y buscable; el SKU sigue siendo el de la base (§5.5) | Adoptada (v0.5.0) |
+| P-26 | ¿Qué productos del sistema anterior se importan y con qué catálogos? | Los actualizados desde 2025 (unos 3.000 de 13.288 cargados desde 2003), con categoría y marca "Sin clasificar" porque la exportación no las trae; se ordenan después | Adoptada (v0.5.0) |
+| P-23 | ¿Se puede quitar el vencimiento (`NULL`) al editar un lote? | Sí: el encargado o el dueño puede quitarlo al editar un lote; queda auditado. La obligación aplica solo al crear lotes (`EXPIRY_REQUIRED`). Se rechazó la propuesta de prohibirlo | Adoptada (v0.4.4) |
 
 ---
 
@@ -1033,3 +1092,7 @@ volver a registrar la concordancia.
 | 0.4.0 | 2026-11-15 | Segunda visita al cliente: permisos por rol dueño/encargado/empleado (§4.1, §9); precios sin IVA y `sale_price_with_vat` (§5.5, P-02); SKU generado por la base (§5.5, §8.4); `units_per_box` y desglose de cajas en `v_product_stock` (§3, §5.5, §7.2); `register_product_movement` con lotes por vencimiento y `operation_key` (§8.7); tipo `internal_use` (§4.3); alertas configurables por categoría con `expiry_alert_settings` y estados `expires_urgent/soon/upcoming` (§4.4, §5.9); vencimiento obligatorio y código `EXPIRY_REQUIRED` (§8.1); dashboard `v_inventory_summary` (§7.4); transición desde las migraciones fusionadas (§8.8); P-17 a P-20; nombres de catálogos únicos sin distinguir tildes (§5.2–5.4) |
 | 0.4.1 | 2026-11-15 | Aclaración: la vista previa del precio final en el formulario de alta (§5.5) |
 | 0.4.2 | 2026-11-15 | `v_batch_status` suma datos del producto y la categoría para la pantalla de Alertas (§7.1) |
+| 0.4.3 | 2026-11-14 | Aclaraciones de implementación sin reglas nuevas (§8.9): RPC de movimientos implementadas, huecos de SKU, anulación por movimiento en salidas repartidas, nombres de FK usados por el frontend, conteo de cajas, métrica de mermas, auditoría de alertas, edición de `expires_on`, seed y tipos generados. Preguntas abiertas P-21 a P-23 |
+| 0.4.4 | 2026-11-14 | Decisiones de `efacelli`: P-21 adoptada (mermas del mes sin anuladas y `shrinkage_value_month`, §7.4); P-22 adoptada (`audit_log` admite `delete` y audita el borrado de `expiry_alert_settings`, §5.8); P-23: se mantiene permitido quitar `expires_on` al editar un lote. Migración `20261116200000` |
+| 0.5.0 | 2026-11-15 | Importación del sistema anterior: `products.legacy_code` (P-25), `sale_price` con 4 decimales para precio final exacto (P-24), `create_product` recibe `p_legacy_code`, `v_product_list` expone `legacy_code`; criterios de importación (P-26). Migración `20261116210000` |
+| 0.5.1 | 2026-11-15 | Búsqueda sin tildes ni mayúsculas: `products.search_name` generada y expuesta al final de `v_product_list` (§5.5, §7.3). Migración `20261116220000` |

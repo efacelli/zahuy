@@ -27,7 +27,7 @@ export function fakeSession(email = 'empleado@prueba.test'): Session {
 
 export interface RecordedWrite {
   table: string
-  op: 'insert' | 'update'
+  op: 'insert' | 'update' | 'delete'
   payload: Row
   filters: Record<string, unknown>
 }
@@ -53,11 +53,16 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
       listeners.add(listener)
       return { data: { subscription: { unsubscribe: () => listeners.delete(listener) } } }
     }),
-    signInWithPassword: vi.fn(async ({ email }: { email: string; password: string }) => {
+    signInWithPassword: vi.fn(async ({ email, password }: { email: string; password: string }) => {
+      // Contraseña que simula credenciales incorrectas.
+      if (password === 'incorrecta') {
+        return { data: { session: null, user: null }, error: { status: 400, code: 'invalid_credentials', message: 'Invalid login credentials' } }
+      }
       session = fakeSession(email)
       emit('SIGNED_IN')
       return { data: { session, user: session.user }, error: null }
     }),
+    updateUser: vi.fn(async (_attrs: { password?: string }) => ({ data: { user: session?.user ?? null }, error: null })),
     signOut: vi.fn(async () => {
       session = null
       emit('SIGNED_OUT')
@@ -85,20 +90,25 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
   const writes: RecordedWrite[] = []
 
   const from = vi.fn((table: string) => {
-    let op: 'select' | 'insert' | 'update' = 'select'
+    let op: 'select' | 'insert' | 'update' | 'delete' = 'select'
     let payload: Row = {}
     const filters: Record<string, unknown> = {}
+    const ilikeFilters: Record<string, string> = {}
+    const inFilters: Record<string, readonly unknown[]> = {}
 
     const runSelect = (): Result => {
       const entry = tables[table] ?? { data: [], error: null }
       if (entry.error || !entry.data) return { data: null, error: entry.error }
       // Copias: como la base real, cada lectura devuelve objetos nuevos.
-      const rows = entry.data.filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v)).map((r) => ({ ...r }))
+      const rows = entry.data
+        .filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v))
+        .filter((r) => Object.entries(ilikeFilters).every(([k, v]) => String(r[k] ?? '').toLowerCase() === v))
+        .map((r) => ({ ...r }))
       return { data: rows, error: null, count: rows.length } as Result
     }
 
     const runWrite = (): Result => {
-      writes.push({ table, op: op as 'insert' | 'update', payload, filters: { ...filters } })
+      writes.push({ table, op: op as 'insert' | 'update' | 'delete', payload, filters: { ...filters } })
       const forced = writeResults[table]
       if (forced) {
         delete writeResults[table]
@@ -110,6 +120,18 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
         const row = { id: `00000000-0000-4000-8000-${String(rows.length + 100).padStart(12, '0')}`, is_active: true, ...payload }
         rows.push(row)
         return { data: { ...row }, error: null }
+      }
+      if (op === 'delete') {
+        const index = rows.findIndex((r) => r.id === filters.id)
+        if (index >= 0) rows.splice(index, 1)
+        return { data: null, error: null }
+      }
+      if (op === 'update' && inFilters.id) {
+        const ids = inFilters.id
+        const matched = rows.filter((r) => ids.includes(r.id))
+        matched.forEach((r) => Object.assign(r, payload))
+        writes[writes.length - 1]!.filters = { ...filters, id: [...ids] }
+        return { data: matched.map((r) => ({ id: r.id })), error: null }
       }
       const row = rows.find((r) => r.id === filters.id)
       if (!row) return { data: null, error: { code: 'PGRST116', message: 'No rows' } }
@@ -125,8 +147,17 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
       },
       // Se registran pero no se aplican: la lógica de filtros se prueba aparte (list-api.test).
       or: () => builder,
+      not: () => builder,
+      ilike: (column: string, value: unknown) => {
+        ilikeFilters[column] = String(value).toLowerCase()
+        return builder
+      },
       is: () => builder,
-      in: () => builder,
+      // En lecturas se registra pero no se aplica; en un UPDATE por ids, sí.
+      in: (column: string, values: readonly unknown[]) => {
+        inFilters[column] = values
+        return builder
+      },
       order: () => builder,
       range: () => builder,
       limit: () => builder,
@@ -138,6 +169,10 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
       update: (values: Row) => {
         op = 'update'
         payload = values
+        return builder
+      },
+      delete: () => {
+        op = 'delete'
         return builder
       },
       single: () => {

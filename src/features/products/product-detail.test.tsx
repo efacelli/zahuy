@@ -144,6 +144,32 @@ describe('ficha del producto', () => {
     expect(fake.writes[0]).toEqual({ table: 'products', op: 'update', payload: { boxes_quantity: 3 }, filters: { id: ID } })
   })
 
+  it('si la base no actualiza ninguna fila (RLS), avisa que no hay permiso', async () => {
+    const { user, fake } = setup('staff')
+    fake.failNextWrite('products', { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' })
+    await user.click(await screen.findByRole('button', { name: 'Actualizar cajas' }))
+    const dialog = screen.getByRole('dialog', { name: 'Actualizar cajas en depósito' })
+    await user.click(within(dialog).getByRole('button', { name: 'Guardar' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/No tenés permiso/)
+  })
+
+  it('un lote sin vencimiento (dato de migración) se muestra como "No vence"', async () => {
+    const fake = createFakeSupabase(fakeSession(), { role: 'manager' })
+    fake.setTable('v_product_list', [SUMMARY])
+    fake.setTable('v_batch_status', [
+      {
+        id: 'b-null', product_id: ID, product_sku: '000007', product_name: 'Yogur frutilla 190 g', product_is_active: true,
+        sale_unit: 'unit', category_id: CAT, category_name: 'Lácteos', batch_number: 'MIG-1', received_on: TODAY,
+        expires_on: null, quantity_available: 4, days_to_expiry: null, expiry_status: 'no_expiry',
+      },
+    ])
+    fake.setTable('stock_movements', [])
+    renderApp(`/productos/${ID}`, fake.client)
+    const batches = await screen.findByRole('table', { name: /^Lotes de/ })
+    expect(within(batches).getByText('MIG-1')).toBeInTheDocument()
+    expect(within(batches).getByText('No vence')).toBeInTheDocument()
+  })
+
   it('un producto inexistente lo dice', async () => {
     const fake = createFakeSupabase(fakeSession())
     fake.setTable('v_product_list', [])
@@ -157,9 +183,10 @@ describe('edición del producto', () => {
     setup('manager', `/productos/${ID}/editar`)
     expect(await screen.findByRole('heading', { level: 1, name: 'Editar: Yogur frutilla 190 g' })).toBeInTheDocument()
     expect(screen.getByLabelText(/^Nombre/)).toHaveValue('Yogur frutilla 190 g')
-    expect(screen.getByLabelText(/^Precio de costo/)).toHaveValue('450,5')
-    expect(screen.getByText('000007')).toBeInTheDocument()
-    expect(screen.queryByText('Stock inicial (opcional)')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/^Costo/)).toHaveValue('450,5')
+    expect(screen.getByText(/SKU 000007/)).toBeInTheDocument()
+    expect(screen.queryByText(/Stock inicial/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Cantidad inicial/)).not.toBeInTheDocument()
   })
 
   it('guarda solo las columnas editables y vuelve a la ficha', async () => {

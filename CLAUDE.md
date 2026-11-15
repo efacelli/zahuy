@@ -40,8 +40,9 @@ prioridad sobre la velocidad de desarrollo.
 -   Nunca exponer la Supabase `service_role` key en el navegador.
 -   Si una regla comercial, fiscal o de inventario no está definida,
     preguntar en lugar de inventarla.
--   No implementar ventas, caja, ARCA ni lector de códigos de barras en
-    la primera etapa salvo pedido explícito.
+-   No implementar ventas, caja ni ARCA en la primera etapa salvo pedido
+    explícito. El lector USB de códigos de barras se adelantó a pedido de
+    `efacelli` (ver Productos).
 
 ## Stack previsto
 
@@ -76,8 +77,11 @@ prioridad sobre la velocidad de desarrollo.
 ### Productos
 
 -   SKU obligatorio y único, generado por la base (6 dígitos).
--   Código de barras opcional, pero lector e integración quedan para una
-    etapa futura.
+-   Código de barras opcional. Lector USB (funciona como teclado: números
+    + Enter): escanear fuera de un campo abre el producto; en los buscadores
+    de los diálogos elige el producto; en el alta completa el código. La
+    lectura por cámara y los códigos de balanza (peso o precio dentro del
+    código) quedan para una etapa futura.
 -   Nombre obligatorio; descripción opcional.
 -   Marca y categoría.
 -   Proveedor opcional.
@@ -139,7 +143,7 @@ prioridad sobre la velocidad de desarrollo.
     carrito el empleado puede modificar o quitar el descuento sugerido.
     No asumir que aplica a todos los productos.
 4.  Clientes, cuentas corrientes, deuda y bloqueo de cuenta.
-5.  Ventas, caja, tickets/PDF y lector de códigos de barras.
+5.  Ventas, caja y tickets/PDF (el lector USB ya está; la venta lo usará).
 6.  Facturación ARCA A/B/C, WSAA, WSFEv1, certificados y contingencia
     según normativa vigente.
 7.  PWA/offline, almacenamiento local y sincronización

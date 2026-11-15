@@ -95,12 +95,12 @@ describe('consulta a v_product_list', () => {
   })
 
   it('busca por nombre, SKU o código de barras', () => {
-    expect(run({ search: 'yogur' })).toContainEqual(['or', 'name.ilike.%yogur%,sku.ilike.%yogur%,barcode.ilike.%yogur%'])
+    expect(run({ search: 'yogur' })).toContainEqual(['or', 'search_name.ilike.%yogur%,sku.ilike.%yogur%,barcode.ilike.%yogur%,legacy_code.ilike.%yogur%'])
   })
 
   it('no inyecta filtros con la búsqueda', () => {
     const or = run({ search: 'x,is_active.eq.false' }).find((c) => c[0] === 'or')
-    expect(or?.[1]).toBe('name.ilike.%x is active eq false%,sku.ilike.%x is active eq false%,barcode.ilike.%x is active eq false%')
+    expect(or?.[1]).toBe('search_name.ilike.%x is active eq false%,sku.ilike.%x is active eq false%,barcode.ilike.%x is active eq false%,legacy_code.ilike.%x is active eq false%')
     expect(run({ search: 'x,is_active.eq.false' }).filter((c) => c[1] === 'is_active')).toEqual([['eq', 'is_active', true]])
   })
 
@@ -140,5 +140,16 @@ describe('daysLabel', () => {
     expect(daysLabel(12)).toBe('vence en 12 días')
     expect(daysLabel(-1)).toBe('venció ayer')
     expect(daysLabel(-4)).toBe('venció hace 4 días')
+  })
+})
+
+describe('búsqueda sin tildes ni mayúsculas (v0.5.1)', () => {
+  it('normaliza el nombre como la base y deja SKU y códigos tal cual', async () => {
+    const { textSearchFilter } = await import('./list-params')
+    expect(textSearchFilter('  LÁCTEOS  ')).toBe(
+      'search_name.ilike.%lacteos%,sku.ilike.%LÁCTEOS%,barcode.ilike.%LÁCTEOS%,legacy_code.ilike.%LÁCTEOS%',
+    )
+    expect(textSearchFilter('Ñoquis')).toMatch(/^search_name\.ilike\.%noquis%/)
+    expect(textSearchFilter('  ')).toBeNull()
   })
 })

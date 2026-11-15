@@ -156,15 +156,16 @@ export function productFormSchema(today = todayInAppTimeZone()) {
     .superRefine((v, ctx) => {
       const issue = (path: keyof ProductFormValues, message: string) => ctx.addIssue({ code: 'custom', path: [path], message })
 
-      for (const [field, label] of [
-        ['cost_price', 'el costo'],
-        ['sale_price', 'el precio de venta'],
+      // Contrato v0.5.0 §5.5: costo numeric(12,2); precio sin IVA numeric(12,4) (P-24, precio final exacto).
+      for (const [field, label, maxDecimals] of [
+        ['cost_price', 'el costo', 2],
+        ['sale_price', 'el precio de venta', 4],
       ] as const) {
         const raw = v[field]
         const n = parseDecimalInput(raw)
         if (raw.trim() === '') issue(field, `Ingresá ${label}.`)
         else if (n === null) issue(field, 'Ingresá un número (por ejemplo 1250,50).')
-        else if (decimalsInInput(raw) > 2) issue(field, 'Se admiten hasta 2 decimales.')
+        else if (decimalsInInput(raw) > maxDecimals) issue(field, `Se admiten hasta ${maxDecimals} decimales.`)
         else if (n > MAX_MONEY) issue(field, 'El importe es demasiado grande.')
       }
 

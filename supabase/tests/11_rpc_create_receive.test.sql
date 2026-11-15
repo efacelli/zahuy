@@ -27,7 +27,7 @@ select is(
   'p_idempotency_key uuid, p_name text, p_category_id uuid, p_brand_id uuid, p_sale_unit sale_unit, p_cost_price numeric, '
   || 'p_sale_price numeric, p_vat_rate numeric, p_barcode text, p_description text, p_supplier_id uuid, '
   || 'p_boxes_quantity integer, p_units_per_box integer, p_min_stock numeric, p_is_active boolean, p_image_path text, '
-  || 'p_initial_quantity numeric, p_received_on date, p_expires_on date, p_batch_number text',
+  || 'p_initial_quantity numeric, p_received_on date, p_expires_on date, p_batch_number text, p_legacy_code text',
   'create_product tiene los parámetros del contrato (sin p_sku, con p_units_per_box)'
 );
 select is(

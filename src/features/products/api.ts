@@ -118,14 +118,24 @@ export async function updateProduct(
   payload: ProductUpdatePayload,
 ): Promise<CreatedProduct> {
   const { data, error } = await client.from('products').update(payload).eq('id', id).select('id, sku, name').single()
-  if (error) throw error
+  if (error) throw updateError(error)
   return data as CreatedProduct
 }
 
 /** Cambia solo el conteo de cajas; lo puede hacer cualquier usuario activo (§9). */
 export async function updateBoxCount(client: SupabaseClient, id: string, boxes: number): Promise<void> {
   const { error } = await client.from('products').update({ boxes_quantity: boxes }).eq('id', id).select('id').single()
-  if (error) throw error
+  if (error) throw updateError(error)
+}
+
+/**
+ * Un UPDATE que RLS no deja ver/tocar no falla: afecta 0 filas, y `.single()`
+ * lo informa como PGRST116. Desde la app los productos no se borran, así que
+ * 0 filas significa falta de permiso (o usuario desactivado).
+ */
+function updateError(error: unknown): unknown {
+  const code = (error as { code?: unknown } | null)?.code
+  return code === 'PGRST116' ? { code: '42501', message: 'UPDATE_NO_ROWS' } : error
 }
 
 /** Producto tal como se edita (tabla `products`, §5.5). */

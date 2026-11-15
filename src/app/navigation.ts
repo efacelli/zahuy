@@ -28,4 +28,18 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { path: '/alertas', label: 'Alertas', icon: 'alerts', description: 'Lotes próximos a vencer y vencidos.' },
   { path: '/catalogos', label: 'Catálogos', icon: 'catalogs', description: 'Categorías, marcas y proveedores.' },
+  {
+    path: '/configuracion',
+    label: 'Configuración',
+    icon: 'settings',
+    description: 'Días de alerta de vencimiento y usuarios.',
+    permission: 'configureAlerts',
+  },
+  {
+    path: '/auditoria',
+    label: 'Auditoría',
+    icon: 'clock',
+    description: 'Quién cambió qué.',
+    permission: 'manageUsers',
+  },
 ]

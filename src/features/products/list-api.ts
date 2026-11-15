@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ExpiryStatus } from '../../domain/expiry'
 import type { SaleUnit } from '../../domain/units'
 import { pageRange } from '../../lib/pagination'
-import { NO_SUPPLIER, sanitizeSearch, type ExpiryFilter, type ProductListParams } from './list-params'
+import { NO_SUPPLIER, textSearchFilter, type ExpiryFilter, type ProductListParams } from './list-params'
 
 /** Fila de la vista `v_product_list` (contrato v0.4.0 §7.2 y §7.3). */
 export interface ProductListRow {
@@ -39,6 +39,8 @@ export interface ProductListRow {
   loose_units: number
   /** Las cajas contadas superan el stock: hay que revisar el conteo. */
   has_box_mismatch: boolean
+  /** Código propio del sistema anterior (v0.5.0, P-25). */
+  legacy_code: string | null
 }
 
 export interface ProductListPage {
@@ -50,7 +52,7 @@ const COLUMNS =
   'id, sku, barcode, name, category_id, category_name, brand_id, brand_name, supplier_id, supplier_name, ' +
   'sale_unit, cost_price, sale_price, sale_price_with_vat, vat_rate, boxes_quantity, units_per_box, min_stock, ' +
   'is_active, stock_quantity, next_expires_on, next_expiry_status, active_batches_count, is_low_stock, ' +
-  'units_in_boxes, loose_units, has_box_mismatch'
+  'units_in_boxes, loose_units, has_box_mismatch, legacy_code'
 
 const EXPIRY_STATUSES_BY_FILTER: Record<ExpiryFilter, ExpiryStatus[]> = {
   por_vencer: ['expires_urgent', 'expires_soon', 'expires_upcoming'],
@@ -71,8 +73,8 @@ export interface ListQuery {
 /** Aplica búsqueda, filtros, orden y paginación. Todo se resuelve en la base. */
 export function applyListParams(query: ListQuery, p: ProductListParams) {
   let q = query
-  const term = sanitizeSearch(p.search)
-  if (term) q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`)
+  const search = textSearchFilter(p.search)
+  if (search) q = q.or(search)
   if (p.categoryId) q = q.eq('category_id', p.categoryId)
   if (p.supplierId === NO_SUPPLIER) q = q.is('supplier_id', null)
   else if (p.supplierId) q = q.eq('supplier_id', p.supplierId)
@@ -102,4 +104,53 @@ export async function fetchProductSummary(client: SupabaseClient, id: string): P
   const { data, error } = await client.from('v_product_list').select(COLUMNS).eq('id', id).single()
   if (error) throw error
   return data as unknown as ProductListRow
+}
+
+/* ------------------------------------------------------------------ */
+/* Clasificación en lote (encargado y dueño)                           */
+/* ------------------------------------------------------------------ */
+
+const ID_PAGE = 1000
+
+/** Todos los ids que coinciden con el filtro actual (sin paginar), con el mismo filtro del listado. */
+export async function fetchMatchingIds(client: SupabaseClient, p: ProductListParams): Promise<string[]> {
+  const ids: string[] = []
+  for (let page = 1; ; page++) {
+    const base = client.from('v_product_list').select('id', { count: 'exact' }) as unknown as ListQuery
+    const { data, error } = await applyListParams(base, { ...p, page, pageSize: ID_PAGE })
+    if (error) throw error
+    const rows = (data ?? []) as { id: string }[]
+    rows.forEach((r) => ids.push(r.id))
+    if (rows.length < ID_PAGE) return ids
+  }
+}
+
+export interface ClassificationChange {
+  category_id?: string
+  brand_id?: string
+}
+
+const UPDATE_CHUNK = 200
+
+/**
+ * Cambia categoría y/o marca de muchos productos, de a tandas. Es un UPDATE
+ * con RLS (solo encargado y dueño) y cada fila queda en audit_log. Si la base
+ * actualiza menos filas que las pedidas, es falta de permiso.
+ */
+export async function bulkClassify(
+  client: SupabaseClient,
+  ids: string[],
+  change: ClassificationChange,
+  onProgress?: (done: number) => void,
+): Promise<number> {
+  let done = 0
+  for (let i = 0; i < ids.length; i += UPDATE_CHUNK) {
+    const chunk = ids.slice(i, i + UPDATE_CHUNK)
+    const { data, error } = await client.from('products').update(change).in('id', chunk).select('id')
+    if (error) throw error
+    if (((data ?? []) as unknown[]).length < chunk.length) throw { code: '42501', message: 'UPDATE_NO_ROWS' }
+    done += chunk.length
+    onProgress?.(done)
+  }
+  return done
 }

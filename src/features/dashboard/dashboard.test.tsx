@@ -11,6 +11,7 @@ const SUMMARY = {
   stock_value_cost: 1250300.5,
   stock_value_sale: 2101450,
   shrinkage_quantity_month: 18.5,
+  shrinkage_value_month: 9250.75,
   box_mismatch_products: 1,
 }
 
@@ -54,6 +55,9 @@ describe('Dashboard', () => {
     expect(within(tiles).getByText(/1\.250\.300,50/)).toBeInTheDocument()
     expect(within(tiles).getByText(/2\.101\.450,00/)).toBeInTheDocument()
     expect(within(tiles).getByText('742')).toBeInTheDocument()
+    // P-21: mermas del mes a costo, con las unidades como detalle.
+    expect(within(tiles).getByText(/9\.250,75/)).toBeInTheDocument()
+    expect(within(tiles).getByText(/18,5 u\. entre mermas, daños y consumo interno de este mes, sin las anuladas/)).toBeInTheDocument()
   })
 
   it('muestra los últimos movimientos', async () => {
