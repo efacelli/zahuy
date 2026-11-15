@@ -1,3 +1,5 @@
+import { salePriceFromFinal } from '../../domain/vat'
+
 /**
  * Lectura de la exportación del sistema anterior (contrato v0.5.0, P-24 a P-26).
  *
@@ -124,9 +126,7 @@ export function parseDate(raw: string): string | null {
 }
 
 /** sale_price sin IVA con 4 decimales a partir del precio final (contrato §5.5, P-24). */
-export function salePriceFromFinal(finalPrice: number, vatRate: number): number {
-  return Math.round((finalPrice / (1 + vatRate / 100)) * 10_000) / 10_000
-}
+export { salePriceFromFinal }
 
 /** Lo que calcula la base: round(sale_price * (1 + IVA/100), 2). */
 export function finalPriceFromSale(salePrice: number, vatRate: number): number {

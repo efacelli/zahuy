@@ -9,8 +9,16 @@ import { FormField } from '../../components/ui/FormField'
 import { describedBy } from '../../components/ui/form-field-ids'
 import { Icon } from '../../components/ui/Icon'
 import { barcodeWarning } from '../../domain/barcode'
-import { SALE_UNIT_LABEL, SALE_UNITS, formatQuantity, isIntegerUnit } from '../../domain/units'
-import { VAT_RATES, formatVatRate, priceWithVatPreview } from '../../domain/vat'
+import { SALE_UNIT_LABEL, SALE_UNITS, formatQuantity } from '../../domain/units'
+import {
+  VAT_RATES,
+  formatVatRate,
+  marginPercent,
+  priceWithVatPreview,
+  salePriceFromFinal,
+  salePriceFromMargin,
+  toDecimalInput,
+} from '../../domain/vat'
 import { formatDate, todayInAppTimeZone } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
 import { newIdempotencyKey } from '../../lib/idempotency'
@@ -24,7 +32,8 @@ import {
   updateProduct,
   type CreatedProduct,
 } from './api'
-import { CatalogSelect } from './CatalogSelect'
+import { usePermissions } from '../auth/useProfile'
+import { CatalogCombobox } from './CatalogCombobox'
 import {
   emptyProductForm,
   productFormSchema,
@@ -71,6 +80,7 @@ export function ProductForm({ onCreated, onCancel, editing, onSaved, initialBarc
     register,
     handleSubmit,
     control,
+    setValue,
     formState: { errors },
   } = useForm<ProductFormValues, unknown, ProductFormOutput>({
     resolver: zodResolver(schema),
@@ -84,6 +94,15 @@ export function ProductForm({ onCreated, onCancel, editing, onSaved, initialBarc
   const hasInitialStock = (values.initial_quantity ?? '').trim() !== ''
   const salePrice = parseDecimalInput(values.sale_price ?? '')
   const finalPricePreview = salePrice === null ? null : priceWithVatPreview(salePrice, Number(values.vat_rate))
+  const costPrice = parseDecimalInput(values.cost_price ?? '')
+  const margin = marginPercent(costPrice, salePrice)
+  const canCreateCatalogs = usePermissions().manageInventory
+  // Calculadora de precio (como el sistema anterior): ganancia % o precio final → precio sin IVA.
+  const [priceFocus, setPriceFocus] = useState<'margin' | 'final' | null>(null)
+  const [marginText, setMarginText] = useState('')
+  const [finalText, setFinalText] = useState('')
+  const setSalePrice = (n: number) =>
+    setValue('sale_price', toDecimalInput(n, 4), { shouldValidate: true, shouldDirty: true })
 
   const mutation = useMutation({
     mutationFn: (output: ProductFormOutput) =>
@@ -125,28 +144,20 @@ export function ProductForm({ onCreated, onCancel, editing, onSaved, initialBarc
       )}
 
       <fieldset className={styles.group}>
-        <legend>Identificación</legend>
-        <p className={styles.groupHelp}>
-          {editing ? (
-            <>
-              SKU <strong>{editing.sku}</strong> (lo asignó el sistema; no se cambia).
-            </>
-          ) : (
-            'El código interno (SKU) lo asigna el sistema al guardar.'
-          )}
-        </p>
-        <div className={styles.grid}>
+        <legend>Producto</legend>
+        <div className={styles.grid4}>
           <FormField
             label="Código de barras"
             htmlFor="product-barcode"
             error={err('barcode')}
-            hint={barcodeWarning(values.barcode ?? '') ?? '8 a 14 números (EAN/UPC). Se puede escanear con el lector.'}
+            hint={barcodeWarning(values.barcode ?? '') ?? undefined}
           >
             <input
               className="input"
               inputMode="numeric"
               autoComplete="off"
-              {...field('barcode', '8 a 14 números (EAN/UPC).')}
+              placeholder="Escaneá o escribí"
+              {...field('barcode')}
               {...register('barcode')}
               onKeyDown={(e) => {
                 // El lector termina con Enter: pasar al nombre en lugar de enviar el formulario.
@@ -157,55 +168,41 @@ export function ProductForm({ onCreated, onCancel, editing, onSaved, initialBarc
               }}
             />
           </FormField>
-          <div className={styles.wide}>
+          <div className={styles.span3}>
             <FormField label="Nombre" htmlFor="product-name" required error={err('name')}>
               <input className="input" autoComplete="off" {...field('name')} {...register('name')} />
             </FormField>
           </div>
-          <div className={styles.wide}>
-            <FormField label="Descripción" htmlFor="product-description" error={err('description')}>
-              <textarea className="textarea" rows={2} {...field('description')} {...register('description')} />
-            </FormField>
-          </div>
-        </div>
-      </fieldset>
-
-      <fieldset className={styles.group}>
-        <legend>Clasificación</legend>
-        <div className={styles.grid}>
-          <CatalogSelect
+          <CatalogCombobox
             id="product-category_id"
             label="Categoría"
             table="categories"
+            name="category_id"
+            control={control}
             required
-            placeholder="Elegí una categoría"
             error={err('category_id')}
-            registration={register('category_id')}
+            canCreate={canCreateCatalogs}
           />
-          <CatalogSelect
+          <CatalogCombobox
             id="product-brand_id"
             label="Marca"
             table="brands"
+            name="brand_id"
+            control={control}
             required
-            placeholder="Elegí una marca"
             error={err('brand_id')}
-            registration={register('brand_id')}
+            canCreate={canCreateCatalogs}
           />
-          <CatalogSelect
+          <CatalogCombobox
             id="product-supplier_id"
             label="Proveedor"
             table="suppliers"
+            name="supplier_id"
+            control={control}
             required={false}
-            placeholder="Sin proveedor"
             error={err('supplier_id')}
-            registration={register('supplier_id')}
+            canCreate={canCreateCatalogs}
           />
-        </div>
-      </fieldset>
-
-      <fieldset className={styles.group}>
-        <legend>Venta y precios</legend>
-        <div className={styles.grid}>
           <FormField label="Unidad de venta" htmlFor="product-sale_unit" required error={err('sale_unit')}>
             <select className="select" {...field('sale_unit')} {...register('sale_unit')}>
               {SALE_UNITS.map((u) => (
@@ -214,6 +211,62 @@ export function ProductForm({ onCreated, onCancel, editing, onSaved, initialBarc
                 </option>
               ))}
             </select>
+          </FormField>
+        </div>
+        <details className={styles.more} open={Boolean(values.description)}>
+          <summary>Descripción (opcional)</summary>
+          <FormField label="Descripción" htmlFor="product-description" error={err('description')}>
+            <textarea className="textarea" rows={2} {...field('description')} {...register('description')} />
+          </FormField>
+        </details>
+        {editing && <p className={styles.groupHelp}>SKU {editing.sku} (lo asignó el sistema; no se cambia).</p>}
+      </fieldset>
+
+      <fieldset className={styles.group}>
+        <legend>Precios</legend>
+        <div className={styles.grid4}>
+          <FormField label="Costo (sin IVA)" htmlFor="product-cost_price" required error={err('cost_price')}>
+            <input className="input" inputMode="decimal" autoComplete="off" placeholder="0,00" {...field('cost_price')} {...register('cost_price')} />
+          </FormField>
+          <FormField label="Ganancia %" htmlFor="product-margin" hint="Calcula el precio desde el costo.">
+            <input
+              id="product-margin"
+              className="input"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="Ej. 35"
+              value={priceFocus === 'margin' ? marginText : margin === null ? '' : toDecimalInput(margin, 2)}
+              onFocus={() => {
+                setPriceFocus('margin')
+                setMarginText(margin === null ? '' : toDecimalInput(margin, 2))
+              }}
+              onBlur={() => setPriceFocus(null)}
+              onChange={(e) => {
+                setMarginText(e.target.value)
+                const pct = parseDecimalInput(e.target.value)
+                if (pct !== null && costPrice !== null && costPrice > 0) setSalePrice(salePriceFromMargin(costPrice, pct))
+              }}
+            />
+          </FormField>
+          <FormField label="Precio final (con IVA)" htmlFor="product-final_price" hint="El de góndola; calcula el precio sin IVA.">
+            <input
+              id="product-final_price"
+              className="input"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="0,00"
+              value={priceFocus === 'final' ? finalText : finalPricePreview === null ? '' : toDecimalInput(finalPricePreview, 2)}
+              onFocus={() => {
+                setPriceFocus('final')
+                setFinalText(finalPricePreview === null ? '' : toDecimalInput(finalPricePreview, 2))
+              }}
+              onBlur={() => setPriceFocus(null)}
+              onChange={(e) => {
+                setFinalText(e.target.value)
+                const final = parseDecimalInput(e.target.value)
+                if (final !== null && final >= 0) setSalePrice(salePriceFromFinal(final, Number(values.vat_rate)))
+              }}
+            />
           </FormField>
           <FormField label="IVA" htmlFor="product-vat_rate" required error={err('vat_rate')}>
             <select className="select" {...field('vat_rate')} {...register('vat_rate')}>
@@ -224,100 +277,66 @@ export function ProductForm({ onCreated, onCancel, editing, onSaved, initialBarc
               ))}
             </select>
           </FormField>
-          <FormField label="Precio de costo (sin IVA)" htmlFor="product-cost_price" required error={err('cost_price')}>
-            <input className="input" inputMode="decimal" autoComplete="off" placeholder="0,00" {...field('cost_price')} {...register('cost_price')} />
-          </FormField>
-          <FormField label="Precio de venta (sin IVA)" htmlFor="product-sale_price" required error={err('sale_price')}>
+          <FormField
+            label="Precio de venta (sin IVA)"
+            htmlFor="product-sale_price"
+            required
+            error={err('sale_price')}
+            hint="Es el que se guarda; el final lo calcula el sistema."
+          >
             <input className="input" inputMode="decimal" autoComplete="off" placeholder="0,00" {...field('sale_price')} {...register('sale_price')} />
           </FormField>
           <div className={styles.finalPrice} aria-live="polite">
-            <span>Precio final en góndola (con IVA)</span>
+            <span>Queda en góndola</span>
             <strong>{finalPricePreview === null ? '—' : formatMoney(finalPricePreview)}</strong>
-            <small>Vista previa; el valor oficial lo calcula el sistema al guardar.</small>
           </div>
         </div>
       </fieldset>
 
       <fieldset className={styles.group}>
-        <legend>Stock y estado</legend>
-        <div className={styles.grid}>
-          <FormField
-            label="Stock mínimo"
-            htmlFor="product-min_stock"
-            error={err('min_stock')}
-            hint="Con este número o menos se marca como stock bajo."
-          >
-            <input className="input" inputMode="decimal" autoComplete="off" {...field('min_stock', 'Con este número o menos se marca como stock bajo.')} {...register('min_stock')} />
+        <legend>Stock</legend>
+        <div className={styles.grid4}>
+          <FormField label="Stock mínimo" htmlFor="product-min_stock" error={err('min_stock')}>
+            <input className="input" inputMode="decimal" autoComplete="off" {...field('min_stock')} {...register('min_stock')} />
           </FormField>
-          <FormField
-            label="Cantidad de cajas"
-            htmlFor="product-boxes_quantity"
-            error={err('boxes_quantity')}
-            hint="Cajas cerradas en depósito, contadas a mano."
-          >
-            <input className="input" inputMode="numeric" autoComplete="off" {...field('boxes_quantity', 'Cajas cerradas en depósito, contadas a mano.')} {...register('boxes_quantity')} />
+          <FormField label="Unidades por caja" htmlFor="product-units_per_box" required error={err('units_per_box')}>
+            <input className="input" inputMode="numeric" autoComplete="off" {...field('units_per_box')} {...register('units_per_box')} />
           </FormField>
-          <FormField
-            label="Unidades por caja"
-            htmlFor="product-units_per_box"
-            required
-            error={err('units_per_box')}
-            hint="12 por defecto. Sirve para mostrar el stock como sueltas + cajas."
-          >
-            <input
-              className="input"
-              inputMode="numeric"
-              autoComplete="off"
-              {...field('units_per_box', '12 por defecto. Sirve para mostrar el stock como sueltas + cajas.')}
-              {...register('units_per_box')}
-            />
+          <FormField label="Cajas en depósito" htmlFor="product-boxes_quantity" error={err('boxes_quantity')}>
+            <input className="input" inputMode="numeric" autoComplete="off" {...field('boxes_quantity')} {...register('boxes_quantity')} />
           </FormField>
           <div className={styles.checkboxField}>
             <input type="checkbox" id="product-is_active" {...register('is_active')} />
             <label htmlFor="product-is_active">Producto activo</label>
           </div>
         </div>
+        {!editing && (
+          <>
+            <p className={styles.groupHelp}>
+              Stock inicial (opcional): si ya hay mercadería, se crea el primer lote. Si no, dejalo vacío y cargalo
+              después desde Movimientos.
+            </p>
+            <div className={styles.grid4}>
+              <FormField
+                label={`Cantidad inicial (${SALE_UNIT_LABEL[unit].toLowerCase()})`}
+                htmlFor="product-initial_quantity"
+                error={err('initial_quantity')}
+              >
+                <input className="input" inputMode="decimal" autoComplete="off" {...field('initial_quantity')} {...register('initial_quantity')} />
+              </FormField>
+              <FormField label="Fecha de ingreso" htmlFor="product-received_on" required={hasInitialStock} error={err('received_on')}>
+                <input type="date" className="input" max={today} {...field('received_on')} {...register('received_on')} />
+              </FormField>
+              <FormField label="Vencimiento" htmlFor="product-expires_on" required={hasInitialStock} error={err('expires_on')}>
+                <input type="date" className="input" {...field('expires_on')} {...register('expires_on')} />
+              </FormField>
+              <FormField label="Número de lote" htmlFor="product-batch_number" error={err('batch_number')}>
+                <input className="input" autoComplete="off" {...field('batch_number')} {...register('batch_number')} />
+              </FormField>
+            </div>
+          </>
+        )}
       </fieldset>
-
-      {!editing && (
-      <fieldset className={styles.group}>
-        <legend>Stock inicial (opcional)</legend>
-        <p className={styles.groupHelp}>
-          Si ya hay mercadería, cargala acá: se crea el primer lote y queda registrado el ingreso. Si no, dejá la
-          cantidad vacía y cargá el stock después desde Movimientos.
-        </p>
-        <div className={styles.grid}>
-          <FormField
-            label={`Cantidad (${SALE_UNIT_LABEL[unit].toLowerCase()})`}
-            htmlFor="product-initial_quantity"
-            error={err('initial_quantity')}
-            hint={isIntegerUnit(unit) ? 'Número entero.' : 'Hasta 3 decimales.'}
-          >
-            <input className="input" inputMode="decimal" autoComplete="off" {...field('initial_quantity', isIntegerUnit(unit) ? 'Número entero.' : 'Hasta 3 decimales.')} {...register('initial_quantity')} />
-          </FormField>
-          <FormField label="Fecha de ingreso" htmlFor="product-received_on" required={hasInitialStock} error={err('received_on')}>
-            <input type="date" className="input" max={today} {...field('received_on')} {...register('received_on')} />
-          </FormField>
-          <FormField
-            label="Vencimiento"
-            htmlFor="product-expires_on"
-            required={hasInitialStock}
-            error={err('expires_on')}
-            hint="Obligatorio si cargás stock: todos los productos se controlan por vencimiento."
-          >
-            <input
-              type="date"
-              className="input"
-              {...field('expires_on', 'Obligatorio si cargás stock: todos los productos se controlan por vencimiento.')}
-              {...register('expires_on')}
-            />
-          </FormField>
-          <FormField label="Número de lote" htmlFor="product-batch_number" error={err('batch_number')}>
-            <input className="input" autoComplete="off" {...field('batch_number')} {...register('batch_number')} />
-          </FormField>
-        </div>
-      </fieldset>
-      )}
 
       {warnings.length > 0 && (
         <ul className={styles.warnings} aria-label="Advertencias">
