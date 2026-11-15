@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router'
 import logoMark from '../../assets/brand/zahuy-logo-mark.png'
 import { Icon } from '../../components/ui/Icon'
 import { UserMenu } from '../../features/auth/UserMenu'
+import { BarcodeScanListener } from '../../features/barcode/BarcodeScanListener'
 import { NAV_ITEMS } from '../navigation'
 import { Sidebar } from './Sidebar'
 import styles from './AppLayout.module.css'
@@ -27,6 +28,7 @@ export function AppLayout() {
 
   return (
     <div className={styles.shell}>
+      <BarcodeScanListener />
       <a href="#main" className={styles.skipLink}>
         Saltar al contenido
       </a>

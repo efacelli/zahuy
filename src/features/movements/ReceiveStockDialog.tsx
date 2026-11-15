@@ -146,7 +146,13 @@ function ReceiveStockContent({ onClose }: { onClose: () => void }) {
       ) : (
         <div className={styles.form}>
           <FormField label="Producto" htmlFor="receive-product" required error={errors.product}>
-            <ProductPicker id="receive-product" value={product} onChange={setProduct} error={errors.product} />
+            <ProductPicker
+              id="receive-product"
+              value={product}
+              onChange={setProduct}
+              error={errors.product}
+              nextFocusId="receive-quantity"
+            />
           </FormField>
 
           <div className={styles.grid}>

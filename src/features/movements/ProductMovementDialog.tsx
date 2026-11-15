@@ -189,6 +189,7 @@ function ProductMovementContent({ types, onClose }: { types: MovementType[]; onC
               onChange={pickProduct}
               error={errors.product}
               includeInactive={canDispose}
+              nextFocusId="movement-quantity"
             />
           </FormField>
           {product && !product.is_active && (
