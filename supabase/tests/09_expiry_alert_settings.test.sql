@@ -183,7 +183,7 @@ select lives_ok(
 select is(
   (select count(*)::int from public.audit_log
     where table_name = 'expiry_alert_settings' and changed_by = '00000000-0000-4000-8000-00000000009b'),
-  3, 'las dos altas y la edición del encargado quedaron auditadas'
+  4, 'las dos altas, la edición y el borrado del encargado quedaron auditados (P-22, v0.4.4)'
 );
 reset role;
 

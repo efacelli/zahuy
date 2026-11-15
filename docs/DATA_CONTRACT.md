@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.4.3 |
+| Versión | 0.4.4 |
 | Estado | **PROPUESTO — PENDIENTE DE CONCORDANCIA DEL BACKEND** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -463,7 +463,7 @@ o de cajas no deja rastro.
 | `id` | `bigint` identity | no | PK |
 | `table_name` | `text` | no | — |
 | `record_id` | `uuid` | no | — |
-| `action` | `text` | no | `CHECK (action in ('insert','update'))` |
+| `action` | `text` | no | `CHECK (action in ('insert','update','delete'))` (`delete` desde v0.4.4, P-22) |
 | `old_data` | `jsonb` | sí | — |
 | `new_data` | `jsonb` | sí | — |
 | `changed_by` | `uuid` | sí | `auth.uid()` |
@@ -475,6 +475,10 @@ ni tokens.
 En `product_batches` solo se auditan los cambios de `batch_number`, `expires_on`
 y `notes` (v0.3.1): los cambios de saldo ya quedan en `stock_movements` y
 duplicarlos solo agregaría ruido.
+
+Borrados (v0.4.4, P-22): `expiry_alert_settings` es la única tabla en la que
+la app borra filas; su borrado queda con `action = 'delete'`, `old_data` con la
+fila borrada y `new_data` nulo.
 
 El cliente pidió que quede registrado **qué perfil hizo qué cosa** (respuesta
 25): `audit_log.changed_by` y `stock_movements.created_by` lo cubren.
@@ -591,8 +595,9 @@ Una fila con las métricas del dashboard (respuestas 5 y 31). Devuelve filas
 | `expired_batches` | `integer` | Lotes con stock y `expired` |
 | `stock_value_cost` | `numeric(14,2)` | `SUM(stock_quantity * cost_price)` de activos (sin IVA) |
 | `stock_value_sale` | `numeric(14,2)` | `SUM(stock_quantity * sale_price_with_vat)` de activos |
-| `shrinkage_quantity_month` | `numeric(14,3)` | Suma de `shrinkage`, `damage` e `internal_use` del mes actual (Argentina) |
+| `shrinkage_quantity_month` | `numeric(14,3)` | Suma de `quantity` de `shrinkage`, `damage` e `internal_use` del mes actual (Argentina), **sin los movimientos anulados** (v0.4.4, P-21). Mezcla unidades de productos distintos |
 | `box_mismatch_products` | `integer` | Productos con `has_box_mismatch` |
+| `shrinkage_value_month` | `numeric(14,2)` | v0.4.4 (P-21): mismos movimientos que `shrinkage_quantity_month`, valuados `quantity * cost_price` (costo actual del producto, sin IVA; no hay costo por lote todavía). Va al final para no alterar el orden de columnas |
 
 Los reportes que el cliente pidió como imprescindibles (respuesta 31) son
 **stock bajo** y **por vencer**: salen de `v_product_list` con los filtros que
@@ -871,15 +876,13 @@ requiere una decisión quedó como pregunta abierta (P-21 a P-23).
   lanza `NOT_AUTHORIZED` si alguien que no es encargado ni dueño cambia otra
   columna. Un `UPDATE` que RLS filtra no falla: afecta 0 filas; la UI lo
   informa como falta de permiso.
-- **Mermas del mes (`v_inventory_summary.shrinkage_quantity_month`):** suma
-  `quantity` de `shrinkage`, `damage` e `internal_use` del mes (hora de Buenos
-  Aires). Suma unidades de productos distintos tal cual (kg y unidades juntos)
-  y **no descuenta** las anulaciones de esos movimientos (ver P-21).
-- **Auditoría de `expiry_alert_settings`:** se auditan altas y ediciones; el
-  **borrado no** se registra en `audit_log` (ver P-22).
+- **Mermas del mes:** desde v0.4.4 no cuentan los movimientos anulados y se
+  muestran también a costo (§7.4, P-21).
+- **Auditoría de `expiry_alert_settings`:** altas, ediciones y, desde v0.4.4,
+  borrados (§5.8, P-22).
 - **`expires_on` al editar un lote:** el permiso por columna deja que encargado
-  y dueño lo cambien, también a `NULL` (ver P-23). Al crear un lote sigue
-  siendo obligatorio (`EXPIRY_REQUIRED`).
+  y dueño lo cambien, también a `NULL`; se mantiene así por decisión (P-23). Al
+  crear un lote sigue siendo obligatorio (`EXPIRY_REQUIRED`).
 - **Datos locales:** `supabase/seed.sql` carga datos ficticios en `db reset`
   (solo entorno local) y `npm run db:users` crea los usuarios de prueba.
   `src/types/database.ts` se genera con `npm run gen:types` y
@@ -1046,9 +1049,9 @@ este documento y una migración nueva.
 | P-18 | ¿Hay consumo interno? | Sí: tipo `internal_use` | Adoptada (v0.4.0) |
 | P-19 | ¿Las alertas de vencimiento son iguales para todo? | No: configurables por categoría (§5.9) | Adoptada (v0.4.0) |
 | P-20 | ¿Cuántas sucursales y depósitos? | Una sucursal y un depósito: no hace falta modelar ubicaciones | Adoptada (v0.4.0) |
-| P-21 | En "Mermas del mes", ¿se descuentan las mermas anuladas? ¿Se muestra en unidades o en dinero? | Hoy: suma unidades sin descontar anulaciones (§8.9). Propuesta: descontar anulaciones y mostrar también el valor a costo, que permite sumar productos distintos | Abierta |
-| P-22 | ¿Se audita el borrado de una configuración de alertas por categoría? | Hoy no (§8.9). Propuesta: sí, con una migración que agregue `delete` al trigger de auditoría | Abierta |
-| P-23 | ¿Se puede quitar el vencimiento (`NULL`) al editar un lote? | Hoy sí (§8.9). Propuesta: no, coherente con P-01 y `EXPIRY_REQUIRED`; requiere migración | Abierta |
+| P-21 | En "Mermas del mes", ¿se descuentan las mermas anuladas? ¿Se muestra en unidades o en dinero? | Se descuentan los movimientos anulados y se agrega `shrinkage_value_month` (valor a costo) a `v_inventory_summary` (§7.4) | Adoptada (v0.4.4) |
+| P-22 | ¿Se audita el borrado de una configuración de alertas por categoría? | Sí: el borrado queda en `audit_log` con `action = 'delete'` (§5.8) | Adoptada (v0.4.4) |
+| P-23 | ¿Se puede quitar el vencimiento (`NULL`) al editar un lote? | Sí: el encargado o el dueño puede quitarlo al editar un lote; queda auditado. La obligación aplica solo al crear lotes (`EXPIRY_REQUIRED`). Se rechazó la propuesta de prohibirlo | Adoptada (v0.4.4) |
 
 ---
 
@@ -1080,3 +1083,4 @@ volver a registrar la concordancia.
 | 0.4.1 | 2026-11-15 | Aclaración: la vista previa del precio final en el formulario de alta (§5.5) |
 | 0.4.2 | 2026-11-15 | `v_batch_status` suma datos del producto y la categoría para la pantalla de Alertas (§7.1) |
 | 0.4.3 | 2026-11-14 | Aclaraciones de implementación sin reglas nuevas (§8.9): RPC de movimientos implementadas, huecos de SKU, anulación por movimiento en salidas repartidas, nombres de FK usados por el frontend, conteo de cajas, métrica de mermas, auditoría de alertas, edición de `expires_on`, seed y tipos generados. Preguntas abiertas P-21 a P-23 |
+| 0.4.4 | 2026-11-14 | Decisiones de `efacelli`: P-21 adoptada (mermas del mes sin anuladas y `shrinkage_value_month`, §7.4); P-22 adoptada (`audit_log` admite `delete` y audita el borrado de `expiry_alert_settings`, §5.8); P-23: se mantiene permitido quitar `expires_on` al editar un lote. Migración `20261116200000` |

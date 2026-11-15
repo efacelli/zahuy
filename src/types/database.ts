@@ -318,7 +318,7 @@ isOneToOne: false
                   ]
                 },"v_inventory_summary": {
                   Row: {
-                    "active_products": number | null,"box_mismatch_products": number | null,"expired_batches": number | null,"expiring_products": number | null,"low_stock_products": number | null,"shrinkage_quantity_month": number | null,"stock_value_cost": number | null,"stock_value_sale": number | null
+                    "active_products": number | null,"box_mismatch_products": number | null,"expired_batches": number | null,"expiring_products": number | null,"low_stock_products": number | null,"shrinkage_quantity_month": number | null,"shrinkage_value_month": number | null,"stock_value_cost": number | null,"stock_value_sale": number | null
                   }
                   ComputedFields: never
                   Relationships: [
