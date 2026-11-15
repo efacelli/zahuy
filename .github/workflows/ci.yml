@@ -39,3 +39,21 @@ jobs:
 
       - name: Build de producción
         run: npm run build
+
+  database:
+    name: Base de datos (migraciones y pgTAP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      # Base descartable: aplica todas las migraciones y el seed ficticio.
+      - name: Levantar la base local
+        run: npx --yes supabase@3.1.0 db start
+
+      - name: Pruebas de la base (pgTAP)
+        run: npx --yes supabase@3.1.0 test db
