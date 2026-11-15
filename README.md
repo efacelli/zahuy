@@ -38,7 +38,7 @@ Requisitos: Docker Desktop abierto.
 ```bash
 npx supabase@3.1.0 start      # levanta la base local (127.0.0.1:54321)
 npx supabase@3.1.0 db reset   # aplica migraciones y carga supabase/seed.sql (BORRA la base LOCAL)
-npm run db:users              # crea encargado@, empleado@ y duena@zahuy.test
+npm run db:users              # crea encargado@, empleado@, dueno@ y duena@zahuy.test
 ```
 
 - `supabase/seed.sql` carga datos **ficticios** de demostración, con vencimientos

@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs'
 const USERS = [
   { email: 'encargado@zahuy.test', full_name: 'Encargado de prueba', role: 'manager' },
   { email: 'empleado@zahuy.test', full_name: 'Empleado de prueba', role: 'staff' },
+  { email: 'dueno@zahuy.test', full_name: 'Dueño de prueba', role: 'admin' },
   { email: 'duena@zahuy.test', full_name: 'Dueña de prueba', role: 'admin' },
 ]
 
