@@ -116,6 +116,46 @@ No usar una contraseña real ni reutilizada.
 - Las pruebas (`test db`) pasan con o sin el seed cargado.
 - El seed solo se aplica en local. No correrlo contra un proyecto en la nube.
 
+## Pruebas de la base
+
+Antes de cada Pull Request que toque `supabase/`:
+
+```bash
+npx supabase@3.1.0 db reset
+```
+
+```bash
+npx supabase@3.1.0 test db
+```
+
+```bash
+npm run check
+```
+
+- **pgTAP** (`supabase/tests/*.test.sql`): cada archivo corre en una transacción
+  que se revierte, con datos ficticios propios. Pasan con o sin el seed.
+- **`14_security_matrix.test.sql`** revisa todo el esquema: RLS en cada tabla,
+  `security_invoker` en cada vista, `SECURITY DEFINER` con `search_path` vacío
+  en cada función, nada accesible para `anon` y la matriz de permisos de §9.
+  **Al agregar una tabla nueva hay que sumarla a esa matriz**, o la prueba falla.
+- **Concurrencia** (`supabase/scripts/concurrency-test.mjs`): pgTAP usa una sola
+  sesión, así que los pedidos simultáneos se prueban por la API. Requiere haber
+  asignado la contraseña local (sección anterior) y esperar unos segundos
+  después de `db reset` a que la API termine de levantar:
+
+  ```bash
+  SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_PUBLISHABLE_KEY=CLAVE_PUBLICA_DE_STATUS TEST_EMAIL=encargado@zahuy.test TEST_PASSWORD=LA_CLAVE_LOCAL node supabase/scripts/concurrency-test.mjs
+  ```
+
+  Solo acepta una URL local. Deja movimientos ficticios (el ledger no se
+  borra): correr `db reset` al terminar.
+- **Migración sobre datos existentes:** antes de subir una migración, aplicarla
+  con `npx supabase@3.1.0 migration up` sobre la base local con el seed cargado
+  y comparar conteos antes y después. Una migración nunca borra ni reescribe
+  datos; si encuentra datos incompatibles tiene que fallar con un mensaje claro.
+
+Las pruebas de base todavía no corren en el CI.
+
 ## Reglas
 
 - Migraciones nuevas y versionadas en `supabase/migrations/`; nunca se edita una
