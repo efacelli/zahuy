@@ -35,4 +35,11 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Días de alerta de vencimiento y usuarios.',
     permission: 'configureAlerts',
   },
+  {
+    path: '/auditoria',
+    label: 'Auditoría',
+    icon: 'clock',
+    description: 'Quién cambió qué.',
+    permission: 'manageUsers',
+  },
 ]

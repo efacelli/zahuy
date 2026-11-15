@@ -30,7 +30,8 @@ export const BUSINESS_ERROR_MESSAGES: Record<string, string> = {
   MOVEMENT_NOT_FOUND: 'El movimiento no existe o no está disponible.',
   PRODUCT_INACTIVE: 'El producto está inactivo: solo admite mermas, daños o devoluciones a proveedor.',
   INVALID_QUANTITY: 'La cantidad no es válida para la unidad de venta del producto.',
-  INSUFFICIENT_STOCK: 'No hay stock suficiente en el lote para esa salida.',
+  INSUFFICIENT_STOCK:
+    'No hay stock suficiente para esa operación. En las salidas no cuentan los lotes vencidos, salvo para mermas, daños o devoluciones a proveedor.',
   REASON_REQUIRED: 'Indicá el motivo del movimiento.',
   INVALID_MOVEMENT_TYPE: 'Ese tipo de movimiento no está permitido en esta operación.',
   ALREADY_REVERSED: 'Ese movimiento ya fue revertido.',
