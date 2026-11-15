@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview",
-    "check": "npm run lint && npm run typecheck && npm run test && npm run build"
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "db:users": "node scripts/create-test-users.mjs",
+    "gen:types": "npx supabase@3.1.0 gen types typescript --local --schema public > src/types/database.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^7.0.6",

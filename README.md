@@ -31,6 +31,26 @@ arrancar si detecta una `service_role` o una clave secreta.
 | `npm run build` | Build de producción en `dist/` |
 | `npm run check` | Todo lo anterior, en orden |
 
+## Base local (Supabase + Docker)
+
+Requisitos: Docker Desktop abierto.
+
+```bash
+npx supabase@3.1.0 start      # levanta la base local (127.0.0.1:54321)
+npx supabase@3.1.0 db reset   # aplica migraciones y carga supabase/seed.sql (BORRA la base LOCAL)
+npm run db:users              # crea encargado@, empleado@ y duena@zahuy.test
+```
+
+- `supabase/seed.sql` carga datos **ficticios** de demostración, con vencimientos
+  relativos a hoy (hay lotes vencidos, urgentes y por vencer).
+- `npm run db:users` toma la contraseña de `TEST_USER_PASSWORD` en
+  `.env.test.local` (no se sube a Git; creala con una contraseña de prueba
+  cualquiera). Solo funciona contra la base local.
+- `npx supabase@3.1.0 test db` corre las pruebas de la base (pgTAP).
+- `npm run gen:types` regenera `src/types/database.ts` desde la base local;
+  hacerlo después de cada migración. `src/types/contract-check.ts` hace fallar
+  `tsc` si los enums del frontend dejan de coincidir con los de la base.
+
 ## Skills de Claude Code (`.claude/skills/`)
 
 - `supabase-database`: esquema y migraciones.
