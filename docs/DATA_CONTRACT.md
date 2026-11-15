@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.5.0 |
+| Versión | 0.5.1 |
 | Estado | **PROPUESTO — PENDIENTE DE CONCORDANCIA DEL BACKEND** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -350,6 +350,7 @@ futura.
 | `barcode` | `text` | sí | — | `CHECK (barcode ~ '^[0-9]{8,14}$')`; único parcial `products_barcode_key` `WHERE barcode IS NOT NULL`. Se lee con el lector USB |
 | `legacy_code` | `text` | sí | — | v0.5.0 (P-25): código propio del sistema anterior del cliente (ej. `31884325`, `001`). `CHECK (legacy_code = trim(legacy_code) and length(legacy_code) between 1 and 40)`; único parcial `products_legacy_code_key` sobre `upper(legacy_code)` `WHERE legacy_code IS NOT NULL`. Se busca igual que el SKU. Lo edita encargado o dueño |
 | `name` | `text` | no | — | 1–150 caracteres |
+| `search_name` | `text` | no | generada | v0.5.1: `GENERATED ALWAYS AS (lower(private.unaccent_text(name))) STORED`. Nombre sin tildes y en minúscula para buscar ("lacteos" encuentra "Lácteos"). No se escribe |
 | `description` | `text` | sí | — | — |
 | `category_id` | `uuid` | no | — | FK → `categories.id` ([P-06](#13-preguntas-abiertas)) |
 | `brand_id` | `uuid` | no | — | FK → `brands.id` (obligatoria desde v0.3.0, [P-06](#13-preguntas-abiertas)) |
@@ -582,7 +583,7 @@ producto sin stock figura con `is_low_stock = true`.
 ### 7.3 `v_product_list`
 
 Lo que lee la pantalla de listado: columnas de `products` (incluidas
-`sale_price_with_vat`, `units_per_box` y, desde v0.5.0, `legacy_code` al final) más `category_name`, `brand_name`,
+`sale_price_with_vat`, `units_per_box` y, desde v0.5.0, `legacy_code` al final; desde v0.5.1, `search_name` después de `legacy_code`). La búsqueda por texto normaliza lo escrito igual (sin tildes, minúscula) y compara contra `search_name`, `sku`, `barcode` y `legacy_code` más `category_name`, `brand_name`,
 `supplier_name` y las de `v_product_stock`. La búsqueda, los filtros, el orden y
 la paginación se hacen sobre esta vista, sin repetir las reglas en React.
 
@@ -1094,3 +1095,4 @@ volver a registrar la concordancia.
 | 0.4.3 | 2026-11-14 | Aclaraciones de implementación sin reglas nuevas (§8.9): RPC de movimientos implementadas, huecos de SKU, anulación por movimiento en salidas repartidas, nombres de FK usados por el frontend, conteo de cajas, métrica de mermas, auditoría de alertas, edición de `expires_on`, seed y tipos generados. Preguntas abiertas P-21 a P-23 |
 | 0.4.4 | 2026-11-14 | Decisiones de `efacelli`: P-21 adoptada (mermas del mes sin anuladas y `shrinkage_value_month`, §7.4); P-22 adoptada (`audit_log` admite `delete` y audita el borrado de `expiry_alert_settings`, §5.8); P-23: se mantiene permitido quitar `expires_on` al editar un lote. Migración `20261116200000` |
 | 0.5.0 | 2026-11-15 | Importación del sistema anterior: `products.legacy_code` (P-25), `sale_price` con 4 decimales para precio final exacto (P-24), `create_product` recibe `p_legacy_code`, `v_product_list` expone `legacy_code`; criterios de importación (P-26). Migración `20261116210000` |
+| 0.5.1 | 2026-11-15 | Búsqueda sin tildes ni mayúsculas: `products.search_name` generada y expuesta al final de `v_product_list` (§5.5, §7.3). Migración `20261116220000` |

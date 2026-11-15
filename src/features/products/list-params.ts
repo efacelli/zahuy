@@ -104,6 +104,22 @@ export function hasActiveFilters(p: ProductListParams): boolean {
 }
 
 /**
+ * Como la base arma products.search_name (v0.5.1): sin tildes y en minúscula.
+ * Así "lacteos", "LÁCTEOS" y "Lácteos" buscan lo mismo.
+ */
+export function normalizeSearch(term: string): string {
+  return term.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+}
+
+/** Filtro de búsqueda por texto: nombre (sin tildes), SKU, código de barras y código anterior. */
+export function textSearchFilter(raw: string): string | null {
+  const term = sanitizeSearch(raw)
+  if (!term) return null
+  const plain = normalizeSearch(term)
+  return `search_name.ilike.%${plain}%,sku.ilike.%${term}%,barcode.ilike.%${term}%,legacy_code.ilike.%${term}%`
+}
+
+/**
  * Texto de búsqueda seguro para el filtro `or(...)` de PostgREST:
  * se quitan los caracteres que tienen significado en esa sintaxis o en LIKE.
  */

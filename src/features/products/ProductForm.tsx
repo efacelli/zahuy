@@ -23,6 +23,7 @@ import { formatDate, todayInAppTimeZone } from '../../lib/dates'
 import { formatMoney } from '../../lib/format'
 import { newIdempotencyKey } from '../../lib/idempotency'
 import { parseDecimalInput } from '../../lib/numbers'
+import { enterMovesToNextField } from '../../lib/focus-next'
 import { useSupabase } from '../../lib/supabase-context'
 import {
   createProduct,
@@ -136,7 +137,9 @@ export function ProductForm({ onCreated, onCancel, editing, onSaved, initialBarc
   })
 
   return (
-    <form className={styles.form} onSubmit={handleSubmit(onValid)} noValidate>
+    // Delegación: el Enter de cada campo avanza al siguiente (los campos son los interactivos).
+    // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+    <form className={styles.form} onSubmit={handleSubmit(onValid)} onKeyDown={enterMovesToNextField} noValidate>
       {serverError && (
         <p className={styles.serverError} role="alert">
           <Icon name="error" size={18} /> {serverError}

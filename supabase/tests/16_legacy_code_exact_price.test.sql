@@ -16,7 +16,7 @@ select col_is_null('public', 'products', 'legacy_code', 'legacy_code es nulable'
 select has_index('public', 'products', 'products_legacy_code_key', 'índice único products_legacy_code_key');
 select is(
   (select array_agg(column_name::text order by ordinal_position) from information_schema.columns
-    where table_schema = 'public' and table_name = 'v_product_list' and ordinal_position >= 30),
+    where table_schema = 'public' and table_name = 'v_product_list' and ordinal_position between 30 and 32),
   array['loose_units', 'has_box_mismatch', 'legacy_code'],
   'v_product_list suma legacy_code al final, sin mover las demás columnas'
 );
@@ -62,15 +62,15 @@ insert into t_p select 'a', (public.create_product(
   p_idempotency_key => '00000000-0000-4000-8000-0000000016e1', p_name => 'Galletitas P25',
   p_category_id => '00000000-0000-4000-8000-0000000016c1', p_brand_id => '00000000-0000-4000-8000-0000000016b1',
   p_sale_unit => 'unit', p_cost_price => 712, p_sale_price => 991.7355, p_vat_rate => 21,
-  p_legacy_code => ' 31884325 ')).id;
+  p_legacy_code => ' T16-884325 ')).id;
 
 select is((select sale_price from public.products where id = (select id from t_p where k = 'a')), 991.7355::numeric,
   'guarda los 4 decimales');
 select is((select sale_price_with_vat from public.products where id = (select id from t_p where k = 'a')), 1200.00::numeric,
   'el precio final queda exacto: $1.200,00 (con 2 decimales daba $1.200,01)');
-select is((select legacy_code from public.products where id = (select id from t_p where k = 'a')), '31884325',
+select is((select legacy_code from public.products where id = (select id from t_p where k = 'a')), 'T16-884325',
   'create_product guarda el código anterior sin espacios');
-select is((select legacy_code from public.v_product_list where id = (select id from t_p where k = 'a')), '31884325',
+select is((select legacy_code from public.v_product_list where id = (select id from t_p where k = 'a')), 'T16-884325',
   'v_product_list expone legacy_code');
 
 -- IVA 10,5 %: $550 final.
@@ -78,7 +78,7 @@ insert into t_p select 'b', (public.create_product(
   p_idempotency_key => '00000000-0000-4000-8000-0000000016e2', p_name => 'Leche P25',
   p_category_id => '00000000-0000-4000-8000-0000000016c1', p_brand_id => '00000000-0000-4000-8000-0000000016b1',
   p_sale_unit => 'unit', p_cost_price => 400, p_sale_price => round(550 / 1.105, 4), p_vat_rate => 10.5,
-  p_legacy_code => '001')).id;
+  p_legacy_code => 'T16-001')).id;
 select is((select sale_price_with_vat from public.products where id = (select id from t_p where k = 'b')), 550.00::numeric,
   'con IVA 10,5 % también queda exacto');
 
@@ -87,7 +87,7 @@ select throws_ok(
   $$select public.create_product(
     p_idempotency_key => '00000000-0000-4000-8000-0000000016e3', p_name => 'Otro P25',
     p_category_id => '00000000-0000-4000-8000-0000000016c1', p_brand_id => '00000000-0000-4000-8000-0000000016b1',
-    p_sale_unit => 'unit', p_cost_price => 1, p_sale_price => 2, p_vat_rate => 21, p_legacy_code => '001')$$,
+    p_sale_unit => 'unit', p_cost_price => 1, p_sale_price => 2, p_vat_rate => 21, p_legacy_code => 'T16-001')$$,
   '23505', 'duplicate key value violates unique constraint "products_legacy_code_key"',
   'un código anterior repetido da 23505 sobre products_legacy_code_key'
 );
@@ -105,13 +105,13 @@ select is(
     p_idempotency_key => '00000000-0000-4000-8000-0000000016e1', p_name => 'Galletitas P25',
     p_category_id => '00000000-0000-4000-8000-0000000016c1', p_brand_id => '00000000-0000-4000-8000-0000000016b1',
     p_sale_unit => 'unit', p_cost_price => 712, p_sale_price => 991.7355, p_vat_rate => 21,
-    p_legacy_code => '31884325')).id,
+    p_legacy_code => 'T16-884325')).id,
   (select id from t_p where k = 'a'), 'el reintento devuelve el mismo producto'
 );
 
 -- El encargado puede corregir el código anterior.
 select lives_ok(
-  format($$update public.products set legacy_code = '31884326' where id = %L$$, (select id from t_p where k = 'a')),
+  format($$update public.products set legacy_code = 'T16-884326' where id = %L$$, (select id from t_p where k = 'a')),
   'el encargado edita legacy_code'
 );
 reset role;
