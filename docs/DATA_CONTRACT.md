@@ -2,9 +2,9 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.5.2 |
+| Versión | 0.6.0 (propuesta de la §15; lo demás sigue en 0.5.2) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
-| Alcance | Productos, lotes, vencimientos, stock y movimientos |
+| Alcance | Productos, lotes, vencimientos, stock y movimientos. **Propuesta:** ventas y caja (§15, sin implementar) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
 
 > **v0.4.0 incorpora la segunda visita al cliente.** Lo más importante para el
@@ -958,7 +958,7 @@ visita, [P-10](#13-preguntas-abiertas)) los permisos se diferencian por rol.
 ## 11. Fuera de alcance (no crear todavía)
 
 Compras, recepción formal y costo por lote; márgenes y aumentos; descuentos;
-clientes y cuentas corrientes; ventas, caja y tickets; ARCA; offline/PWA;
+clientes y cuentas corrientes; ARCA (ventas y caja: propuesta en §15, v0.6.0); offline/PWA;
 historial de precios separado del `audit_log`. Todas se agregan después con
 migraciones compatibles hacia atrás.
 
@@ -1097,3 +1097,478 @@ volver a registrar la concordancia.
 | 0.5.0 | 2026-11-15 | Importación del sistema anterior: `products.legacy_code` (P-25), `sale_price` con 4 decimales para precio final exacto (P-24), `create_product` recibe `p_legacy_code`, `v_product_list` expone `legacy_code`; criterios de importación (P-26). Migración `20261116210000` |
 | 0.5.1 | 2026-11-15 | Búsqueda sin tildes ni mayúsculas: `products.search_name` generada y expuesta al final de `v_product_list` (§5.5, §7.3). Migración `20261116220000` |
 | 0.5.2 | 2026-11-15 | Concordancia del backend con las versiones 0.4.0 a 0.5.1 (§14). Sin cambios de reglas |
+| 0.6.0 | 2026-11-15 | **Propuesta** de Etapa 5, Ventas y caja (§15): `payment_methods`, `cash_registers`, `cash_sessions`, `sales`, `sale_items`, `sale_payments`, `stock_movements.sale_item_id` y tipo `sale`; RPC `open_cash_session`, `close_cash_session`, `register_sale` (FEFO, idempotente, una sola vez) y `void_sale`; preguntas P-27 a P-38. No se implementa hasta aprobarla |
+
+---
+
+## 15. Etapa 5 — Ventas y caja (PROPUESTA v0.6.0)
+
+> **Estado: PROPUESTA. No se implementa ninguna migración ni pantalla hasta que
+> `efacelli` apruebe este PR y se respondan las preguntas P-27 a P-38 (§15.9).**
+> Todo lo vigente de las secciones 1 a 14 sigue igual. Esta sección solo agrega.
+> Fuentes: respuestas 38 a 43 del relevamiento (2 cajas a la vez; efectivo,
+> débito, crédito, QR y transferencia; cuenta corriente y descuentos por
+> cantidad para después) y la sección 4 de `docs/RELEVAMIENTO_RESPUESTAS.md`
+> (balanza).
+
+### 15.1 Alcance y principios
+
+**Entra en v0.6.0:** vender (carrito → una venta confirmada), cobrar con uno o
+varios medios de pago, descontar stock una sola vez, anular una venta, abrir y
+cerrar la caja (turno) con arqueo. Las ventas son **comprobantes internos no
+fiscales** (no hay factura ARCA, §15.8).
+
+**No entra (queda para etapas siguientes, sin bloquearlas):** facturación
+ARCA, descuentos por cantidad, cuenta corriente y clientes, devoluciones
+posteriores al cierre de caja, retiros de efectivo, lectura de la etiqueta de la
+balanza, modo offline.
+
+Principios:
+
+1. **El precio lo pone la base, no el cliente.** `register_sale` recibe producto
+   y cantidad; el precio unitario sale de `products.sale_price_with_vat` en el
+   momento de la venta y queda copiado (*snapshot*) en el ítem. Cambiar el
+   precio del producto después no altera ventas ya hechas.
+2. **Una venta descuenta stock una sola vez**, por el mismo mecanismo FEFO que
+   §8.7, en la misma transacción. Si algo falla, no queda nada (ni venta, ni
+   pagos, ni movimientos).
+3. **Ventas, ítems y pagos son inmutables.** Lo único que cambia es el estado a
+   `voided` mediante `void_sale`. Se corrige con anulación, no con edición.
+4. **Dinero con `numeric(12,2)`** (§2.3). Los totales los calcula PostgreSQL.
+5. **Todo cambio de stock sigue pasando por el ledger** (`stock_movements`, §3):
+   no existe un segundo camino de descuento.
+
+### 15.2 Enums nuevos y cambios a enums
+
+| Enum | Valores | Notas |
+|---|---|---|
+| `sale_status` | `completed`, `voided` | Una venta nace `completed`. Pasa a `voided` una sola vez |
+| `cash_session_status` | `open`, `closed` | — |
+| `movement_type` (existente) | agrega `sale` (dirección −) | Descuento por venta. No exige `reason` (como `exit`). `ALTER TYPE ... ADD VALUE` va en una migración propia, igual que `internal_use` |
+
+`signed_quantity` (§5.7) no cambia: `sale` no está en la lista de entradas, así
+que resta. El `CHECK` de `reason` de `stock_movements` ("obligatorio salvo
+`entry` y `exit`") se recrea para exceptuar también a `sale`; las filas
+existentes lo cumplen, así que no hay riesgo de pérdida (se valida antes de
+aplicarlo).
+
+`register_product_movement` y `register_stock_movement` **rechazan `sale`**
+(`INVALID_MOVEMENT_TYPE`): ese tipo solo lo escribe `register_sale`. Del mismo
+modo, `reverse_stock_movement` rechaza revertir un movimiento `sale`
+(`INVALID_MOVEMENT_TYPE`): una venta se deshace únicamente con `void_sale`.
+Sin estas dos reglas habría un segundo camino para tocar el stock de una venta.
+
+### 15.3 Tablas
+
+Todas con RLS, `security_invoker` en las vistas, `INSERT`/`UPDATE`/`DELETE`
+directo revocado a `authenticated` (se escribe por RPC), salvo la edición de
+catálogos de la tabla indicada.
+
+#### 15.3.1 `payment_methods`
+
+| Columna | Tipo | Null | Default | Restricciones / notas |
+|---|---|---|---|---|
+| `id` | `uuid` | no | `gen_random_uuid()` | PK |
+| `code` | `text` | no | — | `UNIQUE` (`payment_methods_code_key`). `CHECK (code ~ '^[a-z_]{2,20}$')`. Identificador estable que usa el código |
+| `name` | `text` | no | — | Nombre visible (español), 1–40 caracteres |
+| `is_cash` | `boolean` | no | `false` | Solo el efectivo admite vuelto y entra en el arqueo. Índice único parcial `payment_methods_one_cash_key` `WHERE is_cash` (un solo medio es efectivo) |
+| `is_active` | `boolean` | no | `true` | Un medio inactivo no se puede usar en ventas nuevas |
+| `sort_order` | `integer` | no | `0` | Orden en pantalla |
+| columnas comunes | | | | §2.5 |
+
+La migración crea 5 filas (respuesta 39): `cash` "Efectivo" (`is_cash`),
+`debit` "Débito", `credit` "Crédito", `qr` "QR", `transfer` "Transferencia".
+No se borran; se desactivan. Editan nombre, orden y `is_active` el encargado y
+el dueño. Agregar un medio nuevo es una fila, sin migración de esquema.
+
+#### 15.3.2 `cash_registers` (cajas físicas)
+
+| Columna | Tipo | Null | Default | Restricciones / notas |
+|---|---|---|---|---|
+| `id` | `uuid` | no | `gen_random_uuid()` | PK |
+| `name` | `text` | no | — | 1–40 caracteres; único sin distinguir tildes ni mayúsculas (`cash_registers_name_key`, igual que §5.2) |
+| `is_active` | `boolean` | no | `true` | — |
+| columnas comunes | | | | §2.5 |
+
+La migración crea "Caja 1" y "Caja 2" (respuesta 38). Las altas y ediciones las
+hacen el encargado y el dueño (una caja nueva es una fila). No se borran.
+
+#### 15.3.3 `cash_sessions` (turno de una caja: apertura, ventas y cierre)
+
+| Columna | Tipo | Null | Default | Restricciones / notas |
+|---|---|---|---|---|
+| `id` | `uuid` | no | `gen_random_uuid()` | PK |
+| `idempotency_key` | `uuid` | no | — | `UNIQUE`. Clave de la apertura (reintento seguro) |
+| `cash_register_id` | `uuid` | no | — | FK → `cash_registers.id` (`RESTRICT`) |
+| `status` | `cash_session_status` | no | `'open'` | — |
+| `opened_at` | `timestamptz` | no | `now()` | No lo fija el cliente |
+| `opened_by` | `uuid` | no | `auth.uid()` | FK → `profiles.id` |
+| `opening_amount` | `numeric(12,2)` | no | — | `CHECK (opening_amount >= 0)`. Efectivo inicial (cambio) |
+| `closed_at` | `timestamptz` | sí | — | — |
+| `closed_by` | `uuid` | sí | — | FK → `profiles.id` |
+| `expected_cash` | `numeric(12,2)` | sí | — | Se calcula y guarda al cerrar (§15.5) |
+| `counted_cash` | `numeric(12,2)` | sí | — | `CHECK (counted_cash >= 0)`. Efectivo contado por la persona |
+| `difference` | `numeric(12,2)` | sí | — | `counted_cash − expected_cash` (negativo = faltante). Lo guarda `close_cash_session` |
+| `close_notes` | `text` | sí | — | — |
+| `created_at` | `timestamptz` | no | `now()` | — |
+
+- **Una sola sesión abierta por caja:** índice único parcial
+  `cash_sessions_one_open_per_register_key` sobre `(cash_register_id)`
+  `WHERE status = 'open'`. Dos cajas distintas pueden estar abiertas a la vez.
+- `CHECK` de coherencia: `status = 'open'` ⇒ los campos de cierre son `NULL`;
+  `status = 'closed'` ⇒ `closed_at`, `closed_by`, `counted_cash`,
+  `expected_cash` y `difference` están completos.
+- Una sesión cerrada **no se reabre ni se edita**. Las correcciones se
+  documentan en una sesión nueva (P-31).
+- Índices: `(cash_register_id, opened_at desc)`, `(opened_by)`.
+
+#### 15.3.4 `sales`
+
+| Columna | Tipo | Null | Default | Restricciones / notas |
+|---|---|---|---|---|
+| `id` | `uuid` | no | `gen_random_uuid()` | PK |
+| `sale_number` | `bigint` | no | identity | `UNIQUE` (`sales_sale_number_key`). Número visible del comprobante interno. **Único, no correlativo** (una transacción revertida deja un hueco, igual que el SKU, §8.9). **No es el número fiscal** (§15.8) |
+| `idempotency_key` | `uuid` | no | — | `UNIQUE` (`sales_idempotency_key_key`). La genera el cliente al abrir el carrito y la conserva en los reintentos |
+| `request_hash` | `text` | no | — | `md5` de la solicitud normalizada (§15.6). Solo lo escribe la RPC; sirve para detectar `IDEMPOTENCY_CONFLICT` |
+| `cash_session_id` | `uuid` | no | — | FK → `cash_sessions.id` (`RESTRICT`) |
+| `status` | `sale_status` | no | `'completed'` | — |
+| `total_amount` | `numeric(12,2)` | no | — | `CHECK (total_amount > 0)`. Suma de `sale_items.line_total` |
+| `net_amount` | `numeric(12,2)` | no | — | Suma de netos de los ítems (sin IVA) |
+| `vat_amount` | `numeric(12,2)` | no | — | Suma del IVA de los ítems. `CHECK (net_amount + vat_amount = total_amount)` |
+| `notes` | `text` | sí | — | — |
+| `created_at` | `timestamptz` | no | `now()` | Momento de la venta; no lo fija el cliente |
+| `created_by` | `uuid` | no | `auth.uid()` | FK → `profiles.id`. Quién vendió |
+| `voided_at` | `timestamptz` | sí | — | — |
+| `voided_by` | `uuid` | sí | — | FK → `profiles.id` |
+| `void_reason` | `text` | sí | — | Obligatorio al anular. `CHECK`: `status = 'voided'` ⇔ los tres campos de anulación están completos |
+
+Un trigger rechaza `DELETE` y cualquier `UPDATE` que cambie algo distinto de
+`status`, `voided_at`, `voided_by` y `void_reason`, y que no sea el paso
+`completed → voided`. Índices: `(cash_session_id)`, `(created_at desc)`,
+`(created_by)`.
+
+#### 15.3.5 `sale_items`
+
+| Columna | Tipo | Null | Default | Restricciones / notas |
+|---|---|---|---|---|
+| `id` | `uuid` | no | `gen_random_uuid()` | PK |
+| `sale_id` | `uuid` | no | — | FK → `sales.id` (`RESTRICT`) |
+| `product_id` | `uuid` | no | — | FK → `products.id` (`RESTRICT`). `UNIQUE (sale_id, product_id)`: un ítem por producto (la RPC suma las líneas repetidas) |
+| `quantity` | `numeric(12,3)` | no | — | `CHECK (quantity > 0)`. En unidades de venta del producto (§4.2) |
+| `unit_price_with_vat` | `numeric(12,2)` | no | — | Copia de `products.sale_price_with_vat` al vender |
+| `vat_rate` | `numeric(4,2)` | no | — | Copia de `products.vat_rate` |
+| `line_total` | `numeric(12,2)` | no | — | `round(quantity * unit_price_with_vat, 2)`. `CHECK (line_total > 0)` |
+| `net_amount` | `numeric(12,2)` | no | — | `round(line_total / (1 + vat_rate / 100), 2)` |
+| `vat_amount` | `numeric(12,2)` | no | — | `line_total − net_amount`. `CHECK (net_amount + vat_amount = line_total)` |
+| `unit_cost_price` | `numeric(12,2)` | no | — | Copia de `products.cost_price` (sin IVA), para el margen real |
+| `product_sku` | `text` | no | — | Copia del SKU, para tickets e historial |
+| `product_name` | `text` | no | — | Copia del nombre |
+
+Inmutable (mismo trigger que `sales`). Índice `(product_id)`. El IVA se discrimina
+por ítem porque el negocio es Responsable Inscripto (P-02) y una factura A lo
+necesitará; el redondeo definitivo del comprobante fiscal se revisa en la
+etapa 6.
+
+#### 15.3.6 `sale_payments`
+
+| Columna | Tipo | Null | Default | Restricciones / notas |
+|---|---|---|---|---|
+| `id` | `uuid` | no | `gen_random_uuid()` | PK |
+| `sale_id` | `uuid` | no | — | FK → `sales.id` (`RESTRICT`) |
+| `payment_method_id` | `uuid` | no | — | FK → `payment_methods.id` (`RESTRICT`) |
+| `amount` | `numeric(12,2)` | no | — | `CHECK (amount > 0)`. Lo que **se aplica a la venta** |
+| `tendered_amount` | `numeric(12,2)` | sí | — | Solo efectivo: lo que entregó el cliente. `CHECK (tendered_amount IS NULL OR tendered_amount >= amount)`. Vuelto = `tendered_amount − amount` |
+| `reference` | `text` | sí | — | Referencia opcional (últimos dígitos, n.º de operación). **Nunca el número de tarjeta completo ni datos sensibles** |
+
+Inmutable. `UNIQUE (sale_id, payment_method_id)`. **Invariante:** la suma de
+`amount` de una venta es igual a `sales.total_amount` (lo valida la RPC y un
+*constraint trigger* diferido, como el del ledger, §3). Solo el efectivo puede
+tener `tendered_amount` (lo valida la RPC por `payment_methods.is_cash`).
+
+#### 15.3.7 Cambios a `stock_movements`
+
+Columna nueva, nulable, sin afectar filas existentes:
+
+| Columna | Tipo | Null | Notas |
+|---|---|---|---|
+| `sale_item_id` | `uuid` | sí | FK → `sale_items.id` (`RESTRICT`). Origen del movimiento de venta. Índice `stock_movements_sale_item_id_idx` |
+
+Índice único parcial `stock_movements_sale_item_batch_key` sobre
+`(sale_item_id, batch_id) WHERE movement_type = 'sale'`: aunque hubiera un
+error en la RPC, la base **no permite descontar dos veces el mismo ítem del
+mismo lote**. Es la forma concreta de "una venta descuenta stock una sola vez"
+que §5.7 dejaba anotada.
+
+### 15.4 Relaciones
+
+```
+cash_registers 1──N cash_sessions 1──N sales 1──N sale_items 1──N stock_movements (movement_type = 'sale')
+                                          │              └── N──1 products
+                                          └──N sale_payments N──1 payment_methods
+```
+
+### 15.5 Vistas (lectura)
+
+Ambas `security_invoker`, con las mismas políticas de lectura de §15.7.
+
+**`v_cash_session_summary`** — una fila por sesión (para la pantalla de caja y
+el arqueo):
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `cash_session_id` | `uuid` | — |
+| `cash_register_id`, `cash_register_name` | `uuid`, `text` | — |
+| `status`, `opened_at`, `opened_by`, `closed_at`, `closed_by` | | De `cash_sessions` |
+| `opening_amount` | `numeric(12,2)` | — |
+| `sales_count` | `integer` | Ventas `completed` de la sesión |
+| `sales_total` | `numeric(12,2)` | Suma de `total_amount` de las `completed` |
+| `voided_count` | `integer` | Ventas anuladas |
+| `cash_collected` | `numeric(12,2)` | Suma de `amount` de pagos en efectivo de ventas `completed` |
+| `expected_cash` | `numeric(12,2)` | Abierta: `opening_amount + cash_collected` calculado en vivo. Cerrada: el valor guardado |
+| `counted_cash`, `difference` | `numeric(12,2)` | Solo cerrada |
+
+**`v_cash_session_payments`** — una fila por sesión y medio de pago:
+`cash_session_id`, `payment_method_id`, `payment_method_code`,
+`payment_method_name`, `payments_count`, `amount_total` (solo ventas
+`completed`). Sirve para conciliar contra el posnet, el QR y la cuenta bancaria.
+
+Fórmula del arqueo (v0.6.0): `expected_cash = opening_amount + Σ amount` de los
+pagos en efectivo de ventas `completed` de la sesión. Como solo se anula con la
+sesión abierta (§15.6), una venta anulada nunca figura en una sesión cerrada.
+Retiros y aportes de efectivo no existen todavía (P-31).
+
+### 15.6 Funciones RPC
+
+Mismas reglas generales de §8: `SECURITY DEFINER`, `search_path = ''`,
+validan rol y `is_active`, una transacción por llamada, `EXECUTE` solo a
+`authenticated`. Errores con `RAISE EXCEPTION USING ERRCODE = 'P0001', MESSAGE = '<CODIGO>'` (§8.6).
+
+#### `open_cash_session`
+
+```
+open_cash_session(
+  p_idempotency_key uuid,
+  p_cash_register_id uuid,
+  p_opening_amount  numeric
+) returns cash_sessions
+```
+
+Crea la sesión `open`. Si la caja ya tiene una abierta →
+`CASH_SESSION_ALREADY_OPEN`, salvo que sea el mismo reintento (misma clave):
+devuelve la existente. `p_opening_amount` < 0 → `INVALID_AMOUNT`.
+Caja inexistente o inactiva → `CASH_REGISTER_NOT_FOUND`. Cualquier usuario activo.
+
+#### `close_cash_session`
+
+```
+close_cash_session(
+  p_cash_session_id uuid,
+  p_counted_cash    numeric,
+  p_close_notes     text default null
+) returns cash_sessions
+```
+
+Bloquea la sesión con `FOR UPDATE`, calcula `expected_cash` y `difference`,
+guarda el cierre y pasa a `closed`. Ya cerrada → `CASH_SESSION_CLOSED` (no se
+cierra dos veces). `p_counted_cash` < 0 → `INVALID_AMOUNT`. La cierra quien la
+abrió, el encargado o el dueño. Como `register_sale` toma la sesión con
+`FOR SHARE`, **ninguna venta puede colarse mientras se cierra**: o entra antes y
+cuenta en el arqueo, o llega después y recibe `CASH_SESSION_CLOSED`.
+
+#### `register_sale`
+
+```
+register_sale(
+  p_idempotency_key uuid,
+  p_cash_session_id uuid,
+  p_items           jsonb,   -- [{ "product_id": uuid, "quantity": number }, ...]
+  p_payments        jsonb,   -- [{ "payment_method_id": uuid, "amount": number,
+                             --    "tendered_amount": number|null, "reference": text|null }, ...]
+  p_notes           text default null
+) returns sales
+```
+
+En una transacción, en este orden:
+
+1. **Permisos y sesión.** Usuario activo; la sesión existe y está `open`
+   (`CASH_SESSION_NOT_FOUND` / `CASH_SESSION_CLOSED`).
+2. **Idempotencia** (§8.5): bloqueo consultivo sobre la clave. Si ya existe una
+   venta con esa clave y el mismo `request_hash`, **se devuelve esa venta sin
+   crear nada** (incluso si la sesión se cerró entre el intento y el reintento);
+   con otro hash → `IDEMPOTENCY_CONFLICT`. El hash se calcula sobre la solicitud
+   normalizada: sesión, ítems agrupados por producto con cantidad sumada y
+   ordenados por `product_id`, y pagos ordenados por medio (con `amount` y
+   `tendered_amount`). No entran `notes` ni `reference`.
+3. **Validación de la solicitud.** Sin ítems → `EMPTY_SALE`. Cantidad ≤ 0 o con
+   decimales en una unidad de cantidades enteras → `INVALID_QUANTITY` (misma
+   regla que §8.1). Producto inexistente → `PRODUCT_NOT_FOUND`; inactivo →
+   `PRODUCT_INACTIVE`. Las líneas con el mismo producto se suman.
+4. **Precios.** Por cada producto toma `sale_price_with_vat`, `vat_rate`,
+   `cost_price`, `sku` y `name` **en ese instante** y calcula `line_total`,
+   `net_amount` y `vat_amount` (§15.3.5). El cliente no envía precios.
+5. **Descuento FEFO por ítem.** Procesa los productos en orden de `id` (orden
+   fijo para evitar bloqueos cruzados entre ventas simultáneas) y, para cada
+   uno, recorre los lotes igual que §8.7: `expires_on`, `received_on`, `id`,
+   `FOR UPDATE`, **salteando lotes vencidos** (P-15: lo vencido no se vende).
+   Crea un movimiento `sale` por lote usado, con `sale_item_id`,
+   `operation_key = sales.id` y su propio `idempotency_key` generado por la
+   base. Si el stock vendible no alcanza → `INSUFFICIENT_STOCK` (con el
+   producto en `DETAIL`) y **no se registra nada** (P-36).
+6. **Pagos.** Cada medio debe existir y estar activo
+   (`PAYMENT_METHOD_INVALID`). La suma de `amount` debe ser **exactamente**
+   `total_amount` (`PAYMENT_MISMATCH`). `tendered_amount` solo en efectivo y
+   ≥ `amount` (`INVALID_PAYMENT`).
+7. **Guarda** `sales`, `sale_items` y `sale_payments` y devuelve la fila de
+   `sales`. El frontend lee ítems y pagos con un `select` embebido.
+
+Permisos (§15.7): cualquier usuario activo. Todo con `private.raise_business_error`.
+
+#### `void_sale`
+
+```
+void_sale(
+  p_idempotency_key uuid,
+  p_sale_id         uuid,
+  p_reason          text
+) returns sales
+```
+
+Solo encargado y dueño. Motivo obligatorio (`REASON_REQUIRED`). Venta inexistente
+→ `SALE_NOT_FOUND`; ya anulada → `ALREADY_VOIDED` (un reintento con la misma
+clave devuelve la venta ya anulada). Solo se puede anular **mientras la sesión de
+caja de la venta siga abierta**; si ya se cerró → `CASH_SESSION_CLOSED` (la
+devolución posterior al cierre es de otra etapa, P-32).
+
+Por cada movimiento `sale` de la venta crea un movimiento compensatorio
+`adjustment_in` al **mismo lote**, con `reverses_movement_id` (así sigue valiendo
+"un movimiento se revierte una sola vez", §5.7), `operation_key = p_idempotency_key`
+y el motivo. Después marca la venta `voided`. La anulación puede repetir un lote
+vencido o un producto inactivo (igual que §8.3: corregir tiene que ser posible).
+
+### 15.7 Seguridad
+
+| Objeto | Empleado (`staff`) | Encargado / dueño | Usuario inactivo |
+|---|---|---|---|
+| `payment_methods`, `cash_registers` | lee | lee / crea / edita | — |
+| `cash_sessions` | lee las que abrió | lee todas | — |
+| `sales`, `sale_items`, `sale_payments` | lee las que vendió | lee todas | — |
+| `open_cash_session`, `register_sale` | sí | sí | `NOT_AUTHORIZED` |
+| `close_cash_session` | solo la que abrió | cualquiera | `NOT_AUTHORIZED` |
+| `void_sale` | no (`NOT_AUTHORIZED`) | sí | `NOT_AUTHORIZED` |
+| `v_cash_session_summary`, `v_cash_session_payments` | las de sus sesiones | todas | sin filas |
+
+- `anon`: sin acceso a ninguna tabla, vista ni función nueva. Se agregan a la
+  matriz de `14_security_matrix.test.sql` (§12).
+- `authenticated` no recibe `INSERT`/`UPDATE`/`DELETE` directo sobre
+  `cash_sessions`, `sales`, `sale_items`, `sale_payments` ni sobre las columnas
+  nuevas de `stock_movements`. Los catálogos (`payment_methods`, `cash_registers`)
+  los edita el encargado con permisos por columna, como los de §5.2.
+- Las dos tablas de catálogo entran en `audit_log` (§5.8). Las ventas ya son su
+  propio registro inmutable (`created_by`, `voided_by`).
+- Las ventas **no guardan** datos de tarjetas, tokens ni credenciales de
+  billeteras; `reference` es texto libre acotado y la UI lo rotula así.
+
+### 15.8 Relación con ARCA y con el modo offline (sin implementar)
+
+- **ARCA.** `sales` no lleva campos fiscales. La etapa 6 agrega una tabla aparte
+  (`fiscal_documents`: venta, tipo de comprobante, punto de venta, número, CAE,
+  vencimiento del CAE, estado, solicitud y respuesta) con una única fila válida
+  por venta. Una venta nunca se considera factura hasta tener respuesta
+  afirmativa de ARCA. No se decide nada fiscal acá (P-27).
+- **Offline.** La `idempotency_key` de `register_sale` ya permite reintentos
+  seguros desde una cola local. Para el offline harán falta una fecha de venta
+  elegida por el cliente (hoy el momento es `now()` de la base) y reglas de
+  conflicto de stock; no se anticipan ahora (CLAUDE.md: nunca *last-write-wins*
+  para stock).
+
+### 15.9 Códigos de error nuevos y preguntas abiertas
+
+Se suman a §8.6:
+
+| Código | Cuándo |
+|---|---|
+| `CASH_REGISTER_NOT_FOUND` | Caja inexistente o inactiva |
+| `CASH_SESSION_NOT_FOUND` | Sesión inexistente o no visible |
+| `CASH_SESSION_ALREADY_OPEN` | La caja ya tiene una sesión abierta |
+| `CASH_SESSION_CLOSED` | Vender, cerrar de nuevo o anular en una sesión ya cerrada |
+| `EMPTY_SALE` | Venta sin ítems |
+| `PAYMENT_METHOD_INVALID` | Medio de pago inexistente o inactivo |
+| `PAYMENT_MISMATCH` | La suma de pagos no es el total |
+| `INVALID_PAYMENT` | Importe de pago ≤ 0, o entregado menor al importe, o entregado en un medio que no es efectivo |
+| `INVALID_AMOUNT` | Monto de apertura o conteo negativo |
+| `SALE_NOT_FOUND` | Venta inexistente o no visible |
+| `ALREADY_VOIDED` | La venta ya está anulada |
+
+Reutiliza: `NOT_AUTHORIZED`, `PRODUCT_NOT_FOUND`, `PRODUCT_INACTIVE`,
+`INVALID_QUANTITY`, `INSUFFICIENT_STOCK`, `REASON_REQUIRED`,
+`IDEMPOTENCY_CONFLICT`, `INVALID_MOVEMENT_TYPE`.
+
+**Preguntas abiertas** (la respuesta propuesta es lo que se implementa si nadie
+indica otra cosa; las marcadas ⚠ conviene preguntarlas al cliente o al contador
+antes de aprobar):
+
+| # | Pregunta | Propuesta | Estado |
+|---|---|---|---|
+| P-27 ⚠ | ¿Se emite factura ARCA en cada venta o solo si el cliente la pide? (respuesta 40 del relevamiento: sin respuesta) | v0.6.0 son comprobantes internos no fiscales; la facturación se diseña en la etapa 6 con el contador | Abierta |
+| P-28 | Descuentos por cantidad (cada 6 = 5 %, 12 = 10 %, 18 = 15 %) | Fuera de v0.6.0. Se agregarán columnas de descuento por ítem y una tabla de reglas; el empleado podrá quitarlo. Hay que definir a qué productos aplica | Abierta |
+| P-29 | Cuenta corriente y clientes | Fuera de v0.6.0. Se reserva un medio de pago `account` y `sales.customer_id` nulable para esa etapa | Abierta |
+| P-30 ⚠ | Redondeo del efectivo (sin monedas chicas) | Sin redondeo: el total es el de los ítems | Abierta |
+| P-31 | Retiros y aportes de efectivo durante el turno, y qué hacer si el arqueo no cierra | Sin retiros en v0.6.0; la diferencia se guarda y el encargado la ve. Una sesión cerrada no se reabre | Abierta |
+| P-32 | ¿Se puede anular una venta de un turno ya cerrado? | No: solo con la sesión abierta. Después, devolución (etapa posterior) | Abierta |
+| P-33 | ¿Una caja la usa una sola persona por turno o se comparte? | Cualquier usuario activo vende en cualquier sesión abierta; cada venta registra quién vendió | Abierta |
+| P-34 | ¿El empleado ve las ventas de otros? | No: solo las propias (§15.7). El encargado ve todas | Abierta |
+| P-35 | Pesables con etiqueta de balanza (prefijo `2`, peso en gramos) | La venta recibe la cantidad en kg; leer la etiqueta es del frontend. Falta definir el campo de código de balanza por producto (§11) | Abierta |
+| P-36 ⚠ | Vender producto sin stock registrado. Tras la importación (P-26) los ~3.000 productos tienen stock 0, y no se podría vender hasta cargar lotes | Se mantiene la regla de CLAUDE.md: **no hay stock negativo**; la venta se rechaza con `INSUFFICIENT_STOCK`. Si el negocio necesita vender antes de cargar el stock hace falta una decisión explícita (no se asume) | Abierta |
+| P-37 | Tickets e impresión | Del frontend; el contrato aporta `sale_number`, ítems, pagos y vuelto | Abierta |
+| P-38 | ¿Se puede vender más de lo que hay en lotes vencidos si el producto "está bien"? | No: los lotes vencidos no se venden (P-15) | Abierta |
+
+### 15.10 Pruebas que se exigirán al implementar (se suman a §12)
+
+- Venta feliz: total, neto e IVA suman; precio del ítem = `sale_price_with_vat`;
+  luego de cambiar el precio del producto, la venta vieja no cambia.
+- FEFO en venta: con lotes A (4 u., vence antes) y B (20 u.), vender 10 genera
+  `sale` de 4 sobre A y 6 sobre B; vender 30 → `INSUFFICIENT_STOCK` y no queda
+  venta, pagos ni movimientos; un lote vencido se saltea.
+- Cantidad 0, negativa y con decimales en producto `unit` → `INVALID_QUANTITY`;
+  `kg` con 3 decimales → permitido. Producto inactivo → `PRODUCT_INACTIVE`.
+- Líneas repetidas del mismo producto se suman en un solo ítem.
+- Pagos: suma distinta del total → `PAYMENT_MISMATCH`; efectivo con vuelto;
+  `tendered_amount` en tarjeta → `INVALID_PAYMENT`; medio inactivo →
+  `PAYMENT_METHOD_INVALID`; pago mixto efectivo + QR.
+- Idempotencia: misma clave y misma solicitud dos veces → una sola venta y un
+  solo descuento de stock; misma clave con otros ítems → `IDEMPOTENCY_CONFLICT`;
+  reintento después del cierre de la caja → devuelve la venta original.
+- Concurrencia: varias ventas simultáneas sobre el mismo lote nunca dejan saldo
+  negativo; el mismo reintento en paralelo crea una sola venta; una venta y el
+  cierre de caja a la vez dan un arqueo consistente.
+- Una venta nunca descuenta dos veces: el índice
+  `stock_movements_sale_item_batch_key` rechaza el segundo movimiento `sale`
+  del mismo ítem y lote.
+- `register_product_movement`, `register_stock_movement` y
+  `reverse_stock_movement` rechazan `sale` / movimientos `sale`
+  (`INVALID_MOVEMENT_TYPE`).
+- Anulación: devuelve stock a los mismos lotes, solo encargado/dueño,
+  `ALREADY_VOIDED` a la segunda, `CASH_SESSION_CLOSED` con la sesión cerrada,
+  conciliación del ledger intacta.
+- Caja: dos cajas abiertas a la vez; segunda apertura de la misma →
+  `CASH_SESSION_ALREADY_OPEN`; arqueo = apertura + efectivo cobrado; diferencia
+  guardada; cierre doble → `CASH_SESSION_CLOSED`; vender en caja cerrada → error.
+- Inmutabilidad: `UPDATE`/`DELETE` sobre `sales`, `sale_items`, `sale_payments`
+  y sesiones cerradas → rechazado.
+- RLS: cada fila de §15.7 con un usuario permitido y uno denegado; `anon` sin
+  acceso; el empleado no ve ventas ajenas; ningún `INSERT` directo.
+- Migraciones sobre una base con datos previos (productos, lotes y movimientos
+  de prueba): los conteos, las huellas de datos y el stock se conservan; la
+  matriz de seguridad incluye las tablas nuevas.
+
+### 15.11 Plan de migraciones (cuando se apruebe)
+
+Todas aditivas y sin borrar nada, en este orden: (1) `ALTER TYPE movement_type
+ADD VALUE 'sale'` (sola); (2) enums y tablas de catálogos y caja con sus filas
+iniciales; (3) `sales`, `sale_items`, `sale_payments` y la columna
+`stock_movements.sale_item_id` con sus índices, más el recreado del `CHECK` de
+`reason`; (4) vistas y RPC; (5) cambios a `register_product_movement`,
+`register_stock_movement` y `reverse_stock_movement` para rechazar `sale`;
+(6) pruebas pgTAP, concurrencia y matriz de seguridad. Cada paso con
+`db reset`, pgTAP y la prueba sobre datos previos; antes de aplicarlas en un
+proyecto real, backup verificado (`docs/DEPLOY.md` §7).
