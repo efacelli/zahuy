@@ -3,6 +3,8 @@ import { Button } from '../../components/ui/Button'
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/States'
 import { toAppError } from '../../lib/errors'
 import { useAuth } from './auth-context'
+import { FirstPasswordPage } from './FirstPasswordPage'
+import { MUST_CHANGE_PASSWORD } from './password'
 import { loginPath } from './redirect'
 import { useProfile } from './useProfile'
 
@@ -12,7 +14,7 @@ import { useProfile } from './useProfile'
  * (RLS y RPC), no React (CLAUDE.md, Seguridad).
  */
 export function RequireAuth() {
-  const { status, signOut } = useAuth()
+  const { status, signOut, user } = useAuth()
   const location = useLocation()
   const profile = useProfile()
 
@@ -47,6 +49,10 @@ export function RequireAuth() {
         action={<Button onClick={() => void signOut()}>Salir</Button>}
       />
     )
+  }
+  // Primer ingreso con la contraseña inicial: antes de entrar, elige la suya.
+  if (user?.user_metadata?.[MUST_CHANGE_PASSWORD] === true) {
+    return <FirstPasswordPage name={profile.data.full_name} onSignOut={() => void signOut()} />
   }
   return <Outlet />
 }

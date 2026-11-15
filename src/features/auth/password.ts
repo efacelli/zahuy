@@ -12,6 +12,18 @@ export interface ChangePasswordValues {
 
 export type ChangePasswordErrors = Partial<Record<keyof ChangePasswordValues, string>>
 
+/** Nueva contraseña + repetición (primer ingreso: ya inició sesión con la inicial). */
+export function validateNewPassword(next: string, repeat: string): { next?: string; repeat?: string } {
+  const errors: { next?: string; repeat?: string } = {}
+  if (next.length < MIN_PASSWORD_LENGTH) errors.next = `Tiene que tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`
+  else if (!/[A-Za-z]/.test(next) || !/[0-9]/.test(next)) errors.next = 'Tiene que tener letras y números.'
+  if (repeat !== next) errors.repeat = 'No coincide con la nueva contraseña.'
+  return errors
+}
+
+/** Marca en los metadatos del usuario (la pone el dueño al crear la cuenta). */
+export const MUST_CHANGE_PASSWORD = 'must_change_password'
+
 export function validateChangePassword(v: ChangePasswordValues): ChangePasswordErrors {
   const errors: ChangePasswordErrors = {}
   if (v.current === '') errors.current = 'Ingresá tu contraseña actual.'
