@@ -15,12 +15,22 @@ export interface ProductOption {
   sale_unit: SaleUnit
   /** Contrato v0.4.0 §5.5. */
   units_per_box: number
+  is_active: boolean
 }
 
-/** Busca productos activos por nombre, SKU o código de barras (máximo 20). */
-export async function searchProducts(client: SupabaseClient, text: string): Promise<ProductOption[]> {
+/**
+ * Busca productos por nombre, SKU o código de barras (máximo 20). Por defecto
+ * solo activos; `includeInactive` los suma para dar de baja stock de productos
+ * discontinuados (P-13).
+ */
+export async function searchProducts(
+  client: SupabaseClient,
+  text: string,
+  { includeInactive = false }: { includeInactive?: boolean } = {},
+): Promise<ProductOption[]> {
   const term = sanitizeSearch(text)
-  let q = client.from('products').select('id, sku, name, sale_unit, units_per_box').eq('is_active', true)
+  let q = client.from('products').select('id, sku, name, sale_unit, units_per_box, is_active')
+  if (!includeInactive) q = q.eq('is_active', true)
   if (term) q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,barcode.ilike.%${term}%`)
   const { data, error } = await q.order('name').limit(20)
   if (error) throw error

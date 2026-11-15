@@ -46,3 +46,14 @@ export function movementTypesFor(canRegisterAny: boolean): MovementType[] {
 export function signedQuantity(type: MovementType, quantity: number): number {
   return MOVEMENT_TYPE_INFO[type].direction === 'in' ? quantity : -quantity
 }
+
+/**
+ * Contrato P-13: sobre un producto inactivo (discontinuado) solo se puede dar de
+ * baja lo que quedó. Es el mismo conjunto que puede tocar lotes vencidos (P-15).
+ */
+export const INACTIVE_PRODUCT_MOVEMENT_TYPES: readonly MovementType[] = ['shrinkage', 'damage', 'supplier_return']
+
+/** Tipos que se ofrecen para un producto, según el rol y si está activo. */
+export function movementTypesForProduct(roleTypes: MovementType[], productIsActive: boolean): MovementType[] {
+  return productIsActive ? roleTypes : roleTypes.filter((t) => INACTIVE_PRODUCT_MOVEMENT_TYPES.includes(t))
+}
