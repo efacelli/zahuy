@@ -8,7 +8,7 @@ type Result = { data: unknown; error: unknown }
 export const FAKE_USER_ID = '00000000-0000-4000-8000-000000000001'
 
 /** Sesión ficticia SOLO para pruebas automáticas. */
-export function fakeSession(email = 'empleado@prueba.test'): Session {
+export function fakeSession(email = 'empleado@prueba.test', userMetadata: Record<string, unknown> = {}): Session {
   return {
     access_token: 'token-de-prueba',
     refresh_token: 'refresh-de-prueba',
@@ -18,7 +18,7 @@ export function fakeSession(email = 'empleado@prueba.test'): Session {
       id: FAKE_USER_ID,
       email,
       app_metadata: {},
-      user_metadata: {},
+      user_metadata: userMetadata,
       aud: 'authenticated',
       created_at: '2026-11-14T00:00:00Z',
     },
@@ -62,7 +62,13 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
       emit('SIGNED_IN')
       return { data: { session, user: session.user }, error: null }
     }),
-    updateUser: vi.fn(async (_attrs: { password?: string }) => ({ data: { user: session?.user ?? null }, error: null })),
+    updateUser: vi.fn(async (attrs: { password?: string; data?: Record<string, unknown> }) => {
+      if (session && attrs.data) {
+        session = { ...session, user: { ...session.user, user_metadata: { ...session.user.user_metadata, ...attrs.data } } }
+        emit('USER_UPDATED')
+      }
+      return { data: { user: session?.user ?? null }, error: null }
+    }),
     signOut: vi.fn(async () => {
       session = null
       emit('SIGNED_OUT')
