@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useState } from 'react'
 import { Button } from '../../components/ui/Button'
+import { isBarcodeLike, normalizeBarcode } from '../../domain/barcode'
 import { toAppError } from '../../lib/errors'
 import { useSupabase } from '../../lib/supabase-context'
-import { searchProducts, type ProductOption } from './movements-api'
+import { findProductByBarcode, searchProducts, type ProductOption } from './movements-api'
 import styles from './Movements.module.css'
 
 interface ProductPickerProps {
@@ -13,16 +14,19 @@ interface ProductPickerProps {
   error?: string
   /** Suma productos inactivos, marcados como tales (para darlos de baja, P-13). */
   includeInactive?: boolean
+  /** Campo que recibe el foco después de elegir (por ejemplo, la cantidad). */
+  nextFocusId?: string
 }
 
 const SEARCH_DELAY_MS = 250
 
 /** Buscador de productos por nombre, SKU o código de barras. */
-export function ProductPicker({ id, value, onChange, error, includeInactive = false }: ProductPickerProps) {
+export function ProductPicker({ id, value, onChange, error, includeInactive = false, nextFocusId }: ProductPickerProps) {
   const client = useSupabase()
   const listId = useId()
   const [text, setText] = useState('')
   const [term, setTerm] = useState('')
+  const [scanMessage, setScanMessage] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setTerm(text), SEARCH_DELAY_MS)
@@ -35,6 +39,30 @@ export function ProductPicker({ id, value, onChange, error, includeInactive = fa
     enabled: value === null,
     staleTime: 30_000,
   })
+
+  function choose(product: ProductOption) {
+    setScanMessage(null)
+    onChange(product)
+    if (nextFocusId) window.requestAnimationFrame(() => document.getElementById(nextFocusId)?.focus())
+  }
+
+  /** Enter: un código de barras (lector USB) elige el producto exacto; un texto con un solo resultado, ese. */
+  async function onEnter() {
+    const raw = text.trim()
+    if (isBarcodeLike(raw)) {
+      const code = normalizeBarcode(raw)
+      try {
+        const product = await findProductByBarcode(client, code, { includeInactive })
+        if (product) choose(product)
+        else setScanMessage(`No hay ningún producto${includeInactive ? '' : ' activo'} con el código ${code}.`)
+      } catch (e) {
+        setScanMessage(toAppError(e).message)
+      }
+      return
+    }
+    const only = query.data?.length === 1 && term === text ? query.data[0] : undefined
+    if (only) choose(only)
+  }
 
   if (value) {
     return (
@@ -63,8 +91,23 @@ export function ProductPicker({ id, value, onChange, error, includeInactive = fa
         aria-describedby={error ? `${id}-error` : undefined}
         aria-controls={listId}
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setScanMessage(null)
+          setText(e.target.value)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            // Que el Enter del lector no envíe el formulario ni cierre nada.
+            e.preventDefault()
+            void onEnter()
+          }
+        }}
       />
+      {scanMessage && (
+        <p className={styles.optionError} role="alert">
+          {scanMessage}
+        </p>
+      )}
       <ul id={listId} className={styles.options} aria-label="Productos encontrados">
         {query.isPending && <li className={styles.muted}>Buscando…</li>}
         {query.error && <li className={styles.optionError}>{toAppError(query.error).message}</li>}
@@ -75,7 +118,7 @@ export function ProductPicker({ id, value, onChange, error, includeInactive = fa
         )}
         {query.data?.map((p) => (
           <li key={p.id}>
-            <button type="button" className={styles.option} onClick={() => onChange(p)}>
+            <button type="button" className={styles.option} onClick={() => choose(p)}>
               <span>
                 {p.name}
                 {!p.is_active && <span className={styles.muted}> (inactivo)</span>}

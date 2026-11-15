@@ -37,6 +37,19 @@ export async function searchProducts(
   return (data ?? []) as ProductOption[]
 }
 
+/** Producto con ese código de barras exacto (lector USB), o null. */
+export async function findProductByBarcode(
+  client: SupabaseClient,
+  code: string,
+  { includeInactive = false }: { includeInactive?: boolean } = {},
+): Promise<ProductOption | null> {
+  let q = client.from('products').select('id, sku, name, sale_unit, units_per_box, is_active').eq('barcode', code)
+  if (!includeInactive) q = q.eq('is_active', true)
+  const { data, error } = await q.limit(1)
+  if (error) throw error
+  return ((data ?? []) as ProductOption[])[0] ?? null
+}
+
 /* ------------------------------------------------------------------ */
 /* Escritura: RPC del contrato (§8.1, §8.3, §8.7)                       */
 /* ------------------------------------------------------------------ */

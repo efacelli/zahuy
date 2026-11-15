@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { FormField } from '../../components/ui/FormField'
 import { describedBy } from '../../components/ui/form-field-ids'
 import { Icon } from '../../components/ui/Icon'
+import { barcodeWarning } from '../../domain/barcode'
 import { SALE_UNIT_LABEL, SALE_UNITS, formatQuantity, isIntegerUnit } from '../../domain/units'
 import { VAT_RATES, formatVatRate, priceWithVatPreview } from '../../domain/vat'
 import { formatDate, todayInAppTimeZone } from '../../lib/dates'
@@ -47,13 +48,15 @@ interface ProductFormProps {
   /** Edición: si se indica, el formulario edita ese producto en lugar de crear uno. */
   editing?: EditingProduct
   onSaved?: (product: CreatedProduct) => void
+  /** Alta: código de barras ya leído con el lector (llega desde `?codigo=`). */
+  initialBarcode?: string
 }
 
 /**
  * Alta de producto con stock inicial opcional (contrato §8.4, `create_product`)
  * o edición de sus datos (UPDATE directo con RLS, §5.5). La edición nunca toca stock.
  */
-export function ProductForm({ onCreated, onCancel, editing, onSaved }: ProductFormProps) {
+export function ProductForm({ onCreated, onCancel, editing, onSaved, initialBarcode }: ProductFormProps) {
   const client = useSupabase()
   const queryClient = useQueryClient()
   const today = todayInAppTimeZone()
@@ -71,7 +74,7 @@ export function ProductForm({ onCreated, onCancel, editing, onSaved }: ProductFo
     formState: { errors },
   } = useForm<ProductFormValues, unknown, ProductFormOutput>({
     resolver: zodResolver(schema),
-    defaultValues: editing?.values ?? emptyProductForm(today),
+    defaultValues: editing?.values ?? { ...emptyProductForm(today), barcode: initialBarcode ?? '' },
     mode: 'onTouched',
   })
 
@@ -137,9 +140,22 @@ export function ProductForm({ onCreated, onCancel, editing, onSaved }: ProductFo
             label="Código de barras"
             htmlFor="product-barcode"
             error={err('barcode')}
-            hint="8 a 14 números (EAN/UPC)."
+            hint={barcodeWarning(values.barcode ?? '') ?? '8 a 14 números (EAN/UPC). Se puede escanear con el lector.'}
           >
-            <input className="input" inputMode="numeric" autoComplete="off" {...field('barcode', '8 a 14 números (EAN/UPC).')} {...register('barcode')} />
+            <input
+              className="input"
+              inputMode="numeric"
+              autoComplete="off"
+              {...field('barcode', '8 a 14 números (EAN/UPC).')}
+              {...register('barcode')}
+              onKeyDown={(e) => {
+                // El lector termina con Enter: pasar al nombre en lugar de enviar el formulario.
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  document.getElementById('product-name')?.focus()
+                }
+              }}
+            />
           </FormField>
           <div className={styles.wide}>
             <FormField label="Nombre" htmlFor="product-name" required error={err('name')}>
