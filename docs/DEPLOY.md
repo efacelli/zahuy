@@ -16,17 +16,17 @@ los ejecuta) una persona; Claude prepara, revisa y verifica.
 
 | # | Decisión | Propuesta | Por qué |
 |---|---|---|---|
-| D-1 | Plan de Supabase para producción | **Pro** (USD 25/mes por organización + uso) | El plan gratuito pausa el proyecto tras 7 días sin actividad y no tiene backups automáticos. Para datos reales de stock eso no alcanza (CLAUDE.md: integridad y recuperación primero) |
+| D-1 | Plan de Supabase para producción | **Decidido (2026-11-15, `efacelli`): gratuito por ahora.** Pasar a Pro (USD 25/mes) cuando haya datos reales que no se puedan volver a cargar | El gratuito pausa el proyecto tras 7 días sin actividad (con uso diario no pasa) y **no tiene backups automáticos**: se compensa con el backup manual semanal de §7 |
 | D-2 | Ambiente de prueba (staging) | Un segundo proyecto Supabase **gratuito**, solo con datos ficticios | Probar cada migración en una base igual a producción antes de aplicarla. Que se pause no importa |
-| D-3 | Hosting del frontend | **Render, sitio estático** (gratis) | La app es un sitio estático (Vite). El plan gratuito de Vercel (Hobby) es solo para uso no comercial; Vercel exigiría Pro (USD 20/mes). Revisar los términos de Render antes de confirmar |
+| D-3 | Hosting del frontend | **Decidido: Render, sitio estático**, en la cuenta de `efacelli` (ya paga Starter; el sitio estático no suma costo) | La app es un sitio estático (Vite). El plan gratuito de Vercel (Hobby) es solo para uso no comercial |
 | D-4 | Región de la base | **São Paulo (`sa-east-1`)** | La más cercana a Argentina |
 | D-5 | Dominio | Subdominio de Render al principio (`*.onrender.com`); dominio propio opcional después | Sin costo ni trámite para empezar |
 | D-6 | Dueños de las cuentas (Supabase, Render, GitHub) | Dueño y encargado del negocio como administradores (respuesta 36), desarrolladores como miembros | Que el negocio no dependa de una sola persona |
 | D-7 | Carga inicial de productos reales | A definir: a mano desde la app, o una importación (no existe todavía) | Cuántos productos son y en qué formato los tienen |
 | D-8 | Quién aplica migraciones en producción | `efacelli` (o quien designe), siempre después de staging y con backup | Un solo responsable evita aplicar dos veces o fuera de orden |
 
-Costo mensual estimado con la propuesta: **USD 25** (Supabase Pro). Render
-estático y Supabase de staging, gratis. Verificar precios vigentes al contratar.
+Costo mensual con lo decidido: **USD 0 adicionales** (Supabase gratuito y sitio
+estático de Render). Con Supabase Pro serían USD 25. Verificar precios vigentes.
 
 ---
 
@@ -116,7 +116,8 @@ npx supabase@3.1.0 db push                                  # aplica las migraci
 
 | Qué | Cómo | Cuándo |
 |---|---|---|
-| Backup automático | Diario, incluido en Supabase Pro | Siempre |
+| Backup automático | Diario, incluido en Supabase Pro. **El plan gratuito no lo tiene** | Solo con Pro |
+| Backup manual semanal | `npx supabase@3.1.0 db dump --linked -f zahuy-esquema-AAAA-MM-DD.sql` y `npx supabase@3.1.0 db dump --linked --data-only -f zahuy-datos-AAAA-MM-DD.sql` (piden la contraseña de la base). Guardar en una carpeta privada (no el repo, no un chat), idealmente también en la nube del negocio | Una vez por semana mientras se use el plan gratuito |
 | Backup manual | `npx supabase@3.1.0 db dump --linked -f <archivo>.sql` (esquema) y `--data-only` (datos), guardado **fuera del repo**, cifrado | Antes de cada migración en producción |
 | Restaurar | Panel de Supabase → Backups, o el dump manual en un proyecto nuevo | Solo ante pérdida de datos, con aprobación |
 
