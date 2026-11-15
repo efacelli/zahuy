@@ -2,8 +2,8 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.5.1 |
-| Estado | **PROPUESTO — PENDIENTE DE CONCORDANCIA DEL BACKEND** |
+| Versión | 0.5.2 |
+| Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
 
@@ -1079,7 +1079,7 @@ volver a registrar la concordancia.
 | Responsable | Área | Versión revisada | Fecha | Resultado | Observaciones |
 |---|---|---|---|---|---|
 | `efacelli` | Frontend + aprobación de PR | 0.4.0 | 2026-11-15 | Propone | Respuestas de la segunda visita. Redacción delegada a Claude Code |
-| `ChinoNader18` | Backend | 0.3.1 | 2026-11-14 | Concuerda con observaciones | **Falta revisar la v0.4.0** |
+| `ChinoNader18` | Backend | 0.5.1 | 2026-11-15 | Concuerda con observaciones | Revisadas las versiones 0.4.0 a 0.5.1 y las migraciones `20261116170000` a `20261116220000` contra la base local: todas las pruebas pgTAP y la prueba de concurrencia pasan. Observaciones: (1) P-13 no se cumplía en las RPC de movimientos; corregido en `20261116180000`. (2) P-23 se decidió distinto de lo que propuse; lo acepto. (3) La migración `20261116210000` borra y recrea vistas, una columna generada y una función para cambiar el tipo de `sale_price`: no pierde datos, pero en una base con datos reales conviene aplicarla con backup previo. (4) El bucket `product-images` de §9 todavía no está en `main`: lo propongo en el PR #54. Revisión delegada a Claude Code |
 
 ### Historial
 
@@ -1096,3 +1096,4 @@ volver a registrar la concordancia.
 | 0.4.4 | 2026-11-14 | Decisiones de `efacelli`: P-21 adoptada (mermas del mes sin anuladas y `shrinkage_value_month`, §7.4); P-22 adoptada (`audit_log` admite `delete` y audita el borrado de `expiry_alert_settings`, §5.8); P-23: se mantiene permitido quitar `expires_on` al editar un lote. Migración `20261116200000` |
 | 0.5.0 | 2026-11-15 | Importación del sistema anterior: `products.legacy_code` (P-25), `sale_price` con 4 decimales para precio final exacto (P-24), `create_product` recibe `p_legacy_code`, `v_product_list` expone `legacy_code`; criterios de importación (P-26). Migración `20261116210000` |
 | 0.5.1 | 2026-11-15 | Búsqueda sin tildes ni mayúsculas: `products.search_name` generada y expuesta al final de `v_product_list` (§5.5, §7.3). Migración `20261116220000` |
+| 0.5.2 | 2026-11-15 | Concordancia del backend con las versiones 0.4.0 a 0.5.1 (§14). Sin cambios de reglas |
