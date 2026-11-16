@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.9.0 (propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
+| Versión | 0.9.1 (propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16); ranking de productos vendidos (§17); datos del comercio y aumentos de precios (§18 y §19, propuesta) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -1106,6 +1106,7 @@ volver a registrar la concordancia.
 | 0.7.1 | 2026-11-16 | Rol Programador (P-44, decisión de `efacelli`; revisado por `ChinoNader18`): rol `developer` ("Programador") con los mismos permisos que `admin`. Migración: `ALTER TYPE app_role ADD VALUE 'developer'` (sola) y `private.is_admin()` / `private.is_manager_or_admin()` aceptan `developer`; pgTAP del rol en la matriz de seguridad. Después, un dueño o programador cambia los perfiles de `efacelli` y `ChinoNader18` desde Configuración → Usuarios |
 | 0.8.0 | 2026-11-16 | **Propuesta** (§17): función de lectura `product_sales_ranking(p_from, p_to)` para más vendidos, menos vendidos y sin ventas en X días (solo encargado, dueño y programador); código `INVALID_DATE_RANGE`; preguntas P-46 a P-48 adoptadas. Sin cambios de tablas. Revisada y aprobada por `ChinoNader18`, con sus ajustes: `SECURITY DEFINER`, parámetros nulos → `INVALID_DATE_RANGE` y columna `product_created_at` |
 | 0.9.0 | 2026-11-16 | **Propuesta** del backend (issue #68): §18 datos del comercio (`store_name`, `store_address`, `store_tax_id`, nulables, en `sales_settings`) y §19 historial de precios (`price_history`, solo-agregado, escrita por trigger) y aumentos masivos (`price_bulk_changes`, `preview_price_increase`, `apply_price_increase`, `revert_price_change`); errores nuevos y preguntas P-49 a P-54 (P-49, P-52 y P-53 dependen del cliente). P-50, P-51 y P-54 decididas por `efacelli` y ajustes de su revisión incorporados (filtro por producto, productos sin cambio, origen validado en el trigger, bloqueo ordenado, deshacer con inactivos). Quedan abiertas P-49, P-52 y P-53 (cliente). No se implementa hasta aprobarla |
+| 0.9.1 | 2026-11-16 | Cierre de las preguntas abiertas de la v0.9.0: P-49 (CUIT del ticket: opcional y por ahora sin cargar, a confirmar con el contador), P-52 (el aumento toca solo el precio de góndola, no costos) y P-53 (múltiplo del redondeo elegido en cada aumento, $10 por defecto en pantalla), decididas por `ChinoNader18` por delegación de `efacelli`. Sin cambios de esquema respecto de la v0.9.0 |
 
 ---
 
@@ -1873,7 +1874,7 @@ Todas nulables (por defecto el ticket sale sin encabezado, como hoy).
 
 | # | Pregunta | Estado |
 |---|---|---|
-| P-49 | ¿Se muestra el **CUIT** en un comprobante que no es factura? | **Abierta (cliente).** Propuesta técnica: el campo existe y es opcional; el frontend lo muestra solo si está cargado. El nombre y la dirección no dependen del cliente |
+| P-49 | ¿Se muestra el **CUIT** en un comprobante que no es factura? | **Decidida (`ChinoNader18`, delegada por `efacelli`, 2026-11-16):** el campo existe y es opcional, y el ticket muestra el CUIT **solo si está cargado**. Por ahora **no se carga**: un comprobante interno con CUIT se parece a una factura y conviene que lo confirme el contador junto con la etapa 6 (ARCA). Nombre y dirección sí se pueden cargar ya. Cuando se decida, es cargar el dato en Configuración: no cambia la base ni el frontend | Adoptada |
 
 ### 18.4 Pruebas que se exigirán
 
@@ -1989,8 +1990,8 @@ El precio nunca queda en 0 ni negativo; si el cálculo diera 0 el producto se sa
 |---|---|---|
 | P-50 | ¿Se permite un aumento a **todo el catálogo** sin filtros? | **Decidida (efacelli, 2026-11-16):** no; sin ningún filtro → `FILTER_REQUIRED`. Con el filtro por producto (`p_product_ids`) alcanza para elegir cualquier lista | Adoptada |
 | P-51 | ¿Cuál es el **tope** por operación? | **Decidida (efacelli, 2026-11-16):** 50 % en valor absoluto, **fijo en la base** (cambiarlo es una migración) | Adoptada |
-| P-52 | ¿Se ajusta mirando el **costo** o el precio de góndola, y se mantiene el margen? | **Abierta (cliente).** Propuesta: solo precio de góndola; el ajuste por costo llega con la etapa de compras |
-| P-53 | **Múltiplo del redondeo** del precio final ($10, $50…) | **Abierta (cliente).** El mecanismo (parámetro por operación) no depende de la respuesta |
+| P-52 | ¿Se ajusta mirando el **costo** o el precio de góndola, y se mantiene el margen? | **Decidida (`ChinoNader18`, delegada por `efacelli`, 2026-11-16):** en esta etapa el aumento se aplica **solo al precio de góndola** (porcentaje sobre el precio vigente) y **no toca costos**. El ajuste por costo y el «mantener el margen» llegan con la etapa de compras (futura 1), cuando el costo se cargue con cada compra; hoy el costo se edita a mano y un cálculo de margen sobre un costo desactualizado daría precios equivocados | Adoptada |
+| P-53 | **Múltiplo del redondeo** del precio final ($10, $50…) | **Decidida (`ChinoNader18`, delegada por `efacelli`, 2026-11-16):** el múltiplo **se elige en cada aumento** (parámetro `p_rounding_multiple`, opcional) y la pantalla propone **$10** por defecto; se puede cambiar a $50, $100 o dejarlo vacío (sin redondeo). No hay un valor fijo en la base, así que si el cliente prefiere otro no hace falta ninguna migración | Adoptada |
 | P-54 | ¿Qué pasa al **deshacer** si un producto cambió de precio después? | **Decidida (efacelli, 2026-11-16):** se saltea y se informa; nunca se pisa un precio posterior. También se restauran los productos desactivados después, si su precio sigue igual | Adoptada |
 
 ### 19.7 Pruebas que se exigirán
