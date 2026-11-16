@@ -1,6 +1,7 @@
 import type { RouteObject } from 'react-router'
 import { AlertsPage } from '../features/alerts/AlertsPage'
 import { AuditPage } from '../features/audit/AuditPage'
+import { InventoryCountPage } from '../features/inventory/InventoryCountPage'
 import { ImportProductsPage } from '../features/import/ImportProductsPage'
 import { LoginPage } from '../features/auth/LoginPage'
 import { RequireAuth } from '../features/auth/RequireAuth'
@@ -54,6 +55,7 @@ export const routes: RouteObject[] = [
             ),
           },
           { path: 'movimientos', element: <MovementsPage /> },
+          { path: 'inventario', element: <InventoryCountPage /> },
           { path: 'alertas', element: <AlertsPage /> },
           { path: 'catalogos', element: <CatalogsPage /> },
           {

@@ -26,6 +26,12 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'movements',
     description: 'Ingresos, salidas, ajustes, mermas, daños y devoluciones.',
   },
+  {
+    path: '/inventario',
+    label: 'Carga de inventario',
+    icon: 'inbox',
+    description: 'Cargar el stock recorriendo las góndolas con el lector.',
+  },
   { path: '/alertas', label: 'Alertas', icon: 'alerts', description: 'Lotes próximos a vencer y vencidos.' },
   { path: '/catalogos', label: 'Catálogos', icon: 'catalogs', description: 'Categorías, marcas y proveedores.' },
   {

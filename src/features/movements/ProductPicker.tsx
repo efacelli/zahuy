@@ -16,12 +16,14 @@ interface ProductPickerProps {
   includeInactive?: boolean
   /** Campo que recibe el foco después de elegir (por ejemplo, la cantidad). */
   nextFocusId?: string
+  /** Se escaneó un código que ningún producto tiene (por ejemplo, para asignárselo a uno). */
+  onUnknownBarcode?: (code: string) => void
 }
 
 const SEARCH_DELAY_MS = 250
 
 /** Buscador de productos por nombre, SKU o código de barras. */
-export function ProductPicker({ id, value, onChange, error, includeInactive = false, nextFocusId }: ProductPickerProps) {
+export function ProductPicker({ id, value, onChange, error, includeInactive = false, nextFocusId, onUnknownBarcode }: ProductPickerProps) {
   const client = useSupabase()
   const listId = useId()
   const [text, setText] = useState('')
@@ -54,7 +56,10 @@ export function ProductPicker({ id, value, onChange, error, includeInactive = fa
       try {
         const product = await findProductByBarcode(client, code, { includeInactive })
         if (product) choose(product)
-        else setScanMessage(`No hay ningún producto${includeInactive ? '' : ' activo'} con el código ${code}.`)
+        else if (onUnknownBarcode) {
+          setText('')
+          onUnknownBarcode(code)
+        } else setScanMessage(`No hay ningún producto${includeInactive ? '' : ' activo'} con el código ${code}.`)
       } catch (e) {
         setScanMessage(toAppError(e).message)
       }
