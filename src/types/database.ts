@@ -727,6 +727,11 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"product_sales_ranking":
+{ Args: { "p_from": string,"p_to": string }; Returns: {
+              "brand_name": string,"category_name": string,"cost_total": number,"gross_margin": number,"last_sold_at": string,"name": string,"net_total": number,"product_created_at": string,"product_id": string,"quantity_sold": number,"revenue_total": number,"sale_unit": Database["public"]['Enums']["sale_unit"],"sales_count": number,"sku": string,"stock_quantity": number,"supplier_name": string
+            }[]
+                           },
 "receive_stock":
 { Args: { "p_batch_number"?: string,"p_expires_on"?: string,"p_idempotency_key": string,"p_notes"?: string,"p_product_id": string,"p_quantity": number,"p_received_on"?: string }; Returns: {
               "batch_id": string,

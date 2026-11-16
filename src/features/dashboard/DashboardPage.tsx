@@ -12,7 +12,8 @@ import { countLabel, formatMoney, formatNumber } from '../../lib/format'
 import { useSupabase } from '../../lib/supabase-context'
 import { fetchMovementHistory } from '../movements/movements-api'
 import { fetchInventorySummary } from './dashboard-api'
-import { CashDifferencesChart, DailySalesChart, PaymentMethodsChart } from './FinanceCharts'
+import { ProductRanking } from './ProductRanking'
+import { CashDifferencesChart, DailyMarginChart, DailySalesChart, PaymentMethodsChart } from './FinanceCharts'
 import { fetchFinance, FINANCE_RANGES, type FinanceRange } from './finance-api'
 import styles from './DashboardPage.module.css'
 
@@ -197,6 +198,21 @@ function FinanceSection() {
               linkLabel="Ver turnos"
             />
             <StatTile
+              label="Margen bruto"
+              value={formatMoney(finance.data.marginTotal)}
+              detail={
+                finance.data.netTotal > 0
+                  ? `${formatNumber(Math.round((finance.data.marginTotal / finance.data.netTotal) * 1000) / 10)} % de lo vendido sin IVA (${formatMoney(finance.data.netTotal)}), menos el costo de cada venta.`
+                  : 'Lo vendido sin IVA menos el costo de cada venta.'
+              }
+              status={finance.data.marginTotal < -0.005 ? { tone: 'danger', text: 'Bajo el costo' } : undefined}
+            />
+            <StatTile
+              label="Descuentos"
+              value={formatMoney(finance.data.discountTotal)}
+              detail="Descuentos por cantidad hechos en la caja."
+            />
+            <StatTile
               label="Redondeo"
               value={formatMoney(finance.data.roundingTotal)}
               detail={`Lo que sumó (+) o restó (−) el redondeo. Cajas abiertas ahora: ${formatNumber(finance.data.openSessions)}.`}
@@ -204,9 +220,11 @@ function FinanceSection() {
           </div>
           <div className={styles.charts}>
             <DailySalesChart days={finance.data.days} />
+            <DailyMarginChart days={finance.data.days} />
             <PaymentMethodsChart methods={finance.data.methods} />
             <CashDifferencesChart closings={finance.data.closings} />
           </div>
+          <ProductRanking range={range} />
         </div>
       )}
     </section>

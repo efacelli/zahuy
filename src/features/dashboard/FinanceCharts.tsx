@@ -42,37 +42,49 @@ function DataTable({ caption, head, rows }: { caption: string; head: [string, st
   )
 }
 
-/** Ventas por día: barras verticales, una sola serie. */
-export function DailySalesChart({ days }: { days: DayTotal[] }) {
+interface DailyChartProps {
+  days: DayTotal[]
+  title: string
+  subtitle: string
+  /** Encabezado de la columna de valores en la tabla. */
+  valueLabel: string
+  value: (d: DayTotal) => number
+}
+
+/** Un valor por día: barras verticales, una sola serie. Un valor negativo se dibuja en rojo (con su valor absoluto). */
+function DailyChart({ days, title, subtitle, valueLabel, value }: DailyChartProps) {
   const [active, setActive] = useState<DayTotal | null>(null)
-  const max = Math.max(...days.map((d) => d.total), 0)
+  const max = Math.max(...days.map((d) => Math.abs(value(d))), 0)
   const labelEvery = Math.max(1, Math.ceil(days.length / 7))
   return (
     <figure className={styles.card}>
-      <figcaption className={styles.title}>Ventas por día</figcaption>
-      <p className={styles.subtitle}>Con IVA, por día de apertura del turno.</p>
+      <figcaption className={styles.title}>{title}</figcaption>
+      <p className={styles.subtitle}>{subtitle}</p>
       <div className={styles.plot}>
         <div className={styles.yMax} aria-hidden="true">
           {formatMoney(max)}
         </div>
         <div className={styles.bars}>
-          {days.map((d) => (
-            <button
-              key={d.day}
-              type="button"
-              className={styles.barSlot}
-              aria-label={`${dayLabel(d.day)}: ${formatMoney(d.total)}, ${countLabel(d.count, 'venta', 'ventas')}`}
-              onPointerEnter={() => setActive(d)}
-              onPointerLeave={() => setActive(null)}
-              onFocus={() => setActive(d)}
-              onBlur={() => setActive(null)}
-            >
-              <span
-                className={`${styles.bar} ${active?.day === d.day ? styles.barActive : ''}`}
-                style={{ height: max > 0 ? `${(d.total / max) * 100}%` : '0%' }}
-              />
-            </button>
-          ))}
+          {days.map((d) => {
+            const v = value(d)
+            return (
+              <button
+                key={d.day}
+                type="button"
+                className={styles.barSlot}
+                aria-label={`${title}, ${dayLabel(d.day)}: ${formatMoney(v)}, ${countLabel(d.count, 'venta', 'ventas')}`}
+                onPointerEnter={() => setActive(d)}
+                onPointerLeave={() => setActive(null)}
+                onFocus={() => setActive(d)}
+                onBlur={() => setActive(null)}
+              >
+                <span
+                  className={`${styles.bar} ${v < 0 ? styles.barNegative : ''} ${active?.day === d.day ? styles.barActive : ''}`}
+                  style={{ height: max > 0 ? `${(Math.abs(v) / max) * 100}%` : '0%' }}
+                />
+              </button>
+            )
+          })}
         </div>
         <div className={styles.xAxis} aria-hidden="true">
           {days.map((d, i) => (
@@ -81,7 +93,7 @@ export function DailySalesChart({ days }: { days: DayTotal[] }) {
         </div>
         {active && (
           <div className={styles.tooltip} role="status">
-            <strong>{formatMoney(active.total)}</strong>
+            <strong>{formatMoney(value(active))}</strong>
             <span>
               {dayLabel(active.day)} · {countLabel(active.count, 'venta', 'ventas')}
             </span>
@@ -89,11 +101,37 @@ export function DailySalesChart({ days }: { days: DayTotal[] }) {
         )}
       </div>
       <DataTable
-        caption="Ventas por día"
-        head={['Día', 'Vendido']}
-        rows={days.map((d) => [dayLabel(d.day), `${formatMoney(d.total)} (${formatNumber(d.count)})`])}
+        caption={title}
+        head={['Día', valueLabel]}
+        rows={days.map((d) => [dayLabel(d.day), `${formatMoney(value(d))} (${formatNumber(d.count)})`])}
       />
     </figure>
+  )
+}
+
+/** Ventas por día, con IVA. */
+export function DailySalesChart({ days }: { days: DayTotal[] }) {
+  return (
+    <DailyChart
+      days={days}
+      title="Ventas por día"
+      subtitle="Con IVA, por día de la venta. Sin las anuladas."
+      valueLabel="Vendido"
+      value={(d) => d.total}
+    />
+  )
+}
+
+/** Margen bruto por día: neto sin IVA menos el costo de lo vendido. */
+export function DailyMarginChart({ days }: { days: DayTotal[] }) {
+  return (
+    <DailyChart
+      days={days}
+      title="Margen bruto por día"
+      subtitle="Lo vendido sin IVA menos su costo (el de cada venta). En rojo, días por debajo del costo."
+      valueLabel="Margen"
+      value={(d) => d.margin}
+    />
   )
 }
 

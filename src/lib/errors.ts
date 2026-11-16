@@ -56,6 +56,8 @@ export const BUSINESS_ERROR_MESSAGES: Record<string, string> = {
   INVALID_AMOUNT: 'El monto no es válido.',
   SALE_NOT_FOUND: 'La venta no existe o no está disponible.',
   ALREADY_VOIDED: 'Esa venta ya estaba anulada.',
+  INVALID_DISCOUNT: 'El descuento no es válido: tiene que estar entre 0 y el tope, con hasta 2 decimales.',
+  INVALID_DATE_RANGE: 'El período no es válido: elegí fechas de hasta un año, con la de inicio antes que la de fin.',
 }
 
 /** Mensajes por nombre de restricción única (contrato §5). */

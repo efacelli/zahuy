@@ -73,6 +73,10 @@
   background: var(--series-1);
 }
 
+.barNegative {
+  background: var(--diverging-neg);
+}
+
 .barActive {
   background: var(--series-1-active);
 }
