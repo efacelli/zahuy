@@ -18,12 +18,13 @@ import styles from './Settings.module.css'
 type ColumnKey = 'name' | 'role' | 'status' | 'actions'
 
 const ROLE_HELP: Record<AppRole, string> = {
+  developer: 'Lo mismo que el dueño: quienes desarrollan el sistema.',
   admin: 'Todo, más usuarios y auditoría.',
   manager: 'Productos, precios, catálogos, todos los movimientos, anulaciones, dashboard y alertas.',
   staff: 'Consulta todo, registra ingresos y consumo interno, y actualiza cajas.',
 }
 
-/** Usuarios: rol y estado. Solo el dueño (§5.1, §9); la base vuelve a controlarlo. */
+/** Usuarios: rol y estado. Solo el dueño o el programador (§5.1, §9, P-44); la base vuelve a controlarlo. */
 export function UsersPanel() {
   const client = useSupabase()
   const queryClient = useQueryClient()

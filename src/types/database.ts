@@ -859,7 +859,7 @@ isOneToOne: false
       } }
           }
           Enums: {
-            "app_role": "admin"|"manager"|"staff","cash_session_status": "open"|"closed","expiry_status": "depleted"|"no_expiry"|"expired"|"expires_urgent"|"expires_soon"|"expires_upcoming"|"ok","movement_type": "entry"|"exit"|"adjustment_in"|"adjustment_out"|"shrinkage"|"damage"|"customer_return"|"supplier_return"|"internal_use"|"sale","sale_status": "completed"|"voided","sale_unit": "unit"|"kg"|"l"|"pack"|"box"|"other"
+            "app_role": "admin"|"manager"|"staff"|"developer","cash_session_status": "open"|"closed","expiry_status": "depleted"|"no_expiry"|"expired"|"expires_urgent"|"expires_soon"|"expires_upcoming"|"ok","movement_type": "entry"|"exit"|"adjustment_in"|"adjustment_out"|"shrinkage"|"damage"|"customer_return"|"supplier_return"|"internal_use"|"sale","sale_status": "completed"|"voided","sale_unit": "unit"|"kg"|"l"|"pack"|"box"|"other"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -975,7 +975,7 @@ export type CompositeTypes<
 export const Constants = {
   "public": {
           Enums: {
-            "app_role": ["admin", "manager", "staff"],"cash_session_status": ["open", "closed"],"expiry_status": ["depleted", "no_expiry", "expired", "expires_urgent", "expires_soon", "expires_upcoming", "ok"],"movement_type": ["entry", "exit", "adjustment_in", "adjustment_out", "shrinkage", "damage", "customer_return", "supplier_return", "internal_use", "sale"],"sale_status": ["completed", "voided"],"sale_unit": ["unit", "kg", "l", "pack", "box", "other"]
+            "app_role": ["admin", "manager", "staff", "developer"],"cash_session_status": ["open", "closed"],"expiry_status": ["depleted", "no_expiry", "expired", "expires_urgent", "expires_soon", "expires_upcoming", "ok"],"movement_type": ["entry", "exit", "adjustment_in", "adjustment_out", "shrinkage", "damage", "customer_return", "supplier_return", "internal_use", "sale"],"sale_status": ["completed", "voided"],"sale_unit": ["unit", "kg", "l", "pack", "box", "other"]
           }
         }
 } as const
