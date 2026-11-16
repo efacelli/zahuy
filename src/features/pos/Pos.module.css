@@ -1,0 +1,383 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.muted {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.serverError {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+/* ---------------------------- Elegir caja ---------------------------- */
+
+.pickerGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (min-width: 900px) {
+  .pickerGrid {
+    grid-template-columns: 3fr 2fr;
+  }
+}
+
+.sessionList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sessionList li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* ------------------------------- Venta ------------------------------- */
+
+.saleGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .saleGrid {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+}
+
+.scan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.scanLabel {
+  font-weight: 600;
+}
+
+.scanInput {
+  font-size: 1.25rem;
+  min-height: 3rem;
+}
+
+.scanError {
+  margin: 0;
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.results {
+  max-height: 260px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  list-style: none;
+}
+
+.results li {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.results li:last-child {
+  border-bottom: 0;
+}
+
+.results > li:not(:has(button)) {
+  padding: var(--space-2) var(--space-3);
+}
+
+.result {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  background: var(--color-surface);
+  text-align: start;
+  cursor: pointer;
+}
+
+.result:hover,
+.result:focus-visible {
+  background: var(--color-primary-soft);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-6, 2rem) 0;
+  color: var(--color-text-muted);
+}
+
+.cart {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cart th,
+.cart td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  text-align: start;
+  vertical-align: middle;
+}
+
+.cart th {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.num {
+  text-align: end !important;
+  white-space: nowrap;
+}
+
+.qty {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.qtyInput {
+  width: 5rem;
+  text-align: end;
+}
+
+.totals {
+  position: sticky;
+  top: var(--space-4);
+}
+
+.totalLabel {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.total {
+  margin: 0;
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.payButton {
+  min-height: 3.25rem;
+  font-size: 1.125rem;
+}
+
+.notice {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* ------------------------------- Cobro ------------------------------- */
+
+.payTotals {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+  font-size: 1.125rem;
+}
+
+.chargedField {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.chargedInput {
+  width: 9rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-align: end;
+}
+
+.chargedHint {
+  grid-column: 1 / -1;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  border: 0;
+}
+
+.methods legend {
+  margin-bottom: var(--space-2);
+  font-weight: 600;
+}
+
+.methodButtons {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.payRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.payRow {
+  display: grid;
+  grid-template-columns: 8rem 10rem 1fr;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .payRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cashInputs {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.change {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-success-soft, var(--color-primary-soft));
+  font-size: 1.25rem;
+}
+
+.payErrors {
+  margin: var(--space-4) 0 0;
+  padding-left: var(--space-5, 1.25rem);
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.summary dt {
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.summary dd {
+  margin: 0;
+}
+
+/* ------------------------------- Ticket ------------------------------- */
+
+.ticket {
+  max-width: 320px;
+  margin: var(--space-4) auto 0;
+  padding: var(--space-3);
+  border: 1px dashed var(--color-border-strong);
+  font-family: ui-monospace, monospace;
+  font-size: var(--text-sm);
+}
+
+.ticket table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ticket th {
+  font-weight: 600;
+  text-align: start;
+}
+
+.ticket tfoot tr:first-child th,
+.ticket tfoot tr:first-child td {
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--color-border-strong);
+  font-size: 1rem;
+}
+
+.ticketHead {
+  margin: 0 0 var(--space-2);
+  text-align: center;
+}
+
+.ticketWarning {
+  margin: 0 0 var(--space-2);
+  font-weight: 800;
+  text-align: center;
+}
+
+/* Al imprimir, solo el ticket. */
+@media print {
+  :global(body *) {
+    visibility: hidden;
+  }
+
+  .ticket,
+  .ticket * {
+    visibility: visible;
+  }
+
+  .ticket {
+    position: absolute;
+    inset: 0 auto auto 0;
+    border: 0;
+    color: #000;
+  }
+}

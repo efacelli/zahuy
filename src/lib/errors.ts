@@ -44,6 +44,18 @@ export const BUSINESS_ERROR_MESSAGES: Record<string, string> = {
   EXPIRY_REQUIRED: 'Indicá la fecha de vencimiento: todos los productos se controlan por vencimiento.',
   INVALID_DATE:
     'La fecha no es válida: no puede ser futura, y un movimiento se puede cargar con hasta 7 días de atraso.',
+  // Caja y ventas (propuesta v0.6.0, §15.6).
+  EMPTY_SALE: 'El carrito está vacío.',
+  CASH_SESSION_NOT_FOUND: 'Esa caja no está abierta. Elegí o abrí una caja.',
+  CASH_SESSION_CLOSED: 'La caja ya se cerró. Abrí una caja nueva para seguir vendiendo.',
+  CASH_SESSION_ALREADY_OPEN: 'Esa caja ya está abierta. Elegila de la lista para vender en ella.',
+  CASH_REGISTER_NOT_FOUND: 'La caja no existe o está desactivada.',
+  PAYMENT_METHOD_INVALID: 'Ese medio de pago no está disponible.',
+  PAYMENT_MISMATCH: 'Los pagos no suman el total de la venta. Revisá los montos.',
+  INVALID_PAYMENT: 'El pago no es válido: lo recibido en efectivo no puede ser menor que lo que se cobra.',
+  INVALID_AMOUNT: 'El monto no es válido.',
+  SALE_NOT_FOUND: 'La venta no existe o no está disponible.',
+  ALREADY_VOIDED: 'Esa venta ya estaba anulada.',
 }
 
 /** Mensajes por nombre de restricción única (contrato §5). */

@@ -74,7 +74,7 @@ describe('movimientos (contrato §4.3)', () => {
 
   it('exigen motivo todos salvo ingreso y salida', () => {
     const withoutReason = MOVEMENT_TYPES.filter((t) => !MOVEMENT_TYPE_INFO[t].reasonRequired)
-    expect(withoutReason).toEqual(['entry', 'exit'])
+    expect(withoutReason).toEqual(['entry', 'exit', 'sale'])
   })
 
   it('consumo interno es una salida con motivo (v0.4.0)', () => {

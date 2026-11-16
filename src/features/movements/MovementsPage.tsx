@@ -6,7 +6,7 @@ import { Button } from '../../components/ui/Button'
 import { DataTable, type Column } from '../../components/ui/DataTable'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Pagination } from '../../components/ui/Pagination'
-import { MOVEMENT_TYPE_INFO, MOVEMENT_TYPES, movementTypesFor, type MovementType } from '../../domain/movements'
+import { MOVEMENT_TYPE_INFO, MOVEMENT_TYPES, isReversible, movementTypesFor, type MovementType } from '../../domain/movements'
 import { formatQuantity } from '../../domain/units'
 import { formatDateTime } from '../../lib/dates'
 import { toAppError } from '../../lib/errors'
@@ -116,7 +116,7 @@ export function MovementsPage() {
             header: 'Acciones',
             align: 'end',
             render: (r) =>
-              r.reverses_movement_id ? null : r.is_reversed ? (
+              r.reverses_movement_id || !isReversible(r.movement_type) ? null : r.is_reversed ? (
                 <span className={styles.muted}>Anulado</span>
               ) : (
                 <Button

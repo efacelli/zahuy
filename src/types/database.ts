@@ -45,6 +45,64 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"cash_registers": {
+                  Row: {
+                    "created_at": string,"created_by": string | null,"id": string,"is_active": boolean,"name": string,"updated_at": string,"updated_by": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"is_active"?: boolean,"name": string,"updated_at"?: string,"updated_by"?: string | null
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"is_active"?: boolean,"name"?: string,"updated_at"?: string,"updated_by"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "cash_registers_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "cash_registers_updated_by_fkey"
+      columns: ["updated_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"cash_sessions": {
+                  Row: {
+                    "cash_register_id": string,"close_notes": string | null,"closed_at": string | null,"closed_by": string | null,"counted_cash": number | null,"created_at": string,"difference": number | null,"expected_cash": number | null,"id": string,"idempotency_key": string,"opened_at": string,"opened_by": string,"opening_amount": number,"status": Database["public"]['Enums']["cash_session_status"]
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "cash_register_id": string,"close_notes"?: string | null,"closed_at"?: string | null,"closed_by"?: string | null,"counted_cash"?: number | null,"created_at"?: string,"difference"?: number | null,"expected_cash"?: number | null,"id"?: string,"idempotency_key": string,"opened_at"?: string,"opened_by"?: string,"opening_amount": number,"status"?: Database["public"]['Enums']["cash_session_status"]
+                  }
+                  Update: {
+                    "cash_register_id"?: string,"close_notes"?: string | null,"closed_at"?: string | null,"closed_by"?: string | null,"counted_cash"?: number | null,"created_at"?: string,"difference"?: number | null,"expected_cash"?: number | null,"id"?: string,"idempotency_key"?: string,"opened_at"?: string,"opened_by"?: string,"opening_amount"?: number,"status"?: Database["public"]['Enums']["cash_session_status"]
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "cash_sessions_cash_register_id_fkey"
+      columns: ["cash_register_id"]
+isOneToOne: false
+      referencedRelation: "cash_registers"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "cash_sessions_closed_by_fkey"
+      columns: ["closed_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "cash_sessions_opened_by_fkey"
+      columns: ["opened_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"categories": {
                   Row: {
                     "created_at": string,"created_by": string | null,"id": string,"is_active": boolean,"name": string,"updated_at": string,"updated_by": string | null
@@ -97,6 +155,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     },{
       foreignKeyName: "expiry_alert_settings_updated_by_fkey"
+      columns: ["updated_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"payment_methods": {
+                  Row: {
+                    "code": string,"created_at": string,"created_by": string | null,"id": string,"is_active": boolean,"is_cash": boolean,"name": string,"sort_order": number,"updated_at": string,"updated_by": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "code": string,"created_at"?: string,"created_by"?: string | null,"id"?: string,"is_active"?: boolean,"is_cash"?: boolean,"name": string,"sort_order"?: number,"updated_at"?: string,"updated_by"?: string | null
+                  }
+                  Update: {
+                    "code"?: string,"created_at"?: string,"created_by"?: string | null,"id"?: string,"is_active"?: boolean,"is_cash"?: boolean,"name"?: string,"sort_order"?: number,"updated_at"?: string,"updated_by"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "payment_methods_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "payment_methods_updated_by_fkey"
       columns: ["updated_by"]
 isOneToOne: false
       referencedRelation: "profiles"
@@ -205,16 +289,156 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
-                },"stock_movements": {
+                },"sale_items": {
                   Row: {
-                    "batch_id": string,"batch_quantity_after": number,"created_at": string,"created_by": string,"id": string,"idempotency_key": string,"movement_type": Database["public"]['Enums']["movement_type"],"notes": string | null,"occurred_at": string,"operation_key": string | null,"product_id": string,"quantity": number,"reason": string | null,"reverses_movement_id": string | null,"signed_quantity": number | null
+                    "id": string,"line_total": number,"net_amount": number,"product_id": string,"product_name": string,"product_sku": string,"quantity": number,"sale_id": string,"unit_cost_price": number,"unit_price_with_vat": number,"vat_amount": number,"vat_rate": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "batch_id": string,"batch_quantity_after": number,"created_at"?: string,"created_by"?: string,"id"?: string,"idempotency_key": string,"movement_type": Database["public"]['Enums']["movement_type"],"notes"?: string | null,"occurred_at"?: string,"operation_key"?: string | null,"product_id": string,"quantity": number,"reason"?: string | null,"reverses_movement_id"?: string | null,"signed_quantity"?: never
+                    "id"?: string,"line_total": number,"net_amount": number,"product_id": string,"product_name": string,"product_sku": string,"quantity": number,"sale_id": string,"unit_cost_price": number,"unit_price_with_vat": number,"vat_amount": number,"vat_rate": number
                   }
                   Update: {
-                    "batch_id"?: string,"batch_quantity_after"?: number,"created_at"?: string,"created_by"?: string,"id"?: string,"idempotency_key"?: string,"movement_type"?: Database["public"]['Enums']["movement_type"],"notes"?: string | null,"occurred_at"?: string,"operation_key"?: string | null,"product_id"?: string,"quantity"?: number,"reason"?: string | null,"reverses_movement_id"?: string | null,"signed_quantity"?: never
+                    "id"?: string,"line_total"?: number,"net_amount"?: number,"product_id"?: string,"product_name"?: string,"product_sku"?: string,"quantity"?: number,"sale_id"?: string,"unit_cost_price"?: number,"unit_price_with_vat"?: number,"vat_amount"?: number,"vat_rate"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "sale_items_product_id_fkey"
+      columns: ["product_id"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "sale_items_product_id_fkey"
+      columns: ["product_id"]
+isOneToOne: false
+      referencedRelation: "v_product_list"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "sale_items_product_id_fkey"
+      columns: ["product_id"]
+isOneToOne: false
+      referencedRelation: "v_product_stock"
+      referencedColumns: ["product_id"]
+    },{
+      foreignKeyName: "sale_items_sale_id_fkey"
+      columns: ["sale_id"]
+isOneToOne: false
+      referencedRelation: "sales"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"sale_payments": {
+                  Row: {
+                    "amount": number,"id": string,"payment_method_id": string,"reference": string | null,"sale_id": string,"tendered_amount": number | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "amount": number,"id"?: string,"payment_method_id": string,"reference"?: string | null,"sale_id": string,"tendered_amount"?: number | null
+                  }
+                  Update: {
+                    "amount"?: number,"id"?: string,"payment_method_id"?: string,"reference"?: string | null,"sale_id"?: string,"tendered_amount"?: number | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "sale_payments_payment_method_id_fkey"
+      columns: ["payment_method_id"]
+isOneToOne: false
+      referencedRelation: "payment_methods"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "sale_payments_payment_method_id_fkey"
+      columns: ["payment_method_id"]
+isOneToOne: false
+      referencedRelation: "v_cash_session_payments"
+      referencedColumns: ["payment_method_id"]
+    },{
+      foreignKeyName: "sale_payments_sale_id_fkey"
+      columns: ["sale_id"]
+isOneToOne: false
+      referencedRelation: "sales"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"sales": {
+                  Row: {
+                    "cash_session_id": string,"created_at": string,"created_by": string,"id": string,"idempotency_key": string,"net_amount": number,"notes": string | null,"request_hash": string,"rounding_amount": number,"rounding_multiple": number,"sale_number": number,"status": Database["public"]['Enums']["sale_status"],"total_amount": number,"vat_amount": number,"void_reason": string | null,"voided_at": string | null,"voided_by": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "cash_session_id": string,"created_at"?: string,"created_by"?: string,"id"?: string,"idempotency_key": string,"net_amount": number,"notes"?: string | null,"request_hash": string,"rounding_amount"?: number,"rounding_multiple": number,"sale_number"?: never,"status"?: Database["public"]['Enums']["sale_status"],"total_amount": number,"vat_amount": number,"void_reason"?: string | null,"voided_at"?: string | null,"voided_by"?: string | null
+                  }
+                  Update: {
+                    "cash_session_id"?: string,"created_at"?: string,"created_by"?: string,"id"?: string,"idempotency_key"?: string,"net_amount"?: number,"notes"?: string | null,"request_hash"?: string,"rounding_amount"?: number,"rounding_multiple"?: number,"sale_number"?: never,"status"?: Database["public"]['Enums']["sale_status"],"total_amount"?: number,"vat_amount"?: number,"void_reason"?: string | null,"voided_at"?: string | null,"voided_by"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "sales_cash_session_id_fkey"
+      columns: ["cash_session_id"]
+isOneToOne: false
+      referencedRelation: "cash_sessions"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "sales_cash_session_id_fkey"
+      columns: ["cash_session_id"]
+isOneToOne: false
+      referencedRelation: "v_cash_session_payments"
+      referencedColumns: ["cash_session_id"]
+    },{
+      foreignKeyName: "sales_cash_session_id_fkey"
+      columns: ["cash_session_id"]
+isOneToOne: false
+      referencedRelation: "v_cash_session_summary"
+      referencedColumns: ["cash_session_id"]
+    },{
+      foreignKeyName: "sales_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "sales_voided_by_fkey"
+      columns: ["voided_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"sales_settings": {
+                  Row: {
+                    "created_at": string,"created_by": string | null,"id": string,"rounding_multiple": number,"updated_at": string,"updated_by": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"rounding_multiple"?: number,"updated_at"?: string,"updated_by"?: string | null
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"rounding_multiple"?: number,"updated_at"?: string,"updated_by"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "sales_settings_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "sales_settings_updated_by_fkey"
+      columns: ["updated_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"stock_movements": {
+                  Row: {
+                    "batch_id": string,"batch_quantity_after": number,"created_at": string,"created_by": string,"id": string,"idempotency_key": string,"movement_type": Database["public"]['Enums']["movement_type"],"notes": string | null,"occurred_at": string,"operation_key": string | null,"product_id": string,"quantity": number,"reason": string | null,"reverses_movement_id": string | null,"sale_item_id": string | null,"signed_quantity": number | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "batch_id": string,"batch_quantity_after": number,"created_at"?: string,"created_by"?: string,"id"?: string,"idempotency_key": string,"movement_type": Database["public"]['Enums']["movement_type"],"notes"?: string | null,"occurred_at"?: string,"operation_key"?: string | null,"product_id": string,"quantity": number,"reason"?: string | null,"reverses_movement_id"?: string | null,"sale_item_id"?: string | null,"signed_quantity"?: never
+                  }
+                  Update: {
+                    "batch_id"?: string,"batch_quantity_after"?: number,"created_at"?: string,"created_by"?: string,"id"?: string,"idempotency_key"?: string,"movement_type"?: Database["public"]['Enums']["movement_type"],"notes"?: string | null,"occurred_at"?: string,"operation_key"?: string | null,"product_id"?: string,"quantity"?: number,"reason"?: string | null,"reverses_movement_id"?: string | null,"sale_item_id"?: string | null,"signed_quantity"?: never
                   }
                   Relationships: [
                     {
@@ -240,6 +464,12 @@ isOneToOne: false
       columns: ["reverses_movement_id"]
 isOneToOne: true
       referencedRelation: "stock_movements"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "stock_movements_sale_item_id_fkey"
+      columns: ["sale_item_id"]
+isOneToOne: false
+      referencedRelation: "sale_items"
       referencedColumns: ["id"]
     }
                   ]
@@ -316,6 +546,40 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"v_cash_session_payments": {
+                  Row: {
+                    "amount_total": number | null,"cash_session_id": string,"payment_method_code": string,"payment_method_id": string,"payment_method_name": string,"payments_count": number | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    
+                  ]
+                },"v_cash_session_summary": {
+                  Row: {
+                    "cash_collected": number | null,"cash_register_id": string,"cash_register_name": string,"cash_session_id": string,"closed_at": string | null,"closed_by": string | null,"counted_cash": number | null,"difference": number | null,"expected_cash": number | null,"opened_at": string,"opened_by": string,"opening_amount": number,"rounding_total": number | null,"sales_count": number | null,"sales_total": number | null,"status": Database["public"]['Enums']["cash_session_status"],"voided_count": number | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    {
+      foreignKeyName: "cash_sessions_cash_register_id_fkey"
+      columns: ["cash_register_id"]
+isOneToOne: false
+      referencedRelation: "cash_registers"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "cash_sessions_closed_by_fkey"
+      columns: ["closed_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "cash_sessions_opened_by_fkey"
+      columns: ["opened_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"v_inventory_summary": {
                   Row: {
                     "active_products": number | null,"box_mismatch_products": number | null,"expired_batches": number | null,"expiring_products": number | null,"low_stock_products": number | null,"shrinkage_quantity_month": number | null,"shrinkage_value_month": number | null,"stock_value_cost": number | null,"stock_value_sale": number | null
@@ -361,7 +625,30 @@ isOneToOne: false
                 }
           }
           Functions: {
-            "create_product":
+            "close_cash_session":
+{ Args: { "p_cash_session_id": string,"p_close_notes"?: string,"p_counted_cash": number }; Returns: {
+              "cash_register_id": string,
+"close_notes": string | null,
+"closed_at": string | null,
+"closed_by": string | null,
+"counted_cash": number | null,
+"created_at": string,
+"difference": number | null,
+"expected_cash": number | null,
+"id": string,
+"idempotency_key": string,
+"opened_at": string,
+"opened_by": string,
+"opening_amount": number,
+"status": Database["public"]['Enums']["cash_session_status"]
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "cash_sessions"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"create_product":
 { Args: { "p_barcode"?: string,"p_batch_number"?: string,"p_boxes_quantity"?: number,"p_brand_id": string,"p_category_id": string,"p_cost_price": number,"p_description"?: string,"p_expires_on"?: string,"p_idempotency_key": string,"p_image_path"?: string,"p_initial_quantity"?: number,"p_is_active"?: boolean,"p_legacy_code"?: string,"p_min_stock"?: number,"p_name": string,"p_received_on"?: string,"p_sale_price": number,"p_sale_unit": Database["public"]['Enums']["sale_unit"],"p_supplier_id"?: string,"p_units_per_box"?: number,"p_vat_rate": number }; Returns: {
               "barcode": string | null,
 "boxes_quantity": number,
@@ -395,6 +682,29 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"open_cash_session":
+{ Args: { "p_cash_register_id": string,"p_idempotency_key": string,"p_opening_amount": number }; Returns: {
+              "cash_register_id": string,
+"close_notes": string | null,
+"closed_at": string | null,
+"closed_by": string | null,
+"counted_cash": number | null,
+"created_at": string,
+"difference": number | null,
+"expected_cash": number | null,
+"id": string,
+"idempotency_key": string,
+"opened_at": string,
+"opened_by": string,
+"opening_amount": number,
+"status": Database["public"]['Enums']["cash_session_status"]
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "cash_sessions"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
 "receive_stock":
 { Args: { "p_batch_number"?: string,"p_expires_on"?: string,"p_idempotency_key": string,"p_notes"?: string,"p_product_id": string,"p_quantity": number,"p_received_on"?: string }; Returns: {
               "batch_id": string,
@@ -411,6 +721,7 @@ isOneToOne: false
 "quantity": number,
 "reason": string | null,
 "reverses_movement_id": string | null,
+"sale_item_id": string | null,
 "signed_quantity": number | null
             }
                           SetofOptions: {
@@ -435,6 +746,7 @@ isOneToOne: false
 "quantity": number,
 "reason": string | null,
 "reverses_movement_id": string | null,
+"sale_item_id": string | null,
 "signed_quantity": number | null
             }[]
                           SetofOptions: {
@@ -442,6 +754,32 @@ isOneToOne: false
         to: "stock_movements"
         isOneToOne: false
         isSetofReturn: true
+      } },
+"register_sale":
+{ Args: { "p_cash_session_id": string,"p_idempotency_key": string,"p_items": Json,"p_notes"?: string,"p_payments": Json }; Returns: {
+              "cash_session_id": string,
+"created_at": string,
+"created_by": string,
+"id": string,
+"idempotency_key": string,
+"net_amount": number,
+"notes": string | null,
+"request_hash": string,
+"rounding_amount": number,
+"rounding_multiple": number,
+"sale_number": number,
+"status": Database["public"]['Enums']["sale_status"],
+"total_amount": number,
+"vat_amount": number,
+"void_reason": string | null,
+"voided_at": string | null,
+"voided_by": string | null
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "sales"
+        isOneToOne: true
+        isSetofReturn: false
       } },
 "register_stock_movement":
 { Args: { "p_batch_id": string,"p_idempotency_key": string,"p_movement_type": Database["public"]['Enums']["movement_type"],"p_notes"?: string,"p_occurred_at"?: string,"p_quantity": number,"p_reason"?: string }; Returns: {
@@ -459,6 +797,7 @@ isOneToOne: false
 "quantity": number,
 "reason": string | null,
 "reverses_movement_id": string | null,
+"sale_item_id": string | null,
 "signed_quantity": number | null
             }
                           SetofOptions: {
@@ -483,6 +822,7 @@ isOneToOne: false
 "quantity": number,
 "reason": string | null,
 "reverses_movement_id": string | null,
+"sale_item_id": string | null,
 "signed_quantity": number | null
             }
                           SetofOptions: {
@@ -490,10 +830,36 @@ isOneToOne: false
         to: "stock_movements"
         isOneToOne: true
         isSetofReturn: false
+      } },
+"void_sale":
+{ Args: { "p_idempotency_key": string,"p_reason": string,"p_sale_id": string }; Returns: {
+              "cash_session_id": string,
+"created_at": string,
+"created_by": string,
+"id": string,
+"idempotency_key": string,
+"net_amount": number,
+"notes": string | null,
+"request_hash": string,
+"rounding_amount": number,
+"rounding_multiple": number,
+"sale_number": number,
+"status": Database["public"]['Enums']["sale_status"],
+"total_amount": number,
+"vat_amount": number,
+"void_reason": string | null,
+"voided_at": string | null,
+"voided_by": string | null
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "sales"
+        isOneToOne: true
+        isSetofReturn: false
       } }
           }
           Enums: {
-            "app_role": "admin"|"manager"|"staff","expiry_status": "depleted"|"no_expiry"|"expired"|"expires_urgent"|"expires_soon"|"expires_upcoming"|"ok","movement_type": "entry"|"exit"|"adjustment_in"|"adjustment_out"|"shrinkage"|"damage"|"customer_return"|"supplier_return"|"internal_use","sale_unit": "unit"|"kg"|"l"|"pack"|"box"|"other"
+            "app_role": "admin"|"manager"|"staff","cash_session_status": "open"|"closed","expiry_status": "depleted"|"no_expiry"|"expired"|"expires_urgent"|"expires_soon"|"expires_upcoming"|"ok","movement_type": "entry"|"exit"|"adjustment_in"|"adjustment_out"|"shrinkage"|"damage"|"customer_return"|"supplier_return"|"internal_use"|"sale","sale_status": "completed"|"voided","sale_unit": "unit"|"kg"|"l"|"pack"|"box"|"other"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -609,7 +975,7 @@ export type CompositeTypes<
 export const Constants = {
   "public": {
           Enums: {
-            "app_role": ["admin", "manager", "staff"],"expiry_status": ["depleted", "no_expiry", "expired", "expires_urgent", "expires_soon", "expires_upcoming", "ok"],"movement_type": ["entry", "exit", "adjustment_in", "adjustment_out", "shrinkage", "damage", "customer_return", "supplier_return", "internal_use"],"sale_unit": ["unit", "kg", "l", "pack", "box", "other"]
+            "app_role": ["admin", "manager", "staff"],"cash_session_status": ["open", "closed"],"expiry_status": ["depleted", "no_expiry", "expired", "expires_urgent", "expires_soon", "expires_upcoming", "ok"],"movement_type": ["entry", "exit", "adjustment_in", "adjustment_out", "shrinkage", "damage", "customer_return", "supplier_return", "internal_use", "sale"],"sale_status": ["completed", "voided"],"sale_unit": ["unit", "kg", "l", "pack", "box", "other"]
           }
         }
 } as const
