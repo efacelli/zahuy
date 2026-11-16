@@ -66,7 +66,12 @@ export function Modal({ open, title, onClose, children, footer, busy = false, si
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       document.body.style.overflow = overflow
-      previouslyFocused?.focus?.()
+      // Devuelve el foco a donde estaba, salvo que la pantalla ya lo haya movido a
+      // otro lado (por ejemplo, al buscador para el próximo producto): si no, el
+      // foco vuelve al botón que abrió el diálogo y el próximo escaneo se pierde.
+      const active = document.activeElement
+      const focusIsFree = !active || active === document.body || (panel?.contains(active) ?? false)
+      if (focusIsFree) previouslyFocused?.focus?.()
     }
   }, [open])
 

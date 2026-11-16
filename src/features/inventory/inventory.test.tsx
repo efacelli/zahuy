@@ -43,7 +43,7 @@ describe('carga de inventario', () => {
     // El foco ya está en la cantidad: cantidad, Enter, vencimiento, Enter, Enter (Revisar), Enter (Confirmar).
     await waitFor(() => expect(screen.getByLabelText(/^Cantidad/)).toHaveFocus())
     await user.keyboard('24{Enter}')
-    expect(screen.getByLabelText(/^Vencimiento/)).toHaveFocus()
+    await waitFor(() => expect(screen.getByLabelText(/^Vencimiento/)).toHaveFocus())
     await user.type(screen.getByLabelText(/^Vencimiento/), '100327')
     await user.click(screen.getByRole('button', { name: 'Revisar' }))
     expect(fake.rpc).not.toHaveBeenCalled()
