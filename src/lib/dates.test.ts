@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { daysUntil, formatDate, formatDateTime, isIsoDate, todayInAppTimeZone } from './dates'
+import { daysUntil, formatDate, formatDateTime, isIsoDate, parseTypedDate, todayInAppTimeZone } from './dates'
 
 describe('todayInAppTimeZone', () => {
   it('usa la hora argentina, no UTC (contrato §2.4)', () => {
@@ -47,5 +47,22 @@ describe('daysUntil', () => {
 
   it('rechaza fechas inválidas', () => {
     expect(() => daysUntil('mal', '2026-11-15')).toThrow(RangeError)
+  })
+})
+
+describe('parseTypedDate (carga rápida con teclado)', () => {
+  it('acepta con y sin barras, año de 2 o 4 cifras', () => {
+    expect(parseTypedDate('10/03/2027')).toBe('2027-03-10')
+    expect(parseTypedDate('1/3/27')).toBe('2027-03-01')
+    expect(parseTypedDate('10-03-27')).toBe('2027-03-10')
+    expect(parseTypedDate('100327')).toBe('2027-03-10')
+    expect(parseTypedDate('10032027')).toBe('2027-03-10')
+  })
+
+  it('rechaza fechas que no existen o texto incompleto', () => {
+    expect(parseTypedDate('31/02/2027')).toBeNull()
+    expect(parseTypedDate('1003')).toBeNull()
+    expect(parseTypedDate('')).toBeNull()
+    expect(parseTypedDate('mañana')).toBeNull()
   })
 })
