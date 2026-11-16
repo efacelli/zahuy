@@ -56,7 +56,7 @@ export function SaleTicket({ sale, registerName, onNext }: { sale: CompletedSale
             </tr>
             {sale.rounding !== 0 && (
               <tr>
-                <th scope="row">Redondeo efectivo</th>
+                <th scope="row">Redondeo</th>
                 <td className={styles.num}>{formatMoney(sale.rounding)}</td>
               </tr>
             )}

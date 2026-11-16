@@ -48,10 +48,13 @@ export function PaymentDialog({
   const [drafts, setDrafts] = useState<PaymentDraft[] | null>(null)
   const [serverError, setServerError] = useState<string | null>(null)
   const [showErrors, setShowErrors] = useState(false)
+  /** Monto a cobrar escrito por el cajero; null = el sugerido (total redondeado). */
+  const [charged, setCharged] = useState<string | null>(null)
 
   const cash = methods.data?.find((m) => m.is_cash)
   const current = drafts ?? (cash ? [draftFor(cash)] : [])
-  const plan = planPayments(total, current)
+  const plan = planPayments(total, current, charged ?? '')
+  const single = current.length === 1
 
   const update = (methodId: string, patch: Partial<PaymentDraft>) =>
     setDrafts(current.map((d) => (d.method.id === methodId ? { ...d, ...patch } : d)))
@@ -62,14 +65,13 @@ export function PaymentDialog({
       setDrafts(current.filter((d) => d.method.id !== method.id))
       return
     }
-    // Si es el único medio y no es efectivo, cubre el total; si se suma a otros, el monto lo escribe el cajero.
-    const amount = !method.is_cash && current.length === 0 ? String(total).replace('.', ',') : ''
-    setDrafts([...current, { ...draftFor(method), amount }])
+    // Con un solo medio paga todo; al combinar, el cajero escribe los montos y el efectivo cubre lo que falta.
+    setDrafts([...current, draftFor(method)])
   }
 
   /** Cambiar todo a un solo medio (atajo más usado: "pagó con débito"). */
   function only(method: PaymentMethod) {
-    setDrafts([{ ...draftFor(method), amount: method.is_cash ? '' : String(total).replace('.', ',') }])
+    setDrafts([draftFor(method)])
   }
 
   const sale = useMutation({
@@ -145,17 +147,35 @@ export function PaymentDialog({
       <div className={styles.payTotals}>
         <span>Total de la venta</span>
         <strong>{formatMoney(total)}</strong>
-        {cashDraft && plan.rounding !== 0 && (
+        {plan.rounding !== 0 && (
           <>
-            <span>Redondeo del efectivo</span>
+            <span>Redondeo</span>
             <span>
               {plan.rounding > 0 ? '+' : '−'}
               {formatMoney(Math.abs(plan.rounding))}
             </span>
-            <span>A cobrar</span>
-            <strong className={styles.toPay}>{formatMoney(plan.toPay)}</strong>
           </>
         )}
+        <label htmlFor="pay-charged">A cobrar</label>
+        <span className={styles.chargedField}>
+          <input
+            id="pay-charged"
+            className={`input ${styles.chargedInput}`}
+            inputMode="decimal"
+            autoComplete="off"
+            aria-describedby="pay-charged-hint"
+            value={charged ?? String(plan.suggested).replace('.', ',')}
+            onChange={(e) => setCharged(e.target.value)}
+          />
+          {charged !== null && (
+            <Button size="sm" variant="ghost" onClick={() => setCharged(null)}>
+              Usar {formatMoney(plan.suggested)}
+            </Button>
+          )}
+        </span>
+        <span id="pay-charged-hint" className={styles.chargedHint}>
+          Redondeado a la centena (menos de $50, exacto). Se puede cambiar si hace falta.
+        </span>
       </div>
 
       <fieldset className={styles.methods}>
@@ -183,14 +203,18 @@ export function PaymentDialog({
           .map((d) => (
             <div key={d.method.id} className={styles.payRow}>
               <label htmlFor={`pay-${d.method.code}`}>{d.method.name}</label>
-              <input
-                id={`pay-${d.method.code}`}
-                className="input"
-                inputMode="decimal"
-                autoComplete="off"
-                value={d.amount}
-                onChange={(e) => update(d.method.id, { amount: e.target.value })}
-              />
+              {single ? (
+                <strong>{formatMoney(plan.toPay)}</strong>
+              ) : (
+                <input
+                  id={`pay-${d.method.code}`}
+                  className="input"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={d.amount}
+                  onChange={(e) => update(d.method.id, { amount: e.target.value })}
+                />
+              )}
               <input
                 className="input"
                 aria-label={`Referencia de ${d.method.name} (opcional)`}

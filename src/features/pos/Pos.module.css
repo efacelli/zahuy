@@ -228,8 +228,24 @@
   font-size: 1.125rem;
 }
 
-.toPay {
+.chargedField {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.chargedInput {
+  width: 9rem;
   font-size: 1.5rem;
+  font-weight: 700;
+  text-align: end;
+}
+
+.chargedHint {
+  grid-column: 1 / -1;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 
 .methods {

@@ -84,13 +84,30 @@ describe('carrito (reglas puras)', () => {
     expect(onlyCash).toMatchObject({ cashAmount: 1200, rounding: -37, toPay: 1200, change: 800, errors: [] })
     expect(onlyCash.payments).toEqual([{ payment_method_id: 'c', amount: 1200, tendered_amount: 2000, reference: null }])
 
+    // Mixto: el total se redondea (1287 → 1300) y el efectivo cubre lo que falta.
     const mixed = planPayments(1287, [debit, { ...cash, tendered: '' }])
-    expect(mixed).toMatchObject({ cashDue: 287, cashAmount: 300, rounding: 13, errors: [] })
+    expect(mixed).toMatchObject({ toPay: 1300, cashAmount: 300, rounding: 13, errors: [] })
 
-    expect(planPayments(1237, [{ ...debit, amount: '1000' }]).errors[0]).toMatch(/Faltan/)
+    const credit: PaymentDraft = { ...debit, method: { id: 'k', code: 'credit', name: 'Crédito', is_cash: false }, amount: '100' }
+    expect(planPayments(1237, [debit, credit]).errors[0]).toMatch(/Faltan/)
+    // Menos de $50: exacto.
     expect(planPayments(30, [cash])).toMatchObject({ cashAmount: 30, rounding: 0, toPay: 30, change: 1970, errors: [] })
-    expect(planPayments(1037, [debit, { ...cash, tendered: '' }])).toMatchObject({ cashDue: 37, cashAmount: 37, rounding: 0, errors: [] })
     expect(planPayments(1237, [{ ...cash, tendered: '1000' }]).errors[0]).toMatch(/menor/)
+  })
+
+  it('cobro virtual: también redondea, y el monto a cobrar se puede cambiar', () => {
+    const debit: PaymentDraft = { method: { id: 'd', code: 'debit', name: 'Débito', is_cash: false }, amount: '', tendered: '', reference: '' }
+    expect(planPayments(1237, [debit])).toMatchObject({
+      suggested: 1200,
+      toPay: 1200,
+      rounding: -37,
+      payments: [{ payment_method_id: 'd', amount: 1200, tendered_amount: null, reference: null }],
+    })
+    // El cajero vuelve al monto exacto.
+    expect(planPayments(1237, [debit], '1237')).toMatchObject({ toPay: 1237, rounding: 0, errors: [] })
+    // No puede alejarse del total en $100 o más.
+    expect(planPayments(1237, [debit], '1400').errors[0]).toMatch(/no puede diferir/)
+    expect(planPayments(1237, [debit], 'abc').errors[0]).toMatch(/no es válido/)
   })
 })
 
@@ -146,7 +163,7 @@ describe('pantalla de caja', () => {
     expect(await screen.findByText('El carrito está vacío.')).toBeInTheDocument()
   })
 
-  it('todo con débito: el monto es el total, sin redondeo', async () => {
+  it('todo con débito: redondea igual (412,33 → 400)', async () => {
     const { fake, user } = setup()
     fake.setRpcResult('register_sale', { id: 'sale-2', sale_number: 16, total_amount: 412.33, created_at: '2026-11-15T15:00:00Z' })
     await enterSale(user)
@@ -154,10 +171,29 @@ describe('pantalla de caja', () => {
     await user.click(screen.getByRole('button', { name: 'Cobrar (F12)' }))
     const dialog = await screen.findByRole('dialog', { name: 'Cobrar' })
     await user.click(await within(dialog).findByRole('button', { name: 'Todo con Débito' }))
+    expect(within(dialog).getByLabelText('A cobrar')).toHaveValue('400')
     await user.click(within(dialog).getByRole('button', { name: 'Confirmar venta' }))
     await waitFor(() => expect(fake.rpc).toHaveBeenCalledOnce())
     expect((fake.rpc.mock.calls[0] as [string, Record<string, unknown>])[1]).toMatchObject({
-      p_payments: [{ payment_method_id: 'pm-debit', amount: 412.33, tendered_amount: null }],
+      p_payments: [{ payment_method_id: 'pm-debit', amount: 400, tendered_amount: null }],
+    })
+  })
+
+  it('el cajero puede cambiar el monto a cobrar (por ejemplo, al exacto)', async () => {
+    const { fake, user } = setup()
+    fake.setRpcResult('register_sale', { id: 'sale-3', sale_number: 17, total_amount: 412.33, created_at: '2026-11-15T15:00:00Z' })
+    await enterSale(user)
+    await user.type(scanField(), '7790000000017{Enter}')
+    await user.click(screen.getByRole('button', { name: 'Cobrar (F12)' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Cobrar' })
+    await user.click(await within(dialog).findByRole('button', { name: 'Todo con Débito' }))
+    const charged = within(dialog).getByLabelText('A cobrar')
+    await user.clear(charged)
+    await user.type(charged, '412,33')
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmar venta' }))
+    await waitFor(() => expect(fake.rpc).toHaveBeenCalledOnce())
+    expect((fake.rpc.mock.calls[0] as [string, Record<string, unknown>])[1]).toMatchObject({
+      p_payments: [{ payment_method_id: 'pm-debit', amount: 412.33 }],
     })
   })
 
