@@ -2,9 +2,9 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.8.0 (§17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
+| Versión | 0.9.0 (propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
-| Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16); ranking de productos vendidos (§17) |
+| Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16); ranking de productos vendidos (§17); datos del comercio y aumentos de precios (§18 y §19, propuesta) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
 
 > **v0.4.0 incorpora la segunda visita al cliente.** Lo más importante para el
@@ -1105,6 +1105,7 @@ volver a registrar la concordancia.
 | 0.7.0 | 2026-11-16 | **Propuesta** (§16): descuentos por cantidad (cada 6 unidades 5 %, editable en la caja, todos los productos) con columnas aditivas en `sales_settings`, `sale_items` y `sales`, `register_sale` con `discount_percent` opcional y código `INVALID_DISCOUNT`; vistas `v_sales_daily` y `v_sales_daily_payments` para las finanzas del dashboard. Preguntas P-41 a P-43; P-41 (tope 30 %) y P-42 (el cajero también puede subirlo) decididas por efacelli; P-43 (sugerido solo en cantidades enteras) por `ChinoNader18`, más sus ajustes: `CHECK < 100`, hash con el `discount_percent` enviado, y precisiones de `v_sales_daily` |
 | 0.7.1 | 2026-11-16 | Rol Programador (P-44, decisión de `efacelli`; revisado por `ChinoNader18`): rol `developer` ("Programador") con los mismos permisos que `admin`. Migración: `ALTER TYPE app_role ADD VALUE 'developer'` (sola) y `private.is_admin()` / `private.is_manager_or_admin()` aceptan `developer`; pgTAP del rol en la matriz de seguridad. Después, un dueño o programador cambia los perfiles de `efacelli` y `ChinoNader18` desde Configuración → Usuarios |
 | 0.8.0 | 2026-11-16 | **Propuesta** (§17): función de lectura `product_sales_ranking(p_from, p_to)` para más vendidos, menos vendidos y sin ventas en X días (solo encargado, dueño y programador); código `INVALID_DATE_RANGE`; preguntas P-46 a P-48 adoptadas. Sin cambios de tablas. Revisada y aprobada por `ChinoNader18`, con sus ajustes: `SECURITY DEFINER`, parámetros nulos → `INVALID_DATE_RANGE` y columna `product_created_at` |
+| 0.9.0 | 2026-11-16 | **Propuesta** del backend (issue #68): §18 datos del comercio (`store_name`, `store_address`, `store_tax_id`, nulables, en `sales_settings`) y §19 historial de precios (`price_history`, solo-agregado, escrita por trigger) y aumentos masivos (`price_bulk_changes`, `preview_price_increase`, `apply_price_increase`, `revert_price_change`); errores nuevos y preguntas P-49 a P-54 (P-49, P-52 y P-53 dependen del cliente). No se implementa hasta aprobarla |
 
 ---
 
@@ -1834,3 +1835,172 @@ productos sin ventas aparecen con ceros y `last_sold_at` nulo; extremos del
 rango incluidos con hora local (venta a las 23:30 del último día); rango
 inválido o con parámetros nulos (`INVALID_DATE_RANGE`); `product_created_at`; `gross_margin = net_total − cost_total`;
 ventas de varios productos y líneas de kg con decimales.
+
+---
+
+## 18. Datos del comercio para el ticket (PROPUESTA v0.9.0)
+
+> **Propuesta del backend (`ChinoNader18`), a pedido de `efacelli` (issue #68).** No se
+> implementa hasta que la apruebe. Solo agrega columnas **nulables** a una tabla existente:
+> sin relleno y sin cambios de comportamiento para lo ya hecho.
+
+### 18.1 Para qué
+
+El ticket interno (§15) puede llevar un encabezado con el nombre, la dirección y el CUIT del
+comercio. Hoy no hay dónde guardarlos. El ticket sigue diciendo **«NO VÁLIDO COMO FACTURA»**
+(P-27).
+
+### 18.2 Columnas nuevas en `sales_settings` (§15.3.8)
+
+Todas nulables (por defecto el ticket sale sin encabezado, como hoy).
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `store_name` | `text` | `CHECK (store_name IS NULL OR length(trim(store_name)) BETWEEN 1 AND 80)` |
+| `store_address` | `text` | `CHECK (store_address IS NULL OR length(trim(store_address)) BETWEEN 1 AND 120)` |
+| `store_tax_id` | `text` | CUIT: **11 dígitos sin guiones**. `CHECK (store_tax_id IS NULL OR store_tax_id ~ '^[0-9]{11}$')`. La base no valida el dígito verificador; el frontend lo muestra con formato `NN-NNNNNNNN-N` |
+
+- Los **leen** todos los usuarios activos (el empleado imprime el ticket) y los **editan** el
+  encargado, el dueño y el programador, con el permiso por columna `UPDATE` ya usado en
+  `rounding_multiple` y la regla de descuento. Los cambios quedan en `audit_log`.
+- Son datos del comercio **que viven solo en la base**: nunca se escriben en el repositorio
+  (es público) ni en `seed.sql`.
+- Una venta no guarda una copia del encabezado: se imprime con lo vigente al reimprimir.
+  (Si más adelante hace falta el encabezado **histórico** de cada venta, se agrega una copia
+  en `sales`; hoy no se pide.)
+
+### 18.3 Preguntas
+
+| # | Pregunta | Estado |
+|---|---|---|
+| P-49 | ¿Se muestra el **CUIT** en un comprobante que no es factura? | **Abierta (cliente).** Propuesta técnica: el campo existe y es opcional; el frontend lo muestra solo si está cargado. El nombre y la dirección no dependen del cliente |
+
+### 18.4 Pruebas que se exigirán
+
+Las tres columnas son nulas por defecto; el encargado, el dueño y el programador las editan; el
+empleado las lee pero su `UPDATE` no cambia nada; `anon` no accede; `store_tax_id` con letras, de
+10 o de 12 dígitos → `23514`; nombre o dirección vacíos o demasiado largos → `23514`; cada cambio
+queda en `audit_log`; la matriz de seguridad (`14_security_matrix`) sigue pasando.
+
+---
+
+## 19. Historial de precios y aumentos masivos (PROPUESTA v0.9.0)
+
+> **Propuesta del backend, a pedido de `efacelli` (issue #68, etapa futura 2 de `CLAUDE.md`).**
+> No se implementa hasta que la apruebe y se resuelvan las preguntas marcadas «cliente».
+> Cambiar precios en bloque toca todo el catálogo: por eso hay vista previa, tope, historial y
+> deshacer.
+
+### 19.1 Principios
+
+1. El precio que se carga es `products.sale_price` (**sin IVA**, 4 decimales, P-24); el de góndola
+   lo calcula la base. Un aumento sube el precio de góndola y se traduce a `sale_price` con
+   `round(precio_final / (1 + IVA / 100), 4)`, que reproduce el precio final **al centavo**.
+2. **Los costos no se tocan** en esta etapa (cambian con las compras, etapa futura 1).
+3. Todo cambio de precio queda en un historial **de solo-agregado**, venga de la pantalla de
+   producto, de un aumento masivo o de una reversión.
+4. Un aumento masivo es **atómico** (o se aplica a todos los productos elegidos o a ninguno) y
+   **idempotente** (§8.5).
+
+### 19.2 Tabla `price_history` (solo-agregado)
+
+| Columna | Tipo | Null | Notas |
+|---|---|---|---|
+| `id` | `uuid` | no | PK |
+| `product_id` | `uuid` | no | FK → `products.id` (`RESTRICT`) |
+| `changed_at` | `timestamptz` | no | `now()` |
+| `changed_by` | `uuid` | sí | FK → `profiles.id`; `auth.uid()` (nulo en semilla o migración) |
+| `old_sale_price` / `new_sale_price` | `numeric(12,4)` | no | Sin IVA |
+| `old_cost_price` / `new_cost_price` | `numeric(12,2)` | no | Sin IVA (hoy iguales salvo edición manual) |
+| `source` | `text` | no | `CHECK (source IN ('manual','bulk_increase','bulk_revert'))` |
+| `bulk_change_id` | `uuid` | sí | FK → `price_bulk_changes.id`; solo para `bulk_*` |
+| `reason` | `text` | sí | Motivo o nota |
+
+- **La escribe un trigger** `AFTER UPDATE OF sale_price, cost_price` de `products` (cualquier
+  camino que cambie el precio o el costo deja fila, también la edición manual del encargado), no
+  el cliente. `source` y `bulk_change_id` los pasan las RPC de §19.4 con `set_config(..., true)`
+  (válidos solo dentro de la transacción); sin eso, `source = 'manual'`.
+- Triggers de solo-agregado (`UPDATE`/`DELETE`/`TRUNCATE` rechazados), como `stock_movements`.
+- Sin relleno: lo anterior queda en `audit_log`, que ya guarda la fila completa de cada
+  producto editado.
+- Solo la leen el **encargado, el dueño y el programador** (incluye costos). Índice
+  `(product_id, changed_at desc)`.
+
+### 19.3 Tabla `price_bulk_changes` (cada aumento masivo)
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | `uuid` | PK |
+| `idempotency_key` | `uuid` | `UNIQUE` |
+| `created_at`, `created_by` | | Fijados por la base |
+| `percent` | `numeric(7,3)` | Aumento sobre el precio de góndola (negativo = baja). `CHECK (percent <> 0 AND abs(percent) <= 50)` |
+| `rounding_multiple` | `numeric(12,2)` | Múltiplo del redondeo del precio final; nulo = sin redondeo. `CHECK (> 0)` |
+| `brand_ids`, `supplier_ids`, `category_ids` | `uuid[]` | Filtros usados (nulos = sin ese filtro) |
+| `excluded_product_ids` | `uuid[]` | Productos que el usuario sacó de la vista previa |
+| `products_count` | `integer` | Cuántos se modificaron |
+| `status` | `text` | `applied` o `reverted` |
+| `reverted_at`, `reverted_by`, `revert_reason` | | Solo si se deshizo |
+| `notes` | `text` | — |
+
+Inmutable salvo el paso `applied → reverted`. La leen y la usan solo encargado, dueño y programador.
+
+### 19.4 Funciones
+
+Todas `SECURITY DEFINER`, `search_path = ''`, solo encargado, dueño y programador
+(`private.is_manager_or_admin()`; si no, `NOT_AUTHORIZED`), `EXECUTE` solo para `authenticated`.
+
+**`preview_price_increase(p_brand_ids uuid[], p_supplier_ids uuid[], p_category_ids uuid[], p_percent numeric, p_rounding_multiple numeric default null)`**
+— `STABLE`, solo lectura. Devuelve una fila por producto **activo** que cumple **todos** los
+filtros dados: `product_id`, `sku`, `name`, `brand_name`, `category_name`, `supplier_name`,
+`old_sale_price`, `old_price_with_vat`, `new_sale_price`, `new_price_with_vat`, `change_amount`
+(de góndola). Sin ningún filtro → `FILTER_REQUIRED` (para no tocar todo el catálogo sin querer;
+ver P-50).
+
+**`apply_price_increase(p_idempotency_key uuid, p_brand_ids uuid[], p_supplier_ids uuid[], p_category_ids uuid[], p_percent numeric, p_rounding_multiple numeric default null, p_excluded_product_ids uuid[] default '{}', p_notes text default null) returns price_bulk_changes`**
+— **recalcula** todo adentro (no confía en la vista previa del cliente), bloquea los productos
+afectados y los actualiza en una transacción. Errores: `FILTER_REQUIRED`, `INVALID_PERCENT`
+(cero, nulo o más de 50 % en valor absoluto), `INVALID_ROUNDING`, `NO_PRODUCTS` (ningún producto
+cumple) e `IDEMPOTENCY_CONFLICT` (misma clave con otros datos). El reintento con la misma clave
+devuelve el mismo registro sin aplicar de nuevo.
+
+**`revert_price_change(p_idempotency_key uuid, p_bulk_change_id uuid, p_reason text) returns jsonb`**
+— deshace un aumento: devuelve `old_sale_price` solo en los productos cuyo precio **sigue siendo
+el que dejó ese aumento**; los que cambiaron después se **saltean** y se informan
+(`{"restored": n, "skipped_product_ids": [...]}`). Cada producto restaurado deja fila
+`bulk_revert` en `price_history`. Motivo obligatorio (`REASON_REQUIRED`); ya deshecho →
+`ALREADY_REVERTED`; inexistente → `PRICE_CHANGE_NOT_FOUND`.
+
+**Regla de precio:** `nuevo_final = round(round(sale_price × (1 + percent/100), 4) × (1 + IVA/100), 2)`;
+con múltiplo `m`: `private.round_price(nuevo_final, m)` = `nuevo_final` si `nuevo_final < m / 2`
+(se mantiene exacto), si no el múltiplo más cercano, **desde la mitad sube** (misma idea que
+`private.round_cash`, P-30/P-39). Luego `nuevo_sale_price = round(nuevo_final / (1 + IVA/100), 4)`.
+El precio nunca queda en 0 ni negativo; si el cálculo diera 0 el producto se saltea y se informa.
+
+### 19.5 Códigos de error nuevos
+
+`FILTER_REQUIRED`, `INVALID_PERCENT`, `INVALID_ROUNDING`, `NO_PRODUCTS`, `ALREADY_REVERTED`,
+`PRICE_CHANGE_NOT_FOUND`.
+
+### 19.6 Preguntas
+
+| # | Pregunta | Estado |
+|---|---|---|
+| P-50 | ¿Se permite un aumento a **todo el catálogo** sin filtros? | **Abierta (efacelli).** Propuesta: no; si hace falta, se agrega un parámetro explícito `p_all_products boolean default false` |
+| P-51 | ¿Cuál es el **tope** por operación? | **Abierta (efacelli).** Propuesta: 50 % en valor absoluto, constante en la base (cambiarlo es una migración) |
+| P-52 | ¿Se ajusta mirando el **costo** o el precio de góndola, y se mantiene el margen? | **Abierta (cliente).** Propuesta: solo precio de góndola; el ajuste por costo llega con la etapa de compras |
+| P-53 | **Múltiplo del redondeo** del precio final ($10, $50…) | **Abierta (cliente).** El mecanismo (parámetro por operación) no depende de la respuesta |
+| P-54 | ¿Qué pasa al **deshacer** si un producto cambió de precio después? | **Abierta.** Propuesta: se saltea y se informa, nunca se pisa un precio posterior |
+
+### 19.7 Pruebas que se exigirán
+
+Vista previa: filtros combinados con Y, sin filtros (`FILTER_REQUIRED`), solo productos activos,
+exclusión de productos, redondeo exacto bajo la mitad del múltiplo y hacia arriba desde la mitad,
+precio final igual al de la vista previa. Aplicación: atómica (si un producto falla no se aplica
+ninguno), idempotente (misma clave dos veces → un solo aumento; otros datos → `IDEMPOTENCY_CONFLICT`),
+precio final de góndola exacto al centavo (`sale_price_with_vat`), 0 y 51 % → `INVALID_PERCENT`,
+`NO_PRODUCTS`, costos intactos, concurrencia con ventas (las ventas ven el precio viejo o el nuevo,
+nunca uno intermedio). Historial: una fila por producto cambiado con `source` y `bulk_change_id`
+correctos; la edición manual de precio o costo también deja fila; solo-agregado. Deshacer:
+restaura solo lo que sigue igual, informa los saltados, `ALREADY_REVERTED`, motivo obligatorio.
+Permisos: encargado, dueño y programador sí; empleado, inactivo y `anon` no. Migración sobre
+una base con productos y ventas previas: precios, ventas y huella de datos intactos.
