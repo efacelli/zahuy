@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { DEFAULT_CASH_STEP } from '../../domain/cash-rounding'
+import { DEFAULT_DISCOUNT_RULE, type DiscountRule } from '../../domain/quantity-discount'
 import type { CartProduct } from './cart'
 
 /*
@@ -89,6 +90,23 @@ export async function fetchRoundingMultiple(client: SupabaseClient): Promise<num
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_CASH_STEP
 }
 
+/**
+ * Regla del descuento por cantidad (`sales_settings`, §16.2). Si la base todavía
+ * no tiene las columnas, se usa la decisión de efacelli (6 u. → 5 %, tope 30 %).
+ */
+export async function fetchDiscountRule(client: SupabaseClient): Promise<DiscountRule> {
+  const { data, error } = await client
+    .from('sales_settings')
+    .select('quantity_discount_step, quantity_discount_percent, quantity_discount_max_percent')
+    .limit(1)
+  const row = (error ? undefined : ((data ?? []) as Record<string, number | string>[])[0]) ?? {}
+  const step = Number(row.quantity_discount_step)
+  const percent = Number(row.quantity_discount_percent)
+  const max = Number(row.quantity_discount_max_percent)
+  if (!(step > 0) || !(percent >= 0) || !(max >= 0)) return DEFAULT_DISCOUNT_RULE
+  return { step, percent, max }
+}
+
 export async function fetchPaymentMethods(client: SupabaseClient): Promise<PaymentMethod[]> {
   const { data, error } = await client
     .from('payment_methods')
@@ -128,7 +146,8 @@ export interface SalePaymentParam {
 export interface RegisterSaleParams {
   p_idempotency_key: string
   p_cash_session_id: string
-  p_items: { product_id: string; quantity: number }[]
+  /** `discount_percent` explícito: lo que ve el cajero es lo que aplica la base (§16.3). */
+  p_items: { product_id: string; quantity: number; discount_percent: number }[]
   p_payments: SalePaymentParam[]
   p_notes: string | null
 }

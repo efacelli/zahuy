@@ -364,6 +364,39 @@
 }
 
 /* Al imprimir, solo el ticket. */
+.discount {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.discountField {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.discountInput {
+  width: 4.5rem;
+  text-align: end;
+}
+
+.discountReset {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--text-xs);
+  color: var(--color-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.discountTotal {
+  margin: 0;
+  font-weight: 600;
+}
+
 @media print {
   :global(body *) {
     visibility: hidden;

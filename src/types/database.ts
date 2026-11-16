@@ -291,14 +291,14 @@ isOneToOne: false
                   ]
                 },"sale_items": {
                   Row: {
-                    "id": string,"line_total": number,"net_amount": number,"product_id": string,"product_name": string,"product_sku": string,"quantity": number,"sale_id": string,"unit_cost_price": number,"unit_price_with_vat": number,"vat_amount": number,"vat_rate": number
+                    "discount_amount": number,"discount_percent": number,"id": string,"line_total": number,"list_line_total": number,"net_amount": number,"product_id": string,"product_name": string,"product_sku": string,"quantity": number,"sale_id": string,"suggested_discount_percent": number,"unit_cost_price": number,"unit_price_with_vat": number,"vat_amount": number,"vat_rate": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "id"?: string,"line_total": number,"net_amount": number,"product_id": string,"product_name": string,"product_sku": string,"quantity": number,"sale_id": string,"unit_cost_price": number,"unit_price_with_vat": number,"vat_amount": number,"vat_rate": number
+                    "discount_amount"?: number,"discount_percent"?: number,"id"?: string,"line_total": number,"list_line_total": number,"net_amount": number,"product_id": string,"product_name": string,"product_sku": string,"quantity": number,"sale_id": string,"suggested_discount_percent"?: number,"unit_cost_price": number,"unit_price_with_vat": number,"vat_amount": number,"vat_rate": number
                   }
                   Update: {
-                    "id"?: string,"line_total"?: number,"net_amount"?: number,"product_id"?: string,"product_name"?: string,"product_sku"?: string,"quantity"?: number,"sale_id"?: string,"unit_cost_price"?: number,"unit_price_with_vat"?: number,"vat_amount"?: number,"vat_rate"?: number
+                    "discount_amount"?: number,"discount_percent"?: number,"id"?: string,"line_total"?: number,"list_line_total"?: number,"net_amount"?: number,"product_id"?: string,"product_name"?: string,"product_sku"?: string,"quantity"?: number,"sale_id"?: string,"suggested_discount_percent"?: number,"unit_cost_price"?: number,"unit_price_with_vat"?: number,"vat_amount"?: number,"vat_rate"?: number
                   }
                   Relationships: [
                     {
@@ -352,6 +352,12 @@ isOneToOne: false
       referencedRelation: "v_cash_session_payments"
       referencedColumns: ["payment_method_id"]
     },{
+      foreignKeyName: "sale_payments_payment_method_id_fkey"
+      columns: ["payment_method_id"]
+isOneToOne: false
+      referencedRelation: "v_sales_daily_payments"
+      referencedColumns: ["payment_method_id"]
+    },{
       foreignKeyName: "sale_payments_sale_id_fkey"
       columns: ["sale_id"]
 isOneToOne: false
@@ -361,14 +367,14 @@ isOneToOne: false
                   ]
                 },"sales": {
                   Row: {
-                    "cash_session_id": string,"created_at": string,"created_by": string,"id": string,"idempotency_key": string,"net_amount": number,"notes": string | null,"request_hash": string,"rounding_amount": number,"rounding_multiple": number,"sale_number": number,"status": Database["public"]['Enums']["sale_status"],"total_amount": number,"vat_amount": number,"void_reason": string | null,"voided_at": string | null,"voided_by": string | null
+                    "cash_session_id": string,"created_at": string,"created_by": string,"discount_total": number,"id": string,"idempotency_key": string,"net_amount": number,"notes": string | null,"request_hash": string,"rounding_amount": number,"rounding_multiple": number,"sale_number": number,"status": Database["public"]['Enums']["sale_status"],"total_amount": number,"vat_amount": number,"void_reason": string | null,"voided_at": string | null,"voided_by": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "cash_session_id": string,"created_at"?: string,"created_by"?: string,"id"?: string,"idempotency_key": string,"net_amount": number,"notes"?: string | null,"request_hash": string,"rounding_amount"?: number,"rounding_multiple": number,"sale_number"?: never,"status"?: Database["public"]['Enums']["sale_status"],"total_amount": number,"vat_amount": number,"void_reason"?: string | null,"voided_at"?: string | null,"voided_by"?: string | null
+                    "cash_session_id": string,"created_at"?: string,"created_by"?: string,"discount_total"?: number,"id"?: string,"idempotency_key": string,"net_amount": number,"notes"?: string | null,"request_hash": string,"rounding_amount"?: number,"rounding_multiple": number,"sale_number"?: never,"status"?: Database["public"]['Enums']["sale_status"],"total_amount": number,"vat_amount": number,"void_reason"?: string | null,"voided_at"?: string | null,"voided_by"?: string | null
                   }
                   Update: {
-                    "cash_session_id"?: string,"created_at"?: string,"created_by"?: string,"id"?: string,"idempotency_key"?: string,"net_amount"?: number,"notes"?: string | null,"request_hash"?: string,"rounding_amount"?: number,"rounding_multiple"?: number,"sale_number"?: never,"status"?: Database["public"]['Enums']["sale_status"],"total_amount"?: number,"vat_amount"?: number,"void_reason"?: string | null,"voided_at"?: string | null,"voided_by"?: string | null
+                    "cash_session_id"?: string,"created_at"?: string,"created_by"?: string,"discount_total"?: number,"id"?: string,"idempotency_key"?: string,"net_amount"?: number,"notes"?: string | null,"request_hash"?: string,"rounding_amount"?: number,"rounding_multiple"?: number,"sale_number"?: never,"status"?: Database["public"]['Enums']["sale_status"],"total_amount"?: number,"vat_amount"?: number,"void_reason"?: string | null,"voided_at"?: string | null,"voided_by"?: string | null
                   }
                   Relationships: [
                     {
@@ -405,14 +411,14 @@ isOneToOne: false
                   ]
                 },"sales_settings": {
                   Row: {
-                    "created_at": string,"created_by": string | null,"id": string,"rounding_multiple": number,"updated_at": string,"updated_by": string | null
+                    "created_at": string,"created_by": string | null,"id": string,"quantity_discount_max_percent": number,"quantity_discount_percent": number,"quantity_discount_step": number,"rounding_multiple": number,"updated_at": string,"updated_by": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"rounding_multiple"?: number,"updated_at"?: string,"updated_by"?: string | null
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"quantity_discount_max_percent"?: number,"quantity_discount_percent"?: number,"quantity_discount_step"?: number,"rounding_multiple"?: number,"updated_at"?: string,"updated_by"?: string | null
                   }
                   Update: {
-                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"rounding_multiple"?: number,"updated_at"?: string,"updated_by"?: string | null
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"quantity_discount_max_percent"?: number,"quantity_discount_percent"?: number,"quantity_discount_step"?: number,"rounding_multiple"?: number,"updated_at"?: string,"updated_by"?: string | null
                   }
                   Relationships: [
                     {
@@ -622,6 +628,22 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"v_sales_daily": {
+                  Row: {
+                    "cost_total": number | null,"discount_total": number | null,"gross_margin": number | null,"net_amount": number | null,"rounding_total": number | null,"sale_date": string | null,"sales_count": number | null,"total_amount": number | null,"vat_amount": number | null,"voided_count": number | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    
+                  ]
+                },"v_sales_daily_payments": {
+                  Row: {
+                    "amount_total": number | null,"payment_method_code": string,"payment_method_id": string,"payment_method_name": string,"payments_count": number | null,"sale_date": string | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    
+                  ]
                 }
           }
           Functions: {
@@ -760,6 +782,7 @@ isOneToOne: false
               "cash_session_id": string,
 "created_at": string,
 "created_by": string,
+"discount_total": number,
 "id": string,
 "idempotency_key": string,
 "net_amount": number,
@@ -836,6 +859,7 @@ isOneToOne: false
               "cash_session_id": string,
 "created_at": string,
 "created_by": string,
+"discount_total": number,
 "id": string,
 "idempotency_key": string,
 "net_amount": number,

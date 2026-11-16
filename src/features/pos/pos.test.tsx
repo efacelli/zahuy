@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createFakeSupabase, fakeSession } from '../../test/fakeSupabase'
 import { renderApp } from '../../test/renderApp'
-import { cartReducer, cartTotal, parseScanInput, type CartProduct } from './cart'
+import { DEFAULT_DISCOUNT_RULE } from '../../domain/quantity-discount'
+import { cartReducer, parseScanInput, priceCart, priceLine, type CartProduct } from './cart'
 import { planPayments, type PaymentDraft } from './payment'
 
 const YOGUR = {
@@ -68,8 +69,25 @@ describe('carrito (reglas puras)', () => {
     lines = cartReducer(lines, { type: 'add', product: p, quantity: 2 })
     expect(lines).toHaveLength(1)
     expect(lines[0]!.quantity).toBe(3)
-    expect(cartTotal(lines)).toBe(1236.99)
+    expect(priceCart(lines, DEFAULT_DISCOUNT_RULE).total).toBe(1236.99)
     expect(cartReducer(lines, { type: 'set', productId: p.id, quantity: 0 })).toEqual([])
+  })
+
+  it('descuento por cantidad: sugerido, elegido y cuentas de la base (§16.2)', () => {
+    const six = priceLine({ product: p, quantity: 6, discountPercent: null }, DEFAULT_DISCOUNT_RULE)
+    // 6 × 412,33 = 2473,98; 5 % = 123,70 (redondeado); línea = 2350,28.
+    expect(six).toMatchObject({ suggestedPercent: 5, appliedPercent: 5, listTotal: 2473.98, discountAmount: 123.7, total: 2350.28 })
+    const edited = priceLine({ product: p, quantity: 6, discountPercent: 0 }, DEFAULT_DISCOUNT_RULE)
+    expect(edited).toMatchObject({ suggestedPercent: 5, appliedPercent: 0, discountAmount: 0, total: 2473.98 })
+    // El elegido se conserva al cambiar la cantidad; el sugerido acompaña a la cantidad.
+    let lines = cartReducer([], { type: 'add', product: p, quantity: 6 })
+    lines = cartReducer(lines, { type: 'discount', productId: p.id, percent: 12.5 })
+    lines = cartReducer(lines, { type: 'add', product: p })
+    expect(lines[0]).toMatchObject({ quantity: 7, discountPercent: 12.5 })
+    const queso = priceLine({ product: QUESO as unknown as CartProduct, quantity: 6.5, discountPercent: null }, DEFAULT_DISCOUNT_RULE)
+    expect(queso.suggestedPercent).toBe(0)
+    const cart = priceCart([...lines, { product: p, quantity: 12, discountPercent: null }], DEFAULT_DISCOUNT_RULE)
+    expect(cart.discountTotal).toBe(Math.round((360.79 + 494.8) * 100) / 100)
   })
 
   it('cantidad con asterisco', () => {
@@ -155,13 +173,56 @@ describe('pantalla de caja', () => {
     expect(name).toBe('register_sale')
     expect(params).toMatchObject({
       p_cash_session_id: 'ses-1',
-      p_items: [{ product_id: YOGUR.id, quantity: 3 }],
+      p_items: [{ product_id: YOGUR.id, quantity: 3, discount_percent: 0 }],
       p_payments: [{ payment_method_id: 'pm-cash', amount: 1200, tendered_amount: 2000, reference: null }],
     })
     const ticket = await screen.findByRole('dialog', { name: 'Venta n.º 15 registrada' })
     expect(within(ticket).getByText('NO VÁLIDO COMO FACTURA')).toBeInTheDocument()
     await user.click(within(ticket).getByRole('button', { name: 'Nueva venta' }))
     expect(await screen.findByText('El carrito está vacío.')).toBeInTheDocument()
+  })
+
+  it('6 unidades: sugiere 5 %, el cajero lo cambia y la base recibe lo que se ve', async () => {
+    const { fake, user } = setup()
+    fake.setRpcResult('register_sale', { id: 'sale-9', sale_number: 20, total_amount: 2226.58, created_at: '2026-11-15T15:00:00Z' })
+    await enterSale(user)
+    await user.type(scanField(), '6*7790000000017{Enter}')
+    const cart = await screen.findByRole('table', { name: 'Productos del carrito' })
+    // Después de cada Enter el foco vuelve al buscador en el próximo cuadro: se espera antes de seguir.
+    const focusBack = () => waitFor(() => expect(scanField()).toHaveFocus())
+    await focusBack()
+    const discount = within(cart).getByLabelText('Descuento de Yogur frutilla (%)')
+    expect(discount).toHaveValue('5')
+    expect(within(cart).getByText('Sugerido')).toBeInTheDocument()
+    expect(screen.getByLabelText('Total')).toHaveTextContent('2.350,28')
+    expect(screen.getByLabelText('Total')).toHaveTextContent(/Descuentos: −\$\s123,70/)
+
+    // Fuera del tope: avisa y queda el anterior.
+    await user.clear(discount)
+    await user.type(discount, '40{Enter}')
+    expect(await screen.findByRole('alert')).toHaveTextContent('entre 0 y 30 %')
+    await focusBack()
+    expect(discount).toHaveValue('5')
+
+    // Lo sube a 10 %: 2473,98 − 247,40 = 2226,58.
+    await user.clear(discount)
+    await user.type(discount, '10{Enter}')
+    await focusBack()
+    expect(screen.getByLabelText('Total')).toHaveTextContent('2.226,58')
+    const reset = within(cart).getByRole('button', { name: 'Sugerido: 5 %' })
+    expect(reset).toBeInTheDocument()
+
+    await user.type(scanField(), '{Enter}')
+    const dialog = await screen.findByRole('dialog', { name: 'Cobrar' })
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmar venta' }))
+    await waitFor(() => expect(fake.rpc).toHaveBeenCalledOnce())
+    const [, params] = fake.rpc.mock.calls[0] as [string, Record<string, unknown>]
+    expect(params).toMatchObject({
+      p_items: [{ product_id: YOGUR.id, quantity: 6, discount_percent: 10 }],
+      p_payments: [{ payment_method_id: 'pm-cash', amount: 2200 }],
+    })
+    const ticket = await screen.findByRole('dialog', { name: 'Venta n.º 20 registrada' })
+    expect(within(ticket).getByText(/Desc\. 10 %/)).toBeInTheDocument()
   })
 
   it('todo con débito: redondea igual (412,33 → 400)', async () => {

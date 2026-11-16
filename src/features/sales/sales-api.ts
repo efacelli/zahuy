@@ -29,7 +29,16 @@ export interface SaleRow {
   cash_session: { status: 'open' | 'closed'; cash_register: { name: string } | null } | null
   seller: { full_name: string } | null
   voider: { full_name: string } | null
-  sale_items: { product_name: string; product_sku: string; quantity: number; unit_price_with_vat: number; line_total: number }[]
+  sale_items: {
+    product_name: string
+    product_sku: string
+    quantity: number
+    unit_price_with_vat: number
+    line_total: number
+    /** Descuento por cantidad (§16.2); 0 en ventas anteriores. */
+    discount_percent: number
+    discount_amount: number
+  }[]
   sale_payments: {
     amount: number
     tendered_amount: number | null
@@ -43,7 +52,7 @@ const SALE_COLUMNS =
   'cash_session:cash_sessions(status, cash_register:cash_registers(name)), ' +
   'seller:profiles!sales_created_by_fkey(full_name), ' +
   'voider:profiles!sales_voided_by_fkey(full_name), ' +
-  'sale_items(product_name, product_sku, quantity, unit_price_with_vat, line_total), ' +
+  'sale_items(product_name, product_sku, quantity, unit_price_with_vat, line_total, discount_percent, discount_amount), ' +
   'sale_payments(amount, tendered_amount, reference, payment_method:payment_methods(name, is_cash, sort_order))'
 
 export interface SalesParams {
@@ -62,6 +71,8 @@ function normalize(row: SaleRow): SaleRow {
       quantity: Number(i.quantity),
       unit_price_with_vat: Number(i.unit_price_with_vat),
       line_total: Number(i.line_total),
+      discount_percent: Number(i.discount_percent ?? 0),
+      discount_amount: Number(i.discount_amount ?? 0),
     })),
     sale_payments: (row.sale_payments ?? [])
       .map((p) => ({
@@ -95,7 +106,13 @@ export function toTicket(sale: SaleRow): TicketData {
     saleNumber: sale.sale_number,
     createdAt: sale.created_at,
     registerName: sale.cash_session?.cash_register?.name ?? 'Caja',
-    lines: sale.sale_items.map((i) => ({ name: i.product_name, quantity: i.quantity, lineTotal: i.line_total })),
+    lines: sale.sale_items.map((i) => ({
+      name: i.product_name,
+      quantity: i.quantity,
+      lineTotal: i.line_total,
+      discountPercent: i.discount_percent,
+      discountAmount: i.discount_amount,
+    })),
     total: sale.total_amount,
     rounding: sale.rounding_amount,
     payments: sale.sale_payments.map((p) => ({ name: p.payment_method?.name ?? 'Pago', amount: p.amount })),

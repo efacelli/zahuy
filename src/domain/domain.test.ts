@@ -101,3 +101,20 @@ describe('formatVatRate', () => {
     expect(formatVatRate(21)).toBe('21%')
   })
 })
+
+describe('descuento por cantidad (§16.1, igual que private.suggested_discount)', () => {
+  it('cada 6 unidades 5 %, tope 30 %, 0 en kg y l', async () => {
+    const { DEFAULT_DISCOUNT_RULE: rule, suggestedDiscount, discountError } = await import('./quantity-discount')
+    const cases: [number, number][] = [[5, 0], [6, 5], [11, 5], [12, 10], [18, 15], [36, 30], [60, 30]]
+    for (const [q, pct] of cases) expect(suggestedDiscount(q, 'unit', rule)).toBe(pct)
+    expect(suggestedDiscount(12, 'kg', rule)).toBe(0)
+    expect(suggestedDiscount(12, 'l', rule)).toBe(0)
+    expect(suggestedDiscount(12, 'box', rule)).toBe(10)
+    expect(discountError(0, rule)).toBeNull()
+    expect(discountError(30, rule)).toBeNull()
+    expect(discountError(12.35, rule)).toBeNull()
+    expect(discountError(30.01, rule)).not.toBeNull()
+    expect(discountError(-1, rule)).not.toBeNull()
+    expect(discountError(1.234, rule)).not.toBeNull()
+  })
+})
