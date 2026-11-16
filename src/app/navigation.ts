@@ -53,7 +53,7 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/configuracion',
     label: 'Configuración',
     icon: 'settings',
-    description: 'Días de alerta de vencimiento y usuarios.',
+    description: 'Alertas de vencimiento, ventas y ticket, y usuarios.',
     permission: 'configureAlerts',
   },
   {

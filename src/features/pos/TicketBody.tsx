@@ -1,6 +1,9 @@
+import { useQuery } from '@tanstack/react-query'
 import { Fragment } from 'react'
 import { formatDateTime } from '../../lib/dates'
 import { formatMoney, formatNumber } from '../../lib/format'
+import { useSupabase } from '../../lib/supabase-context'
+import { fetchStoreInfo, formatTaxId, STORE_INFO_KEY } from '../settings/sales-settings-api'
 import { pageRule, useTicketPaper } from './ticket-paper'
 import styles from './Pos.module.css'
 
@@ -45,12 +48,27 @@ export function chargedTotal(ticket: Pick<TicketData, 'total' | 'rounding'>): nu
  */
 export function TicketBody({ ticket }: { ticket: TicketData }) {
   const [paper] = useTicketPaper()
+  const client = useSupabase()
+  // Encabezado del comercio (§18): si falta o falla, el ticket sale como siempre.
+  const store = useQuery({ queryKey: STORE_INFO_KEY, queryFn: () => fetchStoreInfo(client), staleTime: 300_000 }).data
   return (
     <div className={styles.ticket} data-print="ticket" data-paper={paper}>
       <style media="print">{pageRule(paper)}</style>
       <p className={styles.ticketHead}>
-        <strong>ZAHUY</strong>
+        <strong>{store?.store_name ?? 'ZAHUY'}</strong>
         <br />
+        {store?.store_address && (
+          <>
+            {store.store_address}
+            <br />
+          </>
+        )}
+        {store?.store_tax_id && (
+          <>
+            CUIT {formatTaxId(store.store_tax_id)}
+            <br />
+          </>
+        )}
         Comprobante interno n.º {ticket.saleNumber}
         <br />
         {formatDateTime(ticket.createdAt)} · {ticket.registerName}
