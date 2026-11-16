@@ -101,6 +101,7 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
     const filters: Record<string, unknown> = {}
     const ilikeFilters: Record<string, string> = {}
     const inFilters: Record<string, readonly unknown[]> = {}
+    const gtFilters: Record<string, number> = {}
 
     const runSelect = (): Result => {
       const entry = tables[table] ?? { data: [], error: null }
@@ -109,6 +110,7 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
       const rows = entry.data
         .filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v))
         .filter((r) => Object.entries(ilikeFilters).every(([k, v]) => String(r[k] ?? '').toLowerCase() === v))
+        .filter((r) => Object.entries(gtFilters).every(([k, v]) => Number(r[k]) > v))
         .map((r) => ({ ...r }))
       return { data: rows, error: null, count: rows.length } as Result
     }
@@ -162,6 +164,10 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
       // Rangos de fechas: se registran pero no se aplican (los datos de prueba ya vienen del período).
       gte: () => builder,
       lte: () => builder,
+      gt: (column: string, value: number) => {
+        gtFilters[column] = value
+        return builder
+      },
       // En lecturas se registra pero no se aplica; en un UPDATE por ids, sí.
       in: (column: string, values: readonly unknown[]) => {
         inFilters[column] = values

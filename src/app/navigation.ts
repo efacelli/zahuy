@@ -42,6 +42,12 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Cargar el stock recorriendo las góndolas con el lector.',
   },
   { path: '/alertas', label: 'Alertas', icon: 'alerts', description: 'Lotes próximos a vencer y vencidos.' },
+  {
+    path: '/reposicion',
+    label: 'Reposición',
+    icon: 'clipboard',
+    description: 'Qué pedir a cada proveedor para volver al stock mínimo.',
+  },
   { path: '/catalogos', label: 'Catálogos', icon: 'catalogs', description: 'Categorías, marcas y proveedores.' },
   {
     path: '/configuracion',
