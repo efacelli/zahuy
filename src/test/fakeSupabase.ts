@@ -209,6 +209,7 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
 
   /** Resultado de `rpc(nombre, params).single()`. */
   const rpcResults: Record<string, Result> = {}
+  const rpcFilters: { name: string; filters: [string, ...unknown[]][] }[] = []
   const rpc = vi.fn((name: string, _params?: unknown) => {
     const result = (): Result =>
       rpcResults[name] ?? {
@@ -216,11 +217,21 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
         error: { code: 'PGRST202', message: `Could not find the function public.${name}` },
       }
     // `.single()` para las RPC que devuelven una fila; `await rpc(...)` para las que devuelven varias.
-    return {
+    // Filtros, orden y límite sobre el resultado se registran en `rpcFilters` pero no se aplican.
+    const filters: [string, ...unknown[]][] = []
+    rpcFilters.push({ name, filters })
+    const chain = {
       single: () => Promise.resolve(result()),
       then: (resolve: (r: Result) => unknown, reject?: (e: unknown) => unknown) =>
         Promise.resolve(result()).then(resolve, reject),
+    } as Record<string, unknown>
+    for (const method of ['select', 'eq', 'gt', 'lt', 'order', 'limit']) {
+      chain[method] = (...args: unknown[]) => {
+        filters.push([method, ...args])
+        return chain
+      }
     }
+    return chain
   })
 
   return {
@@ -228,6 +239,7 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
     auth,
     from,
     rpc,
+    rpcFilters,
     writes,
     setTable(table: string, data: Row[] | null, error: unknown = null) {
       tables[table] = { data, error }

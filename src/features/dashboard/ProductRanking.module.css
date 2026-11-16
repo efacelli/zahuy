@@ -1,0 +1,79 @@
+.section {
+  margin-top: var(--space-5);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-3);
+}
+
+.card {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.cardTitle {
+  font-weight: 600;
+}
+
+.subtitle,
+.muted,
+.empty {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.subtitle {
+  margin: var(--space-1) 0 var(--space-3);
+}
+
+.empty {
+  margin: 0;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: rank;
+}
+
+.item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--color-border);
+  counter-increment: rank;
+}
+
+.item::before {
+  content: counter(rank);
+  min-width: 1.5rem;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
