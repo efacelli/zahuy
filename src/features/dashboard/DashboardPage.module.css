@@ -60,3 +60,61 @@
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
+
+.finance {
+  margin-bottom: var(--space-6);
+}
+
+.financeHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.blockTitle {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-lg);
+}
+
+.financeHeader .blockTitle {
+  margin: 0;
+}
+
+.ranges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.range {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.range[aria-pressed='true'] {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-weight: 600;
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.refetching {
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}

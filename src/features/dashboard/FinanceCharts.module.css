@@ -1,0 +1,233 @@
+/* Colores de la paleta validada (guía de visualización): serie azul y par divergente azul/rojo. */
+.card {
+  --series-1: #2a78d6;
+  --series-1-active: #1c5fb0;
+  --diverging-neg: #d03b3b;
+  --diverging-pos: #2a78d6;
+  --grid: var(--color-border);
+
+  position: relative;
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  min-width: 0;
+}
+
+.title {
+  font-weight: 700;
+  font-size: var(--text-md, 1rem);
+}
+
+.subtitle {
+  margin: 2px 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.plot {
+  position: relative;
+}
+
+.yMax {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  border-bottom: 1px dashed var(--grid);
+  margin-bottom: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 160px;
+  border-bottom: 1px solid var(--color-border-strong);
+}
+
+.barSlot {
+  flex: 1 1 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: default;
+  outline: none;
+}
+
+.barSlot:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-focus);
+}
+
+.bar {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  max-width: 28px;
+  margin: 0 auto;
+  border-radius: 4px 4px 0 0;
+  background: var(--series-1);
+}
+
+.barActive {
+  background: var(--series-1-active);
+}
+
+.xAxis {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.xAxis span {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.tooltip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.tooltip strong {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.hbars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hbarRow {
+  display: grid;
+  grid-template-columns: minmax(6rem, 9rem) 1fr minmax(7rem, auto);
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.hbarLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hbarTrack {
+  height: 14px;
+}
+
+.hbar {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--series-1);
+}
+
+.hbarValue {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.divTrack {
+  position: relative;
+  height: 14px;
+}
+
+.divAxis {
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: var(--color-border-strong);
+}
+
+.divNeg {
+  position: absolute;
+  right: 50%;
+  height: 100%;
+  border-radius: 4px 0 0 4px;
+  background: var(--diverging-neg);
+}
+
+.divPos {
+  position: absolute;
+  left: 50%;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--diverging-pos);
+}
+
+.empty {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.tableToggle {
+  margin-top: var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.tableToggle summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+}
+
+.table {
+  width: 100%;
+  margin-top: var(--space-2);
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 2px var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  font-weight: 400;
+}
+
+.num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (width < 640px) {
+  .hbarRow {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .hbarValue {
+    text-align: left;
+  }
+}
