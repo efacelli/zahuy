@@ -1060,7 +1060,7 @@ este documento y una migración nueva.
 | P-22 | ¿Se audita el borrado de una configuración de alertas por categoría? | Sí: el borrado queda en `audit_log` con `action = 'delete'` (§5.8) | Adoptada (v0.4.4) |
 | P-24 | ¿El precio final de góndola tiene que quedar exactamente igual al del sistema anterior? | Sí: `sale_price` pasa a `numeric(12,4)` (§5.5). Con 2 decimales, 2.272 de 13.288 productos del sistema anterior quedaban un centavo distintos | Adoptada (v0.5.0) |
 | P-25 | ¿Se conserva el código propio del sistema anterior? | Sí, en `products.legacy_code`, único y buscable; el SKU sigue siendo el de la base (§5.5) | Adoptada (v0.5.0) |
-| P-26 | ¿Qué productos del sistema anterior se importan y con qué catálogos? | Los actualizados desde 2025 (unos 3.000 de 13.288 cargados desde 2003), con categoría y marca "Sin clasificar" porque la exportación no las trae; se ordenan después | Adoptada (v0.5.0) |
+| P-26 | ¿Qué productos del sistema anterior se importan y con qué catálogos? | Los actualizados desde 2025 (unos 3.000 de 13.288 cargados desde 2003), con categoría "Otros" (antes "Sin clasificar", renombrada a pedido de `efacelli`) y marca "Sin clasificar" porque la exportación no las trae; se ordenan después | Adoptada (v0.5.0) |
 | P-23 | ¿Se puede quitar el vencimiento (`NULL`) al editar un lote? | Sí: el encargado o el dueño puede quitarlo al editar un lote; queda auditado. La obligación aplica solo al crear lotes (`EXPIRY_REQUIRED`). Se rechazó la propuesta de prohibirlo | Adoptada (v0.4.4) |
 
 ---

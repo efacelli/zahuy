@@ -2,15 +2,19 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { toAppError } from '../../lib/errors'
 import { idempotencyKeyFor, type LegacyItem } from './legacy-csv'
 
-/** P-26: la exportación no trae categoría ni marca; se ordenan después. */
-export const UNCLASSIFIED = 'Sin clasificar'
+/**
+ * P-26: la exportación no trae categoría ni marca; se ordenan después.
+ * La categoría por defecto se llama "Otros" (pedido de efacelli); la marca, "Sin clasificar".
+ */
+export const DEFAULT_NAMES = { categories: 'Otros', brands: 'Sin clasificar' } as const
 
 async function findOrCreate(client: SupabaseClient, table: 'categories' | 'brands'): Promise<string> {
-  const { data, error } = await client.from(table).select('id').ilike('name', UNCLASSIFIED).limit(1)
+  const name = DEFAULT_NAMES[table]
+  const { data, error } = await client.from(table).select('id').ilike('name', name).limit(1)
   if (error) throw error
   const found = (data as { id: string }[] | null)?.[0]
   if (found) return found.id
-  const created = await client.from(table).insert({ name: UNCLASSIFIED }).select('id').single()
+  const created = await client.from(table).insert({ name }).select('id').single()
   if (created.error) throw created.error
   return (created.data as { id: string }).id
 }

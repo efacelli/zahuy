@@ -16,7 +16,11 @@ export interface ProductOption {
   /** Contrato v0.4.0 §5.5. */
   units_per_box: number
   is_active: boolean
+  /** Contrato §5.5; null si todavía no tiene código cargado. */
+  barcode: string | null
 }
+
+const PRODUCT_OPTION_COLUMNS = 'id, sku, name, sale_unit, units_per_box, is_active, barcode'
 
 /**
  * Busca productos por nombre, SKU o código de barras (máximo 20). Por defecto
@@ -29,7 +33,7 @@ export async function searchProducts(
   { includeInactive = false }: { includeInactive?: boolean } = {},
 ): Promise<ProductOption[]> {
   const search = textSearchFilter(text)
-  let q = client.from('products').select('id, sku, name, sale_unit, units_per_box, is_active')
+  let q = client.from('products').select(PRODUCT_OPTION_COLUMNS)
   if (!includeInactive) q = q.eq('is_active', true)
   if (search) q = q.or(search)
   const { data, error } = await q.order('name').limit(20)
@@ -43,7 +47,7 @@ export async function findProductByBarcode(
   code: string,
   { includeInactive = false }: { includeInactive?: boolean } = {},
 ): Promise<ProductOption | null> {
-  let q = client.from('products').select('id, sku, name, sale_unit, units_per_box, is_active').eq('barcode', code)
+  let q = client.from('products').select(PRODUCT_OPTION_COLUMNS).eq('barcode', code)
   if (!includeInactive) q = q.eq('is_active', true)
   const { data, error } = await q.limit(1)
   if (error) throw error

@@ -69,3 +69,19 @@ function toUtcMs(isoDate: string): number {
   const [y, m, d] = isoDate.split('-').map(Number) as [number, number, number]
   return Date.UTC(y, m - 1, d)
 }
+
+/**
+ * Fecha tipeada rápido (carga con teclado): `10/03/2027`, `10-03-27`, `100327`
+ * o `10032027` → `2027-03-10`. Año de 2 cifras = 20xx. `null` si no es una
+ * fecha real (por ejemplo 31/02).
+ */
+export function parseTypedDate(raw: string): string | null {
+  const text = raw.trim()
+  const parts = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})$/.exec(text) ?? /^(\d{2})(\d{2})(\d{2}|\d{4})$/.exec(text)
+  if (!parts) return null
+  const day = Number(parts[1])
+  const month = Number(parts[2])
+  const year = parts[3]!.length === 2 ? 2000 + Number(parts[3]) : Number(parts[3])
+  const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  return isIsoDate(iso) ? iso : null
+}

@@ -52,6 +52,19 @@ Lo hace una persona con la cuenta del negocio (crear cuentas y pagar no lo hace 
 2. Crear **`zahuy-staging`** (gratis) y **`zahuy-prod`** (Pro), región D-4.
 3. Guardar la contraseña de la base de cada proyecto en un gestor de contraseñas. **Nunca** en el repo, chats ni documentos.
 
+### Staging: `zahuy-staging` (decisión de `efacelli`, 2026-11-15)
+
+- Lo crea `efacelli` en la organización **Zahuy** de Supabase: región **São Paulo**, plan gratuito. Invita al backend como **Developer**.
+- **Solo datos ficticios.** En staging sí se carga `supabase/seed.sql` (con `db push --remote --include-seed` la primera vez). Los usuarios de prueba se crean a mano en Authentication → Users con correos ficticios y contraseñas fuertes: `npm run db:users` solo funciona contra la base local y se niega a tocar otra URL. **Nunca** datos reales, ni un backup de producción, ni el backup real del negocio.
+- Es un paso **obligatorio** antes de producción (§8): ninguna migración llega a producción sin haberse aplicado y probado antes en staging.
+- Secretos de staging (contraseña de la base, claves, certificados de homologación de ARCA, `.env`): en el gestor de contraseñas, nunca en el repo, chats ni documentos. Las claves `service_role`/`sb_secret_` no se usan en el frontend ni se pegan en ningún lado.
+- Pasos para dejarlo listo (🔒, los hace una persona o el backend con la invitación ya aceptada y la contraseña tecleada por esa persona):
+  1. Auth igual que producción (tabla siguiente): sin registro público, contraseña de 10 o más con letras y números, Site URL de staging.
+  2. `npx supabase@3.1.0 link --project-ref <ref-de-staging>` (pide la contraseña de la base).
+  3. `npx supabase@3.1.0 db push --remote --dry-run`, revisar, y después `db push --remote --include-seed`.
+  4. Verificar: RLS en todas las tablas, *Security Advisor* sin alertas críticas, un usuario `admin` de prueba (procedimiento de §4, Primer dueño) y una prueba manual.
+- Opcional, sin costo: un segundo sitio estático en Render apuntando a staging (§5) para probar la app completa.
+
 ### Configuración de Auth (en los dos proyectos)
 
 | Opción | Valor | Motivo |
@@ -71,11 +84,12 @@ Primero en staging, después en producción, siempre en este orden.
 
 ```bash
 npx supabase@3.1.0 link --project-ref <ref-del-proyecto>   # pide la contraseña de la base: la escribe la persona
-npx supabase@3.1.0 db push --dry-run                        # lista lo que se va a aplicar; revisar
-npx supabase@3.1.0 db push                                  # aplica las migraciones pendientes
+npx supabase@3.1.0 db push --remote --dry-run               # lista lo que se va a aplicar; revisar
+npx supabase@3.1.0 db push --remote                         # aplica las migraciones pendientes
 ```
 
-- **Nunca** cargar `supabase/seed.sql` en producción (es solo para la base local; `db push` no lo aplica).
+- **Ojo con la versión de la CLI:** en la 3.1.0, `db push` apunta a la base **local** si no se pasa `--remote` (lo dice su ayuda: "Local by default"). Sin `--remote`, el comando "funciona" pero no aplica nada en el proyecto vinculado. Revisar siempre la salida de `--dry-run` para confirmar a qué base apunta.
+- **Nunca** cargar `supabase/seed.sql` en producción: `db push` no lo aplica salvo que se pase `--include-seed`, y esa opción **no se usa en producción**. En staging sí (datos ficticios).
 - En staging: correr las pruebas contra esa base y una prueba manual con datos ficticios.
 - Verificar en el panel: RLS activa en todas las tablas, *Security Advisor* sin alertas críticas.
 
@@ -96,7 +110,7 @@ npx supabase@3.1.0 db push                                  # aplica las migraci
 2. Variables de entorno (en el panel de Render, no en el repo):
    - `VITE_SUPABASE_URL` = URL del proyecto de producción
    - `VITE_SUPABASE_PUBLISHABLE_KEY` = clave **pública** (publishable). Nunca la `service_role` ni `sb_secret_…`: la app no arranca si la detecta.
-3. Despliegue automático desde `main` **después** de que pase el CI. Un sitio estático aparte para staging es opcional.
+3. Despliegue automático desde `main` **después** de que pase el CI. Un sitio estático aparte para staging es opcional (sin costo): mismo repositorio y mismos pasos, con `VITE_SUPABASE_URL` y la clave **publishable** del proyecto de **staging**, Site URL y Redirect URLs de staging, y sin despliegue automático a producción desde ese sitio.
 4. Cargar la URL final en *Site URL* y *Redirect URLs* de Supabase.
 
 ---
@@ -117,8 +131,8 @@ npx supabase@3.1.0 db push                                  # aplica las migraci
 | Qué | Cómo | Cuándo |
 |---|---|---|
 | Backup automático | Diario, incluido en Supabase Pro. **El plan gratuito no lo tiene** | Solo con Pro |
-| Backup manual semanal | `npx supabase@3.1.0 db dump --linked -f zahuy-esquema-AAAA-MM-DD.sql` y `npx supabase@3.1.0 db dump --linked --data-only -f zahuy-datos-AAAA-MM-DD.sql` (piden la contraseña de la base). Guardar en una carpeta privada (no el repo, no un chat), idealmente también en la nube del negocio | Una vez por semana mientras se use el plan gratuito |
-| Backup manual | `npx supabase@3.1.0 db dump --linked -f <archivo>.sql` (esquema) y `--data-only` (datos), guardado **fuera del repo**, cifrado | Antes de cada migración en producción |
+| Backup manual semanal | `npx supabase@3.1.0 db dump --remote -f zahuy-esquema-AAAA-MM-DD.sql` y `npx supabase@3.1.0 db dump --remote --data-only -f zahuy-datos-AAAA-MM-DD.sql` (piden la contraseña de la base). Guardar en una carpeta privada (no el repo, no un chat), idealmente también en la nube del negocio | Una vez por semana mientras se use el plan gratuito |
+| Backup manual | `npx supabase@3.1.0 db dump --remote -f <archivo>.sql` (esquema) y `--data-only` (datos), guardado **fuera del repo**, cifrado | Antes de cada migración en producción |
 | Restaurar | Panel de Supabase → Backups (solo con Pro), o el backup manual en un proyecto nuevo siguiendo §7.1 | Solo ante pérdida de datos, con aprobación |
 
 - Un rollback del frontend es volver a desplegar la versión anterior en Render (un clic).
@@ -136,20 +150,25 @@ depender de él.
 **Al hacer cada backup** (además de los dos archivos de la tabla de arriba):
 
 ```bash
-psql "<conexión de la base>" -At -f supabase/scripts/backup-fingerprint.sql > zahuy-huella-AAAA-MM-DD.txt
+psql "<conexión de la base>" -q -At -f supabase/scripts/backup-fingerprint.sql > zahuy-huella-AAAA-MM-DD.txt
 ```
 
 Guardar esa huella junto al backup. No contiene datos del negocio: solo
-cantidades de filas y un resumen por tabla.
+cantidades de filas y un resumen por tabla. La huella cubre **sola todas las
+tablas** del esquema `public` (también las que se agreguen después, como ventas
+y caja) más usuarios de Auth, Storage y las secuencias; no hay una lista que
+mantener. Usar siempre `-q`: sin él, `psql` agrega una línea `SET` que ensucia la
+comparación.
 
 **Para restaurar en un proyecto nuevo** 🔒:
 
-1. Crear el proyecto y aplicar las migraciones (`db push`, §4). No cargar el seed.
+1. Crear el proyecto y aplicar las migraciones (`db push --remote`, §4). No cargar el seed.
 2. Correr `supabase/scripts/restore-prepare.sql`. Quita las pocas filas que las
    migraciones crean solas (configuración general de alertas, su registro de
-   auditoría y el bucket de imágenes), que el backup trae con sus valores
-   reales. Si la base ya tiene usuarios, productos, lotes o movimientos, se
-   detiene sin tocar nada.
+   auditoría y los buckets de Storage), que el backup trae con sus valores
+   reales. Es **seguro por defecto**: toda tabla que no esté en su lista de
+   tablas sembradas cuenta como datos del negocio, y si tiene filas (o hay
+   usuarios o archivos) se detiene sin tocar nada y dice cuáles.
 3. Cargar el archivo de datos: `psql "<conexión>" -f zahuy-datos-AAAA-MM-DD.sql`.
    Revisar que la salida no tenga ninguna línea `ERROR`.
 4. Volver a correr `backup-fingerprint.sql` y comparar con la huella guardada:
@@ -162,6 +181,17 @@ pierde datos: en la prueba, la tabla de auditoría quedó con 1 fila en lugar de
 tabla en una sola sentencia; si una fila choca con otra que ya existe, esa tabla
 entera no se carga y el resto sigue. Productos, lotes, movimientos y usuarios
 sí se restauraban bien.
+
+**Mantenerlo al día.** Cada PR que agregue una migración revisa esto:
+
+| Si la migración... | Hay que... |
+|---|---|
+| Crea una tabla nueva | Nada: la huella y el paso previo la toman solas. Toda tabla de `public` necesita una columna `id` (contrato §2.5) |
+| **Siembra filas** en una tabla (por ejemplo los medios de pago o las cajas de la propuesta de ventas) | Agregar esa tabla a `v_seeded` en `supabase/scripts/restore-prepare.sql`. Si se olvida, el paso previo se detiene y avisa (no se pierde nada en silencio) |
+| Crea un bucket de Storage | Nada: el paso previo vacía los buckets (Storage tiene que estar vacío) |
+| Agrega un esquema fuera de `public`, `auth` o `storage` con datos | Agregarlo a la huella y al paso previo, y probar el ciclo completo |
+
+Además, probar el ciclo (huella → backup → recrear → paso previo → restaurar → huella igual) en la base local con datos ficticios cuando cambien los scripts o el esquema de forma importante. Detalle del último ciclo: base local, 17 productos, 25 lotes, 60 movimientos, 43 filas de auditoría y 5 usuarios: 0 errores y huella idéntica.
 
 **Lo que el backup no trae:**
 
@@ -187,9 +217,13 @@ sí se restauraban bien.
 ## 8. Rutina para cada cambio posterior
 
 1. PR con CI en verde (frontend y base).
-2. Si trae migración: `db push` en staging → probar → backup manual de producción → 🔒 `db push` en producción → verificar conteos.
-3. Fusionar en `main` → Render publica el frontend.
-4. Anotar en el PR qué se aplicó y cuándo.
+2. Si trae migración, **el paso por staging es obligatorio y va primero** (no se salta, ni siquiera para un cambio "chico"):
+   1. `db push --remote --dry-run` y `db push --remote` en **staging** (§3, proyecto vinculado a staging).
+   2. Probar ahí: pruebas de la base, flujo manual con datos ficticios y, si la migración toca datos existentes, con filas previas (ver §7.1 para restaurar un estado de prueba).
+   3. Anotar en el PR el resultado en staging (qué se aplicó, cuándo y quién).
+   4. Recién entonces: backup manual de producción verificado (§7) → 🔒 `db push --remote` en producción → verificar conteos y relaciones.
+3. Fusionar en `main` → Render publica el frontend. Si el cambio de frontend depende de la migración, la migración va antes.
+4. Anotar en el PR qué se aplicó en producción y cuándo.
 
 ---
 
