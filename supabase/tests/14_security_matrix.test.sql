@@ -70,7 +70,15 @@ insert into t_expected values
   ('product_batches', false, true, false),
   ('stock_movements', false, false, false),
   ('audit_log', false, false, false),
-  ('expiry_alert_settings', true, true, true);
+  ('expiry_alert_settings', true, true, true),
+  -- Etapa 5 (ventas y caja): se escribe solo por RPC, salvo los catálogos y la configuración.
+  ('payment_methods', true, true, false),
+  ('cash_registers', true, true, false),
+  ('sales_settings', false, true, false),
+  ('cash_sessions', false, false, false),
+  ('sales', false, false, false),
+  ('sale_items', false, false, false),
+  ('sale_payments', false, false, false);
 
 select is(
   (select count(*)::int from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r'
@@ -93,12 +101,18 @@ select results_eq(
 );
 
 -- Columnas que el cliente nunca escribe.
+-- La subconsulta con OFFSET 0 fuerza a filtrar por esquema y tabla ANTES de preguntar por permisos:
+-- sin eso, según las estadísticas, el planificador podía evaluar has_column_privilege sobre tablas de
+-- otros esquemas (por ejemplo auth.users) y la prueba fallaba con "relation does not exist".
 select is(
-  (select count(*)::int from information_schema.columns c
-    where c.table_schema = 'public' and c.table_name in (select tbl from t_expected)
-      and c.column_name in ('id', 'created_at', 'created_by', 'updated_at', 'updated_by', 'creation_key', 'sku',
-                            'quantity_initial', 'quantity_available', 'product_id', 'sale_price_with_vat')
-      and has_column_privilege('authenticated', format('public.%I', c.table_name), c.column_name, 'update')),
+  (select count(*)::int from (
+      select c.table_name, c.column_name from information_schema.columns c
+      where c.table_schema = 'public' and c.table_name in (select tbl from t_expected)
+        and c.column_name in ('id', 'created_at', 'created_by', 'updated_at', 'updated_by', 'creation_key', 'sku',
+                              'quantity_initial', 'quantity_available', 'product_id', 'sale_price_with_vat')
+      offset 0
+    ) c
+    where has_column_privilege('authenticated', format('public.%I', c.table_name), c.column_name, 'update')),
   0, 'id, auditoría, SKU, clave de alta y saldos no se pueden actualizar desde la app'
 );
 select is(
@@ -139,7 +153,12 @@ select is(
         + (select count(*) from public.stock_movements) + (select count(*) from public.audit_log)
         + (select count(*) from public.expiry_alert_settings) + (select count(*) from public.v_product_list)
         + (select count(*) from public.v_product_stock) + (select count(*) from public.v_batch_status)
-        + (select count(*) from public.v_inventory_summary))::int,
+        + (select count(*) from public.v_inventory_summary)
+        + (select count(*) from public.payment_methods) + (select count(*) from public.cash_registers)
+        + (select count(*) from public.sales_settings) + (select count(*) from public.cash_sessions)
+        + (select count(*) from public.sales) + (select count(*) from public.sale_items)
+        + (select count(*) from public.sale_payments) + (select count(*) from public.v_cash_session_summary)
+        + (select count(*) from public.v_cash_session_payments))::int,
   0, 'inactivo: no lee ninguna otra tabla ni vista (aunque su rol sea admin)'
 );
 select throws_ok(
@@ -161,6 +180,22 @@ select throws_ok(
 select throws_ok(
   $$select public.reverse_stock_movement(gen_random_uuid(), gen_random_uuid(), 'x')$$,
   'P0001', 'NOT_AUTHORIZED', 'inactivo: reverse_stock_movement → NOT_AUTHORIZED'
+);
+select throws_ok(
+  $$select public.open_cash_session(gen_random_uuid(), gen_random_uuid(), 0)$$,
+  'P0001', 'NOT_AUTHORIZED', 'inactivo: open_cash_session → NOT_AUTHORIZED'
+);
+select throws_ok(
+  $$select public.register_sale(gen_random_uuid(), gen_random_uuid(), '[]', '[]')$$,
+  'P0001', 'NOT_AUTHORIZED', 'inactivo: register_sale → NOT_AUTHORIZED'
+);
+select throws_ok(
+  $$select public.close_cash_session(gen_random_uuid(), 0)$$,
+  'P0001', 'NOT_AUTHORIZED', 'inactivo: close_cash_session → NOT_AUTHORIZED'
+);
+select throws_ok(
+  $$select public.void_sale(gen_random_uuid(), gen_random_uuid(), 'x')$$,
+  'P0001', 'NOT_AUTHORIZED', 'inactivo: void_sale → NOT_AUTHORIZED'
 );
 reset role;
 

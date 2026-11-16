@@ -3,7 +3,7 @@
 --
 -- Por qué hace falta: en un proyecto recién creado, las migraciones ya dejan
 -- algunas filas propias (la configuración general de alertas, su registro de
--- auditoría y el bucket de imágenes). El backup de datos trae esas mismas
+-- auditoría, los medios de pago, las cajas, la configuración de ventas y el bucket de imágenes). El backup de datos trae esas mismas
 -- filas con los valores de producción. Si no se quitan antes, la carga de esas
 -- tablas falla ENTERA por clave duplicada y se pierden, sin aviso visible, toda
 -- la auditoría y las alertas por categoría.
@@ -31,7 +31,7 @@ begin;
 do $$
 declare
   -- Tablas de public donde las migraciones siembran filas (se vacían antes de restaurar).
-  v_seeded text[] := array['audit_log', 'expiry_alert_settings'];
+  v_seeded text[] := array['audit_log', 'expiry_alert_settings', 'payment_methods', 'cash_registers', 'sales_settings'];
   v_table text;
   v_rows bigint;
   v_found text := '';
@@ -65,6 +65,9 @@ set local session_replication_role = replica;
 
 delete from public.audit_log;
 delete from public.expiry_alert_settings;
+delete from public.payment_methods;
+delete from public.cash_registers;
+delete from public.sales_settings;
 -- Los buckets los crean las migraciones; el backup trae los suyos. Storage está
 -- vacío (se comprobó arriba), así que no se pierde ningún archivo.
 delete from storage.buckets;
