@@ -213,14 +213,32 @@ check('5) 30 ventas con productos en orden opuesto', tally(crossed), { OK: 30 })
 check('5) stock A', await stockOf(pa.id), 170)
 check('5) stock B', await stockOf(pb.id), 170)
 
-// 6) Conciliación: ningún lote negativo y el saldo coincide con el ledger.
-const ids = [p1, p2, p3, pa, pb].map((p) => p.id).join(',')
+// 6) Aumento masivo de precios mientras se vende (contrato v0.9.x §19): cada venta ve el precio viejo
+// (1.210) o el nuevo (1.270,50), nunca uno intermedio, y no hay bloqueos cruzados.
+const pPrice = await newProduct('Aumento y ventas', 500)
+const [applied, ...pricedSales] = await Promise.all([
+  pause(30).then(() => rpc('apply_price_increase', {
+    p_idempotency_key: uuid(), p_brand_ids: null, p_supplier_ids: null, p_category_ids: null,
+    p_product_ids: [pPrice.id], p_percent: 5, p_rounding_multiple: null, p_excluded_product_ids: [], p_notes: 'Prueba de concurrencia',
+  })),
+  ...Array.from({ length: 40 }, (_, i) => pause(i * 2).then(() => sell(sessionA.id, [item(pPrice, 1)], [debit(1240)]))),
+])
+check('6) el aumento se aplicó', applied.ok, true)
+check('6) todas las ventas entraron (sin bloqueos cruzados)', tally(pricedSales), { OK: 40 })
+const priced = await rest(`sale_items?select=unit_price_with_vat&product_id=eq.${pPrice.id}`)
+check('6) cada venta tiene el precio viejo o el nuevo, nunca uno intermedio',
+  priced.every((i) => [1210, 1270.5].includes(Number(i.unit_price_with_vat))), true)
+check('6) stock descontado una vez por venta', await stockOf(pPrice.id), 460)
+check('6) una sola fila de historial para el aumento', (await rest(`price_history?select=id&product_id=eq.${pPrice.id}`)).length, 1)
+
+// 7) Conciliación: ningún lote negativo y el saldo coincide con el ledger.
+const ids = [p1, p2, p3, pa, pb, pPrice].map((p) => p.id).join(',')
 const batches = await rest(`product_batches?select=id,quantity_available&product_id=in.(${ids})`)
-check('6) lotes en negativo', batches.filter((b) => Number(b.quantity_available) < 0).length, 0)
+check('7) lotes en negativo', batches.filter((b) => Number(b.quantity_available) < 0).length, 0)
 const movements = await rest(`stock_movements?select=batch_id,signed_quantity&product_id=in.(${ids})`)
 const ledger = new Map()
 for (const m of movements) ledger.set(m.batch_id, (ledger.get(m.batch_id) ?? 0) + Number(m.signed_quantity))
-check('6) lotes cuyo saldo no coincide con el ledger', batches.filter((b) => Math.abs((ledger.get(b.id) ?? 0) - Number(b.quantity_available)) > 1e-9).length, 0)
+check('7) lotes cuyo saldo no coincide con el ledger', batches.filter((b) => Math.abs((ledger.get(b.id) ?? 0) - Number(b.quantity_available)) > 1e-9).length, 0)
 
 // Se cierran las sesiones que dejó la prueba.
 for (const s of [sessionA, sessionC].filter(Boolean)) {
