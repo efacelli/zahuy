@@ -4,9 +4,11 @@ import { Link, useSearchParams } from 'react-router'
 import pageStyles from '../../app/pages.module.css'
 import { ExpiryBadge } from '../../components/domain/ExpiryBadge'
 import { Badge } from '../../components/ui/Badge'
+import { Button } from '../../components/ui/Button'
 import { DataTable, type Column, type SortState } from '../../components/ui/DataTable'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Pagination } from '../../components/ui/Pagination'
+import { useToast } from '../../components/ui/toast-context'
 import { formatQuantity } from '../../domain/units'
 import { formatVatRate } from '../../domain/vat'
 import { todayInAppTimeZone } from '../../lib/dates'
@@ -14,6 +16,7 @@ import { toAppError } from '../../lib/errors'
 import { formatMoney, formatNumber } from '../../lib/format'
 import { useSupabase } from '../../lib/supabase-context'
 import { usePermissions } from '../auth/useProfile'
+import { downloadText, fetchAllProducts, productsToCsv } from './export-csv'
 import { fetchProductList, type ProductListRow } from './list-api'
 import { hasActiveFilters, parseListParams, serializeListParams, type ProductListParams, type ProductSortKey } from './list-params'
 import { BulkClassifyDialog } from './BulkClassifyDialog'
@@ -25,6 +28,8 @@ type ColumnKey = ProductSortKey | 'barcode' | 'vat_rate' | 'status'
 export function ProductsPage() {
   const client = useSupabase()
   const canManage = usePermissions().manageInventory
+  const toast = useToast()
+  const [exporting, setExporting] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const params = useMemo(() => parseListParams(searchParams), [searchParams])
   const today = todayInAppTimeZone()
@@ -122,20 +127,39 @@ export function ProductsPage() {
   const filtered = hasActiveFilters(params)
   const total = query.data?.total ?? 0
 
+  /** Baja todo el listado (con los filtros y el orden de la pantalla), no solo la página visible. */
+  async function exportList() {
+    setExporting(true)
+    try {
+      const rows = await fetchAllProducts(client, params)
+      downloadText(`productos-${todayInAppTimeZone()}.csv`, productsToCsv(rows))
+      toast.success(`Se exportaron ${formatNumber(rows.length)} productos.`)
+    } catch (error) {
+      toast.error(toAppError(error).message)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <>
       <PageHeader
         title="Productos"
         description="Catálogo, stock y próximos vencimientos."
         actions={
-          canManage && (
-            <>
-              <Link to="/productos/importar">Importar</Link>
-              <Link to="/productos/nuevo" className={pageStyles.linkButton}>
-                + Nuevo producto
-              </Link>
-            </>
-          )
+          <>
+            <Button disabled={exporting || total === 0} onClick={() => void exportList()}>
+              {exporting ? 'Exportando…' : 'Exportar a Excel'}
+            </Button>
+            {canManage && (
+              <>
+                <Link to="/productos/importar">Importar</Link>
+                <Link to="/productos/nuevo" className={pageStyles.linkButton}>
+                  + Nuevo producto
+                </Link>
+              </>
+            )}
+          </>
         }
       />
       <ProductFilters params={params} onChange={update} />

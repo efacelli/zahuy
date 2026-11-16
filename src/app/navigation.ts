@@ -55,6 +55,12 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Subir o bajar precios de muchos productos a la vez.',
     permission: 'manageInventory',
   },
+  {
+    path: '/etiquetas',
+    label: 'Etiquetas de góndola',
+    icon: 'tag',
+    description: 'Imprimir los precios para las góndolas.',
+  },
   { path: '/catalogos', label: 'Catálogos', icon: 'catalogs', description: 'Categorías, marcas y proveedores.' },
   {
     path: '/configuracion',

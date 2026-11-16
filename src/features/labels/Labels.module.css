@@ -1,0 +1,199 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.title {
+  margin: 0 0 var(--space-1);
+  font-size: 1.125rem;
+}
+
+.muted {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--space-3);
+}
+
+/* Un selector y su botón, uno al lado del otro. */
+.source {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.source > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.productCell {
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Etiquetas ---------------------------------------------------------- */
+
+.printArea {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  overflow-x: auto;
+}
+
+/* En pantalla, cada hoja se ve como un A4 (en milímetros reales). */
+.sheet {
+  display: grid;
+  flex: none;
+  width: 210mm;
+  height: 297mm;
+  background: #fff;
+  color: #000;
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+.sheet[data-format='a4-24'] {
+  grid-template-columns: repeat(3, 70mm);
+  grid-template-rows: repeat(8, 37.125mm);
+}
+
+.sheet[data-format='a4-10'] {
+  grid-template-columns: repeat(2, 105mm);
+  grid-template-rows: repeat(5, 59.4mm);
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  gap: 1mm;
+  min-width: 0;
+  padding: 3mm 4mm;
+  overflow: hidden;
+  outline: 1px dashed #c8c8c8;
+  outline-offset: -1px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.labelBrand {
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.labelName {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 9pt;
+  line-height: 1.15;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.labelPrice {
+  margin-top: auto;
+  font-size: 20pt;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.labelPrice small {
+  font-size: 8pt;
+  font-weight: 600;
+}
+
+.labelMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 2mm;
+  font-size: 6.5pt;
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet[data-format='a4-10'] .label {
+  padding: 5mm 6mm;
+}
+
+.sheet[data-format='a4-10'] .labelBrand {
+  font-size: 9pt;
+}
+
+.sheet[data-format='a4-10'] .labelName {
+  font-size: 13pt;
+}
+
+.sheet[data-format='a4-10'] .labelPrice {
+  font-size: 34pt;
+}
+
+.sheet[data-format='a4-10'] .labelPrice small {
+  font-size: 11pt;
+}
+
+.sheet[data-format='a4-10'] .labelMeta {
+  font-size: 8pt;
+}
+
+/* Al imprimir, solo las hojas, una por página. El tamaño A4 sin márgenes lo fija LabelsPage. */
+@media print {
+  :global(body *) {
+    visibility: hidden;
+  }
+
+  .printArea,
+  .printArea * {
+    visibility: visible;
+  }
+
+  .printArea {
+    position: absolute;
+    inset: 0 auto auto 0;
+    display: block;
+    margin: 0;
+    overflow: visible;
+  }
+
+  .sheet {
+    box-shadow: none;
+    break-after: page;
+    print-color-adjust: exact;
+  }
+
+  .sheet:last-child {
+    break-after: auto;
+  }
+
+  /* Línea de corte suave: sirve para papel común; en hojas de etiquetas no molesta. */
+  .label {
+    outline-color: #ddd;
+  }
+}

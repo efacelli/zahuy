@@ -24,6 +24,8 @@ const PATHS = {
   cart: 'M3 4h2l2.4 11h10.2L20 7H6.3M9 20a1 1 0 1 0 0-.01M17 20a1 1 0 1 0 0-.01',
   clipboard: 'M9 4h6v3H9V4ZM7 5.5H5V21h14V5.5h-2M8.5 12h7M8.5 16h5',
   trendUp: 'M3 17l6-6 4 4 8-8M15 7h6v6',
+  tag: 'M3 3h8l10 10-8 8L3 11V3Zm4.5 4.5h.01',
+  download: 'M12 4v11m-5-5 5 5 5-5M5 20h14',
   receipt: 'M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L6 21V3Zm3 5h6M9 12h6M9 16h4',
 } as const
 
