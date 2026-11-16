@@ -65,6 +65,8 @@ Lo hace una persona con la cuenta del negocio (crear cuentas y pagar no lo hace 
   4. Verificar: RLS en todas las tablas, *Security Advisor* sin alertas críticas, un usuario `admin` de prueba (procedimiento de §4, Primer dueño) y una prueba manual.
 - Opcional, sin costo: un segundo sitio estático en Render apuntando a staging (§5) para probar la app completa.
 
+**Estado (2026-11-16):** `zahuy-staging` creado, con las 23 migraciones de entonces y el seed ficticio aplicados, Auth configurado (sin registro público, contraseña de 10 con letras y números) y probado: 0 tablas sin RLS, `anon` sin acceso, 0 descuadres de stock y una prueba de humo de ventas y caja por la API (20 de 20). Pendiente: Site URL y Redirect URLs de staging (hace falta una URL de sitio) y probar ahí el backup y la restauración.
+
 ### Configuración de Auth (en los dos proyectos)
 
 | Opción | Valor | Motivo |
@@ -88,6 +90,10 @@ npx supabase@3.1.0 db push --remote --dry-run               # lista lo que se va
 npx supabase@3.1.0 db push --remote                         # aplica las migraciones pendientes
 ```
 
+- **Cómo se aplicó en staging (se repite igual en producción, cambiando el proyecto):** el CLI se conecta con la sesión de `supabase login` (no hace falta escribir la contraseña de la base en ningún lado; `link` y `db push --dry-run` funcionan solos). En modo no interactivo (por ejemplo, ejecutado por un agente) la CLI exige `--yes` para cambiar un proyecto remoto; **sin `--yes` no cambia nada**. Antes de cada paso, confirmar el nombre y el ref con `npx supabase@3.1.0 projects list` y `cat supabase/.temp/project-ref`. La CLI rotula los proyectos con un entorno ("production") que es una etiqueta del proyecto, no prueba de que sea producción: fiarse del nombre y del ref.
+- **Auth sin la interfaz web:** `config push` aplica solo las propiedades que declara el `config.toml` que se le pasa; las que no declara quedan como están. Para configurar Auth igual que producción sin heredar los ajustes de desarrollo local (contraseñas de 6), usar un `config.toml` mínimo **fuera del repo** con `[auth] enable_signup = false`, `minimum_password_length = 10`, `password_requirements = "letters_digits"` y correr `npx supabase@3.1.0 config diff --workdir <carpeta>` y, si coincide con lo esperado, `config push --workdir <carpeta> --yes`. Nunca correr `config push` con el `supabase/config.toml` del repo contra staging o producción: trae los valores de desarrollo local.
+- **Verificar sin riesgo:** `npx supabase@3.1.0 db query --remote --read-only "<SQL>"` (conteos, RLS, `anon`, conciliación de stock) y `npx supabase@3.1.0 db advisors --remote` (*Security Advisor*). Las advertencias esperadas hoy: las RPC son `SECURITY DEFINER` ejecutables por usuarios con sesión (validan el rol adentro) y la protección contra contraseñas filtradas, que exige plan Pro. **`db reset --remote` existe: no se usa jamás contra staging ni producción.**
+- **Usuarios de prueba en staging:** `npm run db:users` solo corre en local. En staging se crean en Authentication → Users o con la API de administración de Auth desde la computadora de un responsable (la clave de administración nunca se guarda ni se sube).
 - **Ojo con la versión de la CLI:** en la 3.1.0, `db push` apunta a la base **local** si no se pasa `--remote` (lo dice su ayuda: "Local by default"). Sin `--remote`, el comando "funciona" pero no aplica nada en el proyecto vinculado. Revisar siempre la salida de `--dry-run` para confirmar a qué base apunta.
 - **Nunca** cargar `supabase/seed.sql` en producción: `db push` no lo aplica salvo que se pase `--include-seed`, y esa opción **no se usa en producción**. En staging sí (datos ficticios).
 - En staging: correr las pruebas contra esa base y una prueba manual con datos ficticios.

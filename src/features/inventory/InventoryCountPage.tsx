@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { FormField } from '../../components/ui/FormField'
 import { Icon } from '../../components/ui/Icon'
@@ -97,9 +97,14 @@ export function InventoryCountPage() {
     setConfirming(false)
     setServerError(null)
     idempotencyKey.current = newIdempotencyKey()
+    // El buscador se vuelve a crear (key): el foco lo pone el efecto de abajo,
+    // cuando el nuevo ya está en pantalla (enfocar antes podía caer en el viejo).
     setPickerKey((k) => k + 1)
-    focusSoon(PRODUCT_FIELD)
   }
+
+  useEffect(() => {
+    if (pickerKey > 0) document.getElementById(PRODUCT_FIELD)?.focus()
+  }, [pickerKey])
 
   const mutation = useMutation({
     mutationFn: async () => {
