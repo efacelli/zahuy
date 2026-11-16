@@ -117,8 +117,8 @@ npx supabase@3.1.0 db push                                  # aplica las migraci
 | Qué | Cómo | Cuándo |
 |---|---|---|
 | Backup automático | Diario, incluido en Supabase Pro. **El plan gratuito no lo tiene** | Solo con Pro |
-| Backup manual semanal | `npx supabase@3.1.0 db dump --linked -f zahuy-esquema-AAAA-MM-DD.sql` y `npx supabase@3.1.0 db dump --linked --data-only -f zahuy-datos-AAAA-MM-DD.sql` (piden la contraseña de la base). Guardar en una carpeta privada (no el repo, no un chat), idealmente también en la nube del negocio | Una vez por semana mientras se use el plan gratuito |
-| Backup manual | `npx supabase@3.1.0 db dump --linked -f <archivo>.sql` (esquema) y `--data-only` (datos), guardado **fuera del repo**, cifrado | Antes de cada migración en producción |
+| Backup manual semanal | `npx supabase@3.1.0 db dump --remote -f zahuy-esquema-AAAA-MM-DD.sql` y `npx supabase@3.1.0 db dump --remote --data-only -f zahuy-datos-AAAA-MM-DD.sql` (piden la contraseña de la base). Guardar en una carpeta privada (no el repo, no un chat), idealmente también en la nube del negocio | Una vez por semana mientras se use el plan gratuito |
+| Backup manual | `npx supabase@3.1.0 db dump --remote -f <archivo>.sql` (esquema) y `--data-only` (datos), guardado **fuera del repo**, cifrado | Antes de cada migración en producción |
 | Restaurar | Panel de Supabase → Backups (solo con Pro), o el backup manual en un proyecto nuevo siguiendo §7.1 | Solo ante pérdida de datos, con aprobación |
 
 - Un rollback del frontend es volver a desplegar la versión anterior en Render (un clic).
@@ -136,20 +136,25 @@ depender de él.
 **Al hacer cada backup** (además de los dos archivos de la tabla de arriba):
 
 ```bash
-psql "<conexión de la base>" -At -f supabase/scripts/backup-fingerprint.sql > zahuy-huella-AAAA-MM-DD.txt
+psql "<conexión de la base>" -q -At -f supabase/scripts/backup-fingerprint.sql > zahuy-huella-AAAA-MM-DD.txt
 ```
 
 Guardar esa huella junto al backup. No contiene datos del negocio: solo
-cantidades de filas y un resumen por tabla.
+cantidades de filas y un resumen por tabla. La huella cubre **sola todas las
+tablas** del esquema `public` (también las que se agreguen después, como ventas
+y caja) más usuarios de Auth, Storage y las secuencias; no hay una lista que
+mantener. Usar siempre `-q`: sin él, `psql` agrega una línea `SET` que ensucia la
+comparación.
 
 **Para restaurar en un proyecto nuevo** 🔒:
 
-1. Crear el proyecto y aplicar las migraciones (`db push`, §4). No cargar el seed.
+1. Crear el proyecto y aplicar las migraciones (`db push --remote`, §4). No cargar el seed.
 2. Correr `supabase/scripts/restore-prepare.sql`. Quita las pocas filas que las
    migraciones crean solas (configuración general de alertas, su registro de
-   auditoría y el bucket de imágenes), que el backup trae con sus valores
-   reales. Si la base ya tiene usuarios, productos, lotes o movimientos, se
-   detiene sin tocar nada.
+   auditoría y los buckets de Storage), que el backup trae con sus valores
+   reales. Es **seguro por defecto**: toda tabla que no esté en su lista de
+   tablas sembradas cuenta como datos del negocio, y si tiene filas (o hay
+   usuarios o archivos) se detiene sin tocar nada y dice cuáles.
 3. Cargar el archivo de datos: `psql "<conexión>" -f zahuy-datos-AAAA-MM-DD.sql`.
    Revisar que la salida no tenga ninguna línea `ERROR`.
 4. Volver a correr `backup-fingerprint.sql` y comparar con la huella guardada:
@@ -162,6 +167,17 @@ pierde datos: en la prueba, la tabla de auditoría quedó con 1 fila en lugar de
 tabla en una sola sentencia; si una fila choca con otra que ya existe, esa tabla
 entera no se carga y el resto sigue. Productos, lotes, movimientos y usuarios
 sí se restauraban bien.
+
+**Mantenerlo al día.** Cada PR que agregue una migración revisa esto:
+
+| Si la migración... | Hay que... |
+|---|---|
+| Crea una tabla nueva | Nada: la huella y el paso previo la toman solas. Toda tabla de `public` necesita una columna `id` (contrato §2.5) |
+| **Siembra filas** en una tabla (por ejemplo los medios de pago o las cajas de la propuesta de ventas) | Agregar esa tabla a `v_seeded` en `supabase/scripts/restore-prepare.sql`. Si se olvida, el paso previo se detiene y avisa (no se pierde nada en silencio) |
+| Crea un bucket de Storage | Nada: el paso previo vacía los buckets (Storage tiene que estar vacío) |
+| Agrega un esquema fuera de `public`, `auth` o `storage` con datos | Agregarlo a la huella y al paso previo, y probar el ciclo completo |
+
+Además, probar el ciclo (huella → backup → recrear → paso previo → restaurar → huella igual) en la base local con datos ficticios cuando cambien los scripts o el esquema de forma importante. Detalle del último ciclo: base local, 17 productos, 25 lotes, 60 movimientos, 43 filas de auditoría y 5 usuarios: 0 errores y huella idéntica.
 
 **Lo que el backup no trae:**
 
