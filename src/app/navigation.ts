@@ -20,6 +20,7 @@ export const NAV_ITEMS: NavItem[] = [
     permission: 'viewDashboard',
   },
   { path: '/caja', label: 'Caja', icon: 'cart', description: 'Vender con el lector y cobrar.' },
+  { path: '/ventas', label: 'Ventas', icon: 'receipt', description: 'Historial de ventas, tickets y anulaciones.' },
   { path: '/productos', label: 'Productos', icon: 'products', description: 'Catálogo, lotes y vencimientos.' },
   {
     path: '/movimientos',
