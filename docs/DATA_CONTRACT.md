@@ -2,9 +2,9 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.6.3 (propuesta de la §15; lo demás sigue en 0.5.2) |
+| Versión | 0.7.0 (ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
-| Alcance | Productos, lotes, vencimientos, stock y movimientos. **Propuesta:** ventas y caja (§15, sin implementar) |
+| Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
 
 > **v0.4.0 incorpora la segunda visita al cliente.** Lo más importante para el
@@ -1101,7 +1101,7 @@ volver a registrar la concordancia.
 | 0.6.1 | 2026-11-15 | Decisiones de `efacelli` sobre la propuesta de la §15: P-27 (ticket interno, no es factura), P-30 (redondeo del efectivo a la centena más cercana; `sales.cash_rounding`, `sales_settings.cash_rounding_multiple`, invariante `Σ amount = total_amount + cash_rounding`), P-36 (sin stock negativo; se carga el inventario antes) y aceptación de P-28, P-29, P-31 a P-35, P-37 y P-38. Nuevas preguntas P-39 y P-40. Sigue siendo propuesta |
 | 0.6.2 | 2026-11-15 | Precisiones surgidas al implementar la §15 en local (migraciones y pruebas listas, sin PR): código `PRODUCT_PRICE_INVALID`; importes con hasta 2 decimales (tolerancia de coma flotante del cliente); qué cuentan las vistas de caja para el empleado; idempotencia de `void_sale`; y aviso al frontend: agregar `sale` a `MovementType` al regenerar tipos. Sigue siendo propuesta |
 | 0.6.3 | 2026-11-16 | Decisiones nuevas de `efacelli`: **P-30 cambia** (se redondea el total de la venta con cualquier medio de pago; el monto es una sugerencia que el cajero puede cambiar y la base solo exige un límite), **P-39 decidida** (menos de la mitad del múltiplo se cobra exacto; desaparece `CASH_AMOUNT_TOO_SMALL`) y P-40 de acuerdo. Renombres: `sales.cash_rounding` → `sales.rounding_amount`, `sales_settings.cash_rounding_multiple` → `rounding_multiple`, vista `cash_rounding_total` → `rounding_total`; nueva `sales.rounding_multiple` (múltiplo vigente al vender). Sigue siendo propuesta |
-| 0.7.0 | 2026-11-16 | **Propuesta** (§16): descuentos por cantidad (cada 6 unidades 5 %, editable en la caja, todos los productos) con columnas aditivas en `sales_settings`, `sale_items` y `sales`, `register_sale` con `discount_percent` opcional y código `INVALID_DISCOUNT`; vistas `v_sales_daily` y `v_sales_daily_payments` para las finanzas del dashboard. Preguntas P-41 a P-43; P-41 (tope 30 %) y P-42 (el cajero también puede subirlo) decididas por efacelli el mismo día |
+| 0.7.0 | 2026-11-16 | **Propuesta** (§16): descuentos por cantidad (cada 6 unidades 5 %, editable en la caja, todos los productos) con columnas aditivas en `sales_settings`, `sale_items` y `sales`, `register_sale` con `discount_percent` opcional y código `INVALID_DISCOUNT`; vistas `v_sales_daily` y `v_sales_daily_payments` para las finanzas del dashboard. Preguntas P-41 a P-43; P-41 (tope 30 %) y P-42 (el cajero también puede subirlo) decididas por efacelli; P-43 (sugerido solo en cantidades enteras) por `ChinoNader18`, más sus ajustes: `CHECK < 100`, hash con el `discount_percent` enviado, y precisiones de `v_sales_daily` |
 
 ---
 
@@ -1650,17 +1650,19 @@ detiene y avisa); (3) `sales`, `sale_items`, `sale_payments` y la columna
 `db reset`, pgTAP y la prueba sobre datos previos; antes de aplicarlas en un
 proyecto real, backup verificado (`docs/DEPLOY.md` §7).
 
-## 16. Descuentos por cantidad y métricas de ventas (PROPUESTA v0.7.0)
+## 16. Descuentos por cantidad y métricas de ventas (v0.7.0)
 
-> **Propuesta.** P-41 y P-42 decididas; falta P-43 (la define `ChinoNader18`) y que el
-> backend la acepte. Reemplaza lo que P-28 dejaba "fuera de v0.6.x".
+> **Aprobada para implementar** (2026-11-16): P-41 a P-43 y P-45 decididas; el backend
+> (`ChinoNader18`) la revisó y pidió los ajustes ya incorporados. Las migraciones pasan
+> primero por staging. Reemplaza lo que P-28 dejaba "fuera de v0.6.x".
 
 ### 16.1 Regla de negocio (decisión de `efacelli`, 2026-11-16)
 
 - **Cada 6 unidades del mismo producto, 5 % de descuento sobre esa línea**, y así
   sucesivamente: 6 → 5 %, 12 → 10 %, 18 → 15 %, … Fórmula sugerida:
   `floor(quantity / step) * percent` con `step = 6` y `percent = 5`.
-- Aplica a **todos los productos** (no hay lista de excluidos).
+- Aplica a **todos los productos** (no hay lista de excluidos). En los que se venden por **kg o litro** el
+  sugerido es 0, pero el cajero puede aplicar uno a mano hasta el tope (P-43).
 - Es una **sugerencia**: quien está en la caja (cualquier usuario activo, también el
   empleado) puede **cambiar el porcentaje de cada línea o quitarlo**, igual que el
   redondeo (P-30): puede **bajarlo, quitarlo o subirlo**, siempre hasta el tope de **30 %** (P-41, P-42). La base guarda lo sugerido y lo aplicado.
@@ -1675,8 +1677,8 @@ con los valores de la decisión):
 | Columna | Tipo | Null | Default | Notas |
 |---|---|---|---|---|
 | `quantity_discount_step` | `integer` | no | `6` | `CHECK (> 0)`. Cada cuántas unidades sube el descuento |
-| `quantity_discount_percent` | `numeric(5,2)` | no | `5` | `CHECK (>= 0 AND <= 100)`. Cuánto sube por cada escalón |
-| `quantity_discount_max_percent` | `numeric(5,2)` | no | `30` | `CHECK (>= 0 AND <= 100)`. Tope del descuento por línea: limita el sugerido y lo que escribe el cajero (P-41) |
+| `quantity_discount_percent` | `numeric(5,2)` | no | `5` | `CHECK (>= 0 AND < 100)`. Cuánto sube por cada escalón |
+| `quantity_discount_max_percent` | `numeric(5,2)` | no | `30` | `CHECK (>= 0 AND < 100)` (con 100 % la línea quedaría en 0 y chocaría con `line_total > 0`). Tope del descuento por línea: limita el sugerido y lo que escribe el cajero (P-41) |
 
 `sale_items` (§15.3.5), columnas nuevas. Las filas ya existentes quedan con
 `list_line_total = line_total` y descuentos en 0 (backfill en la misma migración):
@@ -1685,7 +1687,7 @@ con los valores de la decisión):
 |---|---|---|---|---|
 | `list_line_total` | `numeric(12,2)` | no | — | `round(quantity * unit_price_with_vat, 2)`: la línea sin descuento |
 | `suggested_discount_percent` | `numeric(5,2)` | no | `0` | Lo que sugirió la regla al vender (para auditar ediciones) |
-| `discount_percent` | `numeric(5,2)` | no | `0` | `CHECK (>= 0 AND <= 100)`. Lo aplicado |
+| `discount_percent` | `numeric(5,2)` | no | `0` | `CHECK (>= 0 AND < 100)`. Lo aplicado |
 | `discount_amount` | `numeric(12,2)` | no | `0` | `round(list_line_total * discount_percent / 100, 2)`. `CHECK (discount_amount >= 0 AND discount_amount < list_line_total)` |
 
 `line_total` **mantiene su significado** (lo que se cobra por la línea) y pasa a ser
@@ -1707,15 +1709,17 @@ Cada elemento de `p_items` admite un campo opcional:
   con hasta 2 decimales; si no → `INVALID_DISCOUNT` (código nuevo).
 - Las líneas repetidas del mismo producto se suman antes de calcular el sugerido; si
   traen porcentajes distintos → `INVALID_DISCOUNT`.
-- El `discount_percent` entra en el `request_hash` (idempotencia, §15.6 paso 2).
-- `private.suggested_discount(quantity, step, percent, max)` =
-  `least(floor(quantity / step) * percent, max)`. El frontend aplica la misma
+- El `discount_percent` entra en el `request_hash` (idempotencia, §15.6 paso 2) **tal como lo envía el cliente** (`null` si no lo manda), no el resuelto: así un reintento después de cambiar `sales_settings` no da un `IDEMPOTENCY_CONFLICT` falso.
+- `private.suggested_discount(quantity, sale_unit, step, percent, max)` =
+  `least(floor(quantity / step) * percent, max)` para unidades de cantidades enteras
+  (`unit`, `pack`, `box`, `other`) y **0 para `kg` y `l`** (P-43). El frontend aplica la misma
   regla; las pruebas de la base la fijan.
 
 ### 16.4 Vista `v_sales_daily` (métricas de finanzas del dashboard)
 
-Una fila por día (fecha local `America/Argentina/Buenos_Aires`), solo encargado y
-dueño (el empleado no ve filas). `security_invoker`. Cuenta solo ventas `completed`.
+Una fila por día (fecha local de `sales.created_at` en `America/Argentina/Buenos_Aires`), solo
+encargado, dueño y programador (el empleado no ve filas). `security_invoker`. Todas las columnas
+cuentan solo ventas `completed` (también `cost_total`), salvo `voided_count`.
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -1741,7 +1745,8 @@ Hasta que existan, el dashboard grafica con `v_cash_session_summary` y
 |---|---|---|
 | P-41 | ¿Hay un **tope** al descuento por línea? Con la regla tal cual, 120 unidades darían 100 % | **Decidida (efacelli):** tope de **30 %** por línea, configurable en `sales_settings.quantity_discount_max_percent`; limita el sugerido (36 unidades o más → 30 %) y lo que escribe el cajero | Adoptada |
 | P-42 | ¿El cajero puede **subir** el descuento por encima del sugerido (hasta el tope) o solo bajarlo / quitarlo? | **Decidida (efacelli):** puede bajarlo, quitarlo **y subirlo**, entre 0 y el tope, en cualquier línea (también en una que no tenía sugerido) | Adoptada |
-| P-43 | Productos por **kg o litro** (cantidades con decimales): ¿"6 unidades" son 6 kg, o el descuento solo aplica a los que se venden por unidad? | **Pendiente (`ChinoNader18`, a pedido de efacelli)** |
+| P-43 | Productos por **kg o litro** (cantidades con decimales): ¿"6 unidades" son 6 kg, o el descuento solo aplica a los que se venden por unidad? | **Decidida (`ChinoNader18`, a pedido de efacelli):** el sugerido aplica solo a cantidades enteras (`unit`, `pack`, `box`, `other`); en `kg` y `l` es 0, pero el cajero puede aplicar uno a mano hasta el tope. Si el cliente quiere descuento por peso, se agrega después con regla propia (solo cambia `private.suggested_discount`) | Adoptada |
+| P-45 | ¿Quién puede editar el porcentaje? | Cualquier usuario activo, entre 0 y 30 % en cualquier línea (P-42). Lo sugerido y lo aplicado quedan en `sale_items`; cuánto se aparta cada empleado sale de `sale_items` + `sales.created_by`. Si más adelante se quiere exigir al encargado por encima de cierto porcentaje, lo valida la RPC | Adoptada |
 
 ### 16.6 Pruebas que se exigirán
 
