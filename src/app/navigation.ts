@@ -10,7 +10,7 @@ export interface NavItem {
   permission?: keyof Permissions
 }
 
-/** Secciones de la Etapa 1. Ventas, caja, clientes y ARCA quedan fuera hasta su aprobación. */
+/** Secciones. La caja (etapa 5) se adelantó a pedido de `efacelli`; clientes y ARCA siguen fuera. */
 export const NAV_ITEMS: NavItem[] = [
   {
     path: '/',
@@ -19,6 +19,7 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Resumen del inventario y alertas.',
     permission: 'viewDashboard',
   },
+  { path: '/caja', label: 'Caja', icon: 'cart', description: 'Vender con el lector y cobrar.' },
   { path: '/productos', label: 'Productos', icon: 'products', description: 'Catálogo, lotes y vencimientos.' },
   {
     path: '/movimientos',

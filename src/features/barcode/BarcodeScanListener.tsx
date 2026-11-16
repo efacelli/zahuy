@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { useToast } from '../../components/ui/toast-context'
 import { toAppError } from '../../lib/errors'
 import { useSupabase } from '../../lib/supabase-context'
@@ -16,6 +16,8 @@ export function BarcodeScanListener() {
   const navigate = useNavigate()
   const toast = useToast()
   const canCreate = usePermissions().manageInventory
+  // La caja y la carga de inventario manejan el lector ellas mismas: escanear ahí no saca de la pantalla.
+  const ownScanner = /^\/(caja|inventario)(\/|$)/.test(useLocation().pathname)
 
   useBarcodeScanner((code) => {
     // También los inactivos: la ficha muestra su estado.
@@ -31,7 +33,7 @@ export function BarcodeScanListener() {
         }
       })
       .catch((e: unknown) => toast.error(toAppError(e).message))
-  })
+  }, !ownScanner)
 
   return null
 }
