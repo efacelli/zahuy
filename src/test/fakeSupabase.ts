@@ -225,7 +225,7 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
       then: (resolve: (r: Result) => unknown, reject?: (e: unknown) => unknown) =>
         Promise.resolve(result()).then(resolve, reject),
     } as Record<string, unknown>
-    for (const method of ['select', 'eq', 'gt', 'lt', 'order', 'limit']) {
+    for (const method of ['select', 'eq', 'gt', 'lt', 'order', 'limit', 'range']) {
       chain[method] = (...args: unknown[]) => {
         filters.push([method, ...args])
         return chain
