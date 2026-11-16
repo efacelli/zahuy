@@ -101,12 +101,18 @@ select results_eq(
 );
 
 -- Columnas que el cliente nunca escribe.
+-- La subconsulta con OFFSET 0 fuerza a filtrar por esquema y tabla ANTES de preguntar por permisos:
+-- sin eso, según las estadísticas, el planificador podía evaluar has_column_privilege sobre tablas de
+-- otros esquemas (por ejemplo auth.users) y la prueba fallaba con "relation does not exist".
 select is(
-  (select count(*)::int from information_schema.columns c
-    where c.table_schema = 'public' and c.table_name in (select tbl from t_expected)
-      and c.column_name in ('id', 'created_at', 'created_by', 'updated_at', 'updated_by', 'creation_key', 'sku',
-                            'quantity_initial', 'quantity_available', 'product_id', 'sale_price_with_vat')
-      and has_column_privilege('authenticated', format('public.%I', c.table_name), c.column_name, 'update')),
+  (select count(*)::int from (
+      select c.table_name, c.column_name from information_schema.columns c
+      where c.table_schema = 'public' and c.table_name in (select tbl from t_expected)
+        and c.column_name in ('id', 'created_at', 'created_by', 'updated_at', 'updated_by', 'creation_key', 'sku',
+                              'quantity_initial', 'quantity_available', 'product_id', 'sale_price_with_vat')
+      offset 0
+    ) c
+    where has_column_privilege('authenticated', format('public.%I', c.table_name), c.column_name, 'update')),
   0, 'id, auditoría, SKU, clave de alta y saldos no se pueden actualizar desde la app'
 );
 select is(

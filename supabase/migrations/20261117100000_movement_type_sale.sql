@@ -1,5 +1,5 @@
 -- Etapa 5 (ventas y caja), paso 1 de 5: tipo de movimiento `sale`.
--- Contrato: docs/DATA_CONTRACT.md v0.6.1, §15.2.
+-- Contrato: docs/DATA_CONTRACT.md v0.6.3, §15.2.
 --
 -- Va sola en su propio archivo porque un valor nuevo de un enum no se puede
 -- usar en la misma transacción en la que se agrega (igual que `internal_use`).

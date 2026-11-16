@@ -1,5 +1,5 @@
 -- Etapa 5 (ventas y caja), paso 5 de 5 (2/2): una venta solo se toca por sus RPC.
--- Contrato: docs/DATA_CONTRACT.md v0.6.1, §15.2.
+-- Contrato: docs/DATA_CONTRACT.md v0.6.3, §15.2.
 --
 -- Cierra el "segundo camino" al stock de una venta:
 --   * register_stock_movement y register_product_movement rechazan el tipo

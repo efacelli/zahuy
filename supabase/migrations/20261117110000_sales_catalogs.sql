@@ -1,5 +1,5 @@
 -- Etapa 5 (ventas y caja), paso 2 de 5: enums y catálogos de ventas.
--- Contrato: docs/DATA_CONTRACT.md v0.6.1, §15.2, §15.3.1, §15.3.2, §15.3.8 y §15.7.
+-- Contrato: docs/DATA_CONTRACT.md v0.6.3, §15.2, §15.3.1, §15.3.2, §15.3.8 y §15.7.
 --
 -- Migración aditiva: crea enums y tres tablas nuevas con sus filas iniciales
 -- (5 medios de pago, Caja 1 y Caja 2, múltiplo de redondeo 100) y recrea el
@@ -176,19 +176,19 @@ insert into public.cash_registers (name) values ('Caja 1'), ('Caja 2');
 -- ---------------------------------------------------------------------------
 create table public.sales_settings (
   id uuid not null default gen_random_uuid(),
-  cash_rounding_multiple numeric(12, 2) not null default 100,
+  rounding_multiple numeric(12, 2) not null default 100,
   created_at timestamptz not null default now(),
   created_by uuid,
   updated_at timestamptz not null default now(),
   updated_by uuid,
   constraint sales_settings_pkey primary key (id),
-  constraint sales_settings_cash_rounding_multiple_check check (cash_rounding_multiple > 0),
+  constraint sales_settings_rounding_multiple_check check (rounding_multiple > 0),
   constraint sales_settings_created_by_fkey foreign key (created_by) references public.profiles (id) on delete restrict,
   constraint sales_settings_updated_by_fkey foreign key (updated_by) references public.profiles (id) on delete restrict
 );
 
 comment on table public.sales_settings is
-  'Configuración de ventas (una sola fila). Hoy: múltiplo del redondeo del efectivo (P-30).';
+  'Configuración de ventas (una sola fila). Hoy: múltiplo del redondeo del total de la venta (P-30).';
 
 create unique index sales_settings_singleton_key on public.sales_settings ((true));
 
@@ -206,7 +206,7 @@ alter table public.sales_settings enable row level security;
 
 revoke all on table public.sales_settings from public, anon, authenticated;
 grant select on table public.sales_settings to authenticated;
-grant update (cash_rounding_multiple) on table public.sales_settings to authenticated;
+grant update (rounding_multiple) on table public.sales_settings to authenticated;
 
 create policy sales_settings_select on public.sales_settings
   for select to authenticated using ((select private.is_active_user()));
@@ -215,4 +215,4 @@ create policy sales_settings_update on public.sales_settings
   using ((select private.is_manager_or_admin()))
   with check ((select private.is_manager_or_admin()));
 
-insert into public.sales_settings (cash_rounding_multiple) values (100);
+insert into public.sales_settings (rounding_multiple) values (100);

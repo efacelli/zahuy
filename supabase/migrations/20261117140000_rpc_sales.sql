@@ -1,5 +1,5 @@
 -- Etapa 5 (ventas y caja), paso 5 de 5 (1/2): RPC de caja y ventas.
--- Contrato: docs/DATA_CONTRACT.md v0.6.1, §15.6, §15.9 y P-30.
+-- Contrato: docs/DATA_CONTRACT.md v0.6.3, §15.6, §15.9 y P-30.
 --
 -- Solo crea funciones; no modifica tablas ni datos. Mismas reglas comunes que
 -- las RPC de stock (SECURITY DEFINER, search_path vacío, una transacción por
@@ -9,8 +9,11 @@
 -- ---------------------------------------------------------------------------
 -- 1. Funciones auxiliares (esquema private)
 -- ---------------------------------------------------------------------------
--- Redondeo del efectivo (P-30): múltiplo más cercano; desde la mitad, sube.
--- round_cash(1237, 100) = 1200; (1249, 100) = 1200; (1250, 100) = 1300.
+-- Monto SUGERIDO por el redondeo del total (P-30 y P-39): múltiplo más cercano, desde la
+-- mitad sube; con menos de la mitad del múltiplo se cobra exacto. round_cash(1237, 100) = 1200;
+-- (1249, 100) = 1200; (1250, 100) = 1300; (49.99, 100) = 49.99. La caja (frontend) usa la misma
+-- regla para sugerir y el cajero puede cambiar el monto: register_sale NO exige este valor, solo
+-- el límite de abajo. Queda como definición única de la regla y la fijan las pruebas.
 -- div() es división entera exacta en numeric: sin errores de coma flotante.
 create function private.round_cash(p_amount numeric, p_multiple numeric)
 returns numeric
@@ -19,7 +22,8 @@ immutable
 set search_path = ''
 as $$
   select case
-    when p_amount is null or p_multiple is null or p_amount <= 0 or p_multiple <= 0 then 0::numeric
+    when p_amount is null or p_multiple is null or p_multiple <= 0 or p_amount <= 0 then p_amount
+    when p_amount < p_multiple / 2 then p_amount
     else div(p_amount * 2 + p_multiple, p_multiple * 2) * p_multiple
   end;
 $$;
@@ -247,13 +251,8 @@ declare
   v_total numeric := 0;
   v_net numeric := 0;
   v_vat numeric := 0;
-  v_noncash numeric := 0;
-  v_cash_amount numeric;
-  v_cash_tendered numeric;
-  v_cash_method uuid;
-  v_cash_due numeric;
-  v_expected_cash numeric;
-  v_rounding numeric := 0;
+  v_paid numeric := 0;
+  v_rounding numeric;
   v_multiple numeric;
   v_method public.payment_methods;
   v_pay_row record;
@@ -387,8 +386,8 @@ begin
     v_vat := v_vat + (v_line_total - v_line_net);
   end loop;
 
-  -- Pagos y redondeo del efectivo (P-30): el efectivo llega ya redondeado y la
-  -- base lo recalcula y lo exige.
+  -- Pagos y redondeo del total (P-30): la caja sugiere el total redondeado y el cajero puede
+  -- cambiarlo; la base no exige un valor, solo que la diferencia con el total quede dentro del límite.
   if (select count(distinct x ->> 'payment_method_id') from jsonb_array_elements(v_pay) x)
      <> jsonb_array_length(v_pay) then
     perform private.raise_business_error('INVALID_PAYMENT');
@@ -406,48 +405,33 @@ begin
       perform private.raise_business_error('INVALID_PAYMENT');
     end if;
     if v_method.is_cash then
-      v_cash_method := v_method.id;
-      v_cash_amount := v_pay_row.amount;
-      v_cash_tendered := v_pay_row.tendered;
-    else
-      if v_pay_row.tendered is not null then
+      -- Solo el efectivo tiene "recibido" y vuelto: lo recibido no puede ser menor que lo que se cobra.
+      if v_pay_row.tendered is not null and v_pay_row.tendered < v_pay_row.amount then
         perform private.raise_business_error('INVALID_PAYMENT');
       end if;
-      v_noncash := v_noncash + v_pay_row.amount;
-    end if;
-  end loop;
-
-  v_cash_due := v_total - v_noncash;
-  if v_cash_method is null then
-    if v_cash_due <> 0 then
-      perform private.raise_business_error('PAYMENT_MISMATCH');
-    end if;
-  else
-    if v_cash_due <= 0 then
-      perform private.raise_business_error('PAYMENT_MISMATCH');
-    end if;
-    select cs.cash_rounding_multiple into v_multiple from public.sales_settings cs limit 1;
-    v_expected_cash := private.round_cash(v_cash_due, coalesce(v_multiple, 100));
-    if v_expected_cash = 0 then
-      perform private.raise_business_error('CASH_AMOUNT_TOO_SMALL');
-    end if;
-    if v_cash_amount <> v_expected_cash then
-      perform private.raise_business_error('PAYMENT_MISMATCH');
-    end if;
-    if v_cash_tendered is not null and v_cash_tendered < v_cash_amount then
+    elsif v_pay_row.tendered is not null then
       perform private.raise_business_error('INVALID_PAYMENT');
     end if;
-    v_rounding := v_cash_amount - v_cash_due;
+    v_paid := v_paid + v_pay_row.amount;
+  end loop;
+
+  -- La diferencia entre lo cobrado y el total es el redondeo: tiene que quedar estrictamente
+  -- dentro de un múltiplo (por ejemplo, menos de $100 hacia arriba o hacia abajo).
+  select cs.rounding_multiple into v_multiple from public.sales_settings cs limit 1;
+  v_multiple := coalesce(v_multiple, 100);
+  v_rounding := v_paid - v_total;
+  if abs(v_rounding) >= v_multiple then
+    perform private.raise_business_error('PAYMENT_MISMATCH');
   end if;
 
   -- Venta, ítems, descuento de stock FEFO y pagos: todo en esta transacción.
   insert into public.sales (
     idempotency_key, request_hash, cash_session_id, total_amount, net_amount, vat_amount,
-    cash_rounding, notes, created_by
+    rounding_amount, rounding_multiple, notes, created_by
   )
   values (
     p_idempotency_key, v_hash, v_session.id, v_total, v_net, v_vat,
-    v_rounding, nullif(trim(p_notes), ''), (select auth.uid())
+    v_rounding, v_multiple, nullif(trim(p_notes), ''), (select auth.uid())
   )
   returning * into v_sale;
 
@@ -510,7 +494,7 @@ end;
 $$;
 
 comment on function public.register_sale(uuid, uuid, jsonb, jsonb, text) is
-  'Registra una venta: precios de la base, stock FEFO descontado una sola vez, pagos con redondeo del efectivo. Idempotente. Contrato §15.6.';
+  'Registra una venta: precios de la base, stock FEFO descontado una sola vez, pagos con redondeo del total acotado. Idempotente. Contrato §15.6.';
 
 -- ---------------------------------------------------------------------------
 -- 5. void_sale (§15.6)

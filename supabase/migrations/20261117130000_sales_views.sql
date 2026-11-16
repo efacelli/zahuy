@@ -1,11 +1,11 @@
 -- Etapa 5 (ventas y caja), paso 4 de 5: vistas de la caja.
--- Contrato: docs/DATA_CONTRACT.md v0.6.1, §15.5 y §15.7.
+-- Contrato: docs/DATA_CONTRACT.md v0.6.3, §15.5 y §15.7.
 --
 -- Solo crea vistas (security_invoker: corren con los permisos y la RLS de quien
 -- consulta). No modifica datos.
 --
 -- Arqueo a ciegas (P-40): para el empleado, mientras una sesión está abierta,
--- los importes de efectivo (cash_collected, cash_rounding_total, expected_cash,
+-- los importes de efectivo (cash_collected, rounding_total, expected_cash,
 -- counted_cash, difference) vienen NULL. El encargado y el dueño ven todo. El
 -- empleado ve las sesiones abiertas (para elegir caja) pero, por la RLS de
 -- sales, sus sales_count y sales_total cuentan solo las ventas que él hizo.
@@ -27,7 +27,7 @@ select
   coalesce(a.sales_total, 0)::numeric(12, 2) as sales_total,
   coalesce(a.voided_count, 0)::integer as voided_count,
   case when m.is_manager then coalesce(a.cash_collected, 0)::numeric(12, 2) end as cash_collected,
-  case when m.is_manager then coalesce(a.cash_rounding_total, 0)::numeric(12, 2) end as cash_rounding_total,
+  case when m.is_manager then coalesce(a.rounding_total, 0)::numeric(12, 2) end as rounding_total,
   case
     when s.status = 'closed' and (m.is_manager or s.opened_by = (select auth.uid())) then s.expected_cash
     when s.status = 'open' and m.is_manager then (s.opening_amount + coalesce(a.cash_collected, 0))::numeric(12, 2)
@@ -42,7 +42,7 @@ left join lateral (
     count(*) filter (where x.status = 'completed') as sales_count,
     sum(x.total_amount) filter (where x.status = 'completed') as sales_total,
     count(*) filter (where x.status = 'voided') as voided_count,
-    sum(x.cash_rounding) filter (where x.status = 'completed') as cash_rounding_total,
+    sum(x.rounding_amount) filter (where x.status = 'completed') as rounding_total,
     (
       select sum(p.amount)
       from public.sale_payments p

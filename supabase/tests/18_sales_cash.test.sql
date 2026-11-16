@@ -1,5 +1,5 @@
 -- Etapa 5 (ventas y caja): tablas, RLS, caja, register_sale, void_sale y redondeo.
--- Contrato v0.6.1 §15 y P-30, P-33, P-34, P-36, P-40. Solo datos ficticios.
+-- Contrato v0.6.3 §15 y P-30, P-33, P-34, P-36, P-40. Solo datos ficticios.
 begin;
 
 create extension if not exists pgtap with schema extensions;
@@ -73,7 +73,7 @@ select is(
 );
 select is((select count(*)::int from public.payment_methods where is_cash), 1, 'un solo medio es efectivo');
 select is((select array_agg(name order by name) from public.cash_registers), array['Caja 1', 'Caja 2'], 'la migración siembra Caja 1 y Caja 2');
-select is((select cash_rounding_multiple from public.sales_settings), 100.00, 'el múltiplo de redondeo inicial es 100');
+select is((select rounding_multiple from public.sales_settings), 100.00, 'el múltiplo de redondeo inicial es 100');
 select is((select count(*)::int from public.sales_settings), 1, 'sales_settings tiene una sola fila');
 select is(
   (select count(*)::int from pg_enum e where e.enumtypid = 'public.movement_type'::regtype and e.enumlabel = 'sale'),
@@ -87,9 +87,11 @@ select is(private.round_cash(1250, 100), 1300::numeric, 'round_cash 1.250 -> 1.3
 select is(private.round_cash(1280, 100), 1300::numeric, 'round_cash 1.280 -> 1.300');
 select is(private.round_cash(1200, 100), 1200::numeric, 'round_cash 1.200 -> 1.200');
 select is(private.round_cash(1249.99, 100), 1200::numeric, 'round_cash 1.249,99 -> 1.200 (sin errores de coma flotante)');
-select is(private.round_cash(49.99, 100), 0::numeric, 'round_cash de menos de la mitad -> 0');
+select is(private.round_cash(49.99, 100), 49.99::numeric, 'round_cash: menos de la mitad del múltiplo se cobra exacto (P-39)');
+select is(private.round_cash(30, 100), 30::numeric, 'round_cash: $30 -> $30');
 select is(private.round_cash(50, 100), 100::numeric, 'round_cash 50 -> 100');
 select is(private.round_cash(0, 100), 0::numeric, 'round_cash 0 -> 0');
+select is(private.round_cash(null, 100), null::numeric, 'round_cash de nulo -> nulo');
 select is(private.round_cash(3525, 50), 3550::numeric, 'round_cash con múltiplo 50');
 select is(private.normalize_money(0.30000000000000004), 0.30::numeric, 'normalize_money tolera ruido de coma flotante');
 select is(private.normalize_money(10.005), null::numeric, 'normalize_money rechaza decimales reales de más');
@@ -113,6 +115,12 @@ insert into public.brands (id, name) values ('00000000-0000-4000-8000-00000000d0
 create temporary table t_p (code text primary key, id uuid) on commit drop;
 create temporary table t_c (code text primary key, id uuid) on commit drop;
 create temporary table t_s (code text primary key, id uuid) on commit drop;
+-- Punto de partida: la prueba no supone tablas vacías (puede haber datos de otras corridas).
+create temporary table t_base (k text primary key, n int) on commit drop;
+insert into t_base values
+  ('sales', (select count(*)::int from public.sales)),
+  ('open', (select count(*)::int from public.cash_sessions where status = 'open'));
+grant select on t_base to authenticated;
 grant all on t_p, t_c, t_s to authenticated;
 
 create function pg_temp.pid(p text) returns uuid language sql as $$ select id from t_p where code = p $$;
@@ -224,7 +232,7 @@ select set_config('request.jwt.claims', '{"sub": "00000000-0000-4000-8000-000000
 set local role authenticated;
 insert into t_c select 'S2', (public.open_cash_session(gen_random_uuid(),
   (select id from public.cash_registers where name = 'Caja 2'), 100)).id;
-select is((select count(*)::int from public.cash_sessions where status = 'open'), 2, 'dos cajas abiertas a la vez');
+select is((select count(*)::int from public.cash_sessions where status = 'open'), (select n + 2 from t_base where k = 'open'), 'dos cajas abiertas a la vez');
 insert into public.cash_registers (name, is_active) values ('Caja vieja', false);
 select throws_ok(
   $$select public.open_cash_session(gen_random_uuid(), (select id from public.cash_registers where name = 'Caja vieja'), 0)$$,
@@ -245,7 +253,7 @@ insert into t_s select 'V1', (public.register_sale('aaaaaaaa-aaaa-4aaa-8aaa-aaaa
 select is((select total_amount from public.sales where id = pg_temp.vid('V1')), 3525.00::numeric, 'V1: total de los ítems');
 select is((select net_amount from public.sales where id = pg_temp.vid('V1')), 3000.00::numeric, 'V1: neto sin IVA');
 select is((select vat_amount from public.sales where id = pg_temp.vid('V1')), 525.00::numeric, 'V1: IVA');
-select is((select cash_rounding from public.sales where id = pg_temp.vid('V1')), -25.00::numeric, 'V1: el redondeo del efectivo es -25');
+select is((select rounding_amount from public.sales where id = pg_temp.vid('V1')), -25.00::numeric, 'V1: el redondeo es -25 (cobró 3.500 por 3.525)');
 select is((select status::text from public.sales where id = pg_temp.vid('V1')), 'completed', 'V1: estado completed');
 select is((select created_by from public.sales where id = pg_temp.vid('V1')), '00000000-0000-4000-8000-0000000000cc'::uuid, 'V1: created_by es quien vendió');
 select is((select count(*)::int from public.sale_items where sale_id = pg_temp.vid('V1')), 2, 'V1: dos ítems');
@@ -301,7 +309,7 @@ select throws_ok(
 -- Venta 2: SA x5 = 6.050 -> efectivo 6.100 (+50). FEFO reparte entre dos lotes.
 insert into t_s select 'V2', (public.register_sale(gen_random_uuid(), pg_temp.sid('S1'),
   jsonb_build_array(pg_temp.it('SA', 5)), jsonb_build_array(pg_temp.pay('cash', 6100, 6100)))).id;
-select is((select cash_rounding from public.sales where id = pg_temp.vid('V2')), 50.00::numeric, 'V2: el redondeo sube 50 (desde la mitad)');
+select is((select rounding_amount from public.sales where id = pg_temp.vid('V2')), 50.00::numeric, 'V2: el redondeo sube 50 (desde la mitad)');
 select is(pg_temp.lot('SA', 10), 0::numeric, 'V2: se agota el lote A de SA');
 select is(pg_temp.lot('SA', 60), 17::numeric, 'V2: el resto sale del lote B');
 select is(
@@ -318,14 +326,14 @@ insert into t_s select 'V3', (public.register_sale(gen_random_uuid(), pg_temp.si
   jsonb_build_array(pg_temp.it('SK', 0.35)),
   jsonb_build_array(pg_temp.pay('debit', 1000), pg_temp.pay('cash', 2100, 2500)))).id;
 select is((select total_amount from public.sales where id = pg_temp.vid('V3')), 3094.00::numeric, 'V3: 0,350 kg x 8.840 = 3.094');
-select is((select cash_rounding from public.sales where id = pg_temp.vid('V3')), 6.00::numeric, 'V3: el redondeo aplica solo a la parte en efectivo (+6)');
+select is((select rounding_amount from public.sales where id = pg_temp.vid('V3')), 6.00::numeric, 'V3: cobró 3.100 por 3.094 con pago mixto (+6)');
 select is((select sum(amount) from public.sale_payments where sale_id = pg_temp.vid('V3')), 3100.00::numeric, 'V3: pagos = total + redondeo');
 select is(pg_temp.stock_of('SK'), 2.15::numeric, 'V3: stock por kilo con decimales');
 
 -- Venta 4: todo con débito, sin redondeo.
 insert into t_s select 'V4', (public.register_sale(gen_random_uuid(), pg_temp.sid('S1'),
   jsonb_build_array(pg_temp.it('SB', 1)), jsonb_build_array(pg_temp.pay('debit', 1105)))).id;
-select is((select cash_rounding from public.sales where id = pg_temp.vid('V4')), 0.00::numeric, 'V4: sin efectivo no hay redondeo');
+select is((select rounding_amount from public.sales where id = pg_temp.vid('V4')), 0.00::numeric, 'V4: con débito exacto no hay redondeo');
 
 -- Líneas repetidas del mismo producto se suman en un solo ítem.
 insert into t_s select 'V6', (public.register_sale(gen_random_uuid(), pg_temp.sid('S1'),
@@ -387,26 +395,28 @@ select is(pg_temp.stock_of('SA'), 17::numeric, 'la venta fallida no descontó SA
 select is((select count(*)::int from public.sales), 5, 'las ventas fallidas no dejaron filas en sales (V1, V2, V3, V4, V6)');
 
 -- Errores de pago.
+-- Rechazos de pago. La base NO exige el monto sugerido (el cajero puede cambiarlo): solo que la
+-- diferencia con el total quede estrictamente dentro de un múltiplo (aquí 100).
 select throws_ok(
-  $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SA', 1)), jsonb_build_array(pg_temp.pay('cash', 1210)))$$,
-  'P0001', 'PAYMENT_MISMATCH', 'efectivo sin redondear (1.210 en vez de 1.200) -> PAYMENT_MISMATCH'
+  $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SA', 1)), jsonb_build_array(pg_temp.pay('cash', 1310)))$$,
+  'P0001', 'PAYMENT_MISMATCH', 'cobrar 100 de más (1.310 por 1.210) -> PAYMENT_MISMATCH (el límite es estricto)'
 );
 select throws_ok(
-  $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SA', 1)), jsonb_build_array(pg_temp.pay('cash', 1300)))$$,
-  'P0001', 'PAYMENT_MISMATCH', 'efectivo redondeado para el otro lado -> PAYMENT_MISMATCH'
+  $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SA', 1)), jsonb_build_array(pg_temp.pay('cash', 1110)))$$,
+  'P0001', 'PAYMENT_MISMATCH', 'cobrar 100 de menos (1.110 por 1.210) -> PAYMENT_MISMATCH'
 );
 select throws_ok(
-  $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SA', 1)), jsonb_build_array(pg_temp.pay('debit', 1200)))$$,
-  'P0001', 'PAYMENT_MISMATCH', 'sin efectivo, los pagos tienen que sumar exactamente el total'
+  $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SA', 1)), jsonb_build_array(pg_temp.pay('debit', 1000)))$$,
+  'P0001', 'PAYMENT_MISMATCH', 'el límite vale para cualquier medio: débito de 1.000 por 1.210 -> PAYMENT_MISMATCH'
 );
 select throws_ok(
   $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SA', 1)),
       jsonb_build_array(pg_temp.pay('debit', 1300), pg_temp.pay('cash', 100)))$$,
-  'P0001', 'PAYMENT_MISMATCH', 'efectivo con lo que falta <= 0 -> PAYMENT_MISMATCH'
+  'P0001', 'PAYMENT_MISMATCH', 'pagos que superan el total en 190 -> PAYMENT_MISMATCH'
 );
 select throws_ok(
-  $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SL', 1)), jsonb_build_array(pg_temp.pay('cash', 100)))$$,
-  'P0001', 'CASH_AMOUNT_TOO_SMALL', '48,40 en efectivo se redondea a 0 -> CASH_AMOUNT_TOO_SMALL (P-39)'
+  $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SL', 1)), jsonb_build_array(pg_temp.pay('cash', 148.40)))$$,
+  'P0001', 'PAYMENT_MISMATCH', 'una compra de 48,40 no se puede cobrar 148,40 (+100)'
 );
 select throws_ok(
   $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SA', 1)), jsonb_build_array(pg_temp.pay('cash', 1200, 1000)))$$,
@@ -465,7 +475,7 @@ set local role authenticated;
 select is((select count(*)::int from public.sales), 0, 'Ema no ve las ventas de Eva (P-34)');
 select is((select count(*)::int from public.sale_items), 0, 'Ema no ve ítems de ventas ajenas');
 select is((select count(*)::int from public.sale_payments), 0, 'Ema no ve pagos de ventas ajenas');
-select is((select count(*)::int from public.cash_sessions where status = 'open'), 2, 'Ema ve las sesiones abiertas (para elegir caja, P-33)');
+select is((select count(*)::int from public.cash_sessions where status = 'open'), (select n + 2 from t_base where k = 'open'), 'Ema ve las sesiones abiertas (para elegir caja, P-33)');
 select is(
   (select expected_cash from public.v_cash_session_summary where cash_session_id = pg_temp.sid('S1')),
   null::numeric, 'arqueo a ciegas: Ema no ve el efectivo esperado de una sesión abierta (P-40)'
@@ -488,9 +498,9 @@ select throws_ok(
   $$select public.close_cash_session(pg_temp.sid('S1'), 0)$$,
   'P0001', 'NOT_AUTHORIZED', 'una empleada no cierra la caja de otra'
 );
-select lives_ok($$update public.sales_settings set cash_rounding_multiple = 5$$, 'una empleada que intenta cambiar el múltiplo no recibe error (la RLS filtra la fila)');
+select lives_ok($$update public.sales_settings set rounding_multiple = 5$$, 'una empleada que intenta cambiar el múltiplo no recibe error (la RLS filtra la fila)');
 reset role;
-select is((select cash_rounding_multiple from public.sales_settings), 100.00::numeric, 'el múltiplo sigue en 100');
+select is((select rounding_multiple from public.sales_settings), 100.00::numeric, 'el múltiplo sigue en 100');
 
 -- ---------------------------------------------------------------------------
 -- Encargado: ve todo, anula, configura
@@ -498,7 +508,7 @@ select is((select cash_rounding_multiple from public.sales_settings), 100.00::nu
 select set_config('request.jwt.claims', '{"sub": "00000000-0000-4000-8000-0000000000cb", "role": "authenticated"}', true);
 set local role authenticated;
 
-select is((select count(*)::int from public.sales), 6, 'el encargado ve todas las ventas (V1 a V6)');
+select is((select count(*)::int from public.sales), (select n + 6 from t_base where k = 'sales'), 'el encargado ve todas las ventas (V1 a V6)');
 select is(
   (select cash_collected from public.v_cash_session_summary where cash_session_id = pg_temp.sid('S1')),
   11700.00::numeric, 'resumen: efectivo cobrado = 3.500 + 6.100 + 2.100 (con redondeo)'
@@ -508,7 +518,7 @@ select is(
   12200.00::numeric, 'resumen: esperado de la sesión abierta = 500 de apertura + 11.700'
 );
 select is(
-  (select cash_rounding_total from public.v_cash_session_summary where cash_session_id = pg_temp.sid('S1')),
+  (select rounding_total from public.v_cash_session_summary where cash_session_id = pg_temp.sid('S1')),
   31.00::numeric, 'resumen: redondeos acumulados = -25 + 50 + 6'
 );
 select is(
@@ -574,14 +584,27 @@ select is(
 );
 
 -- Configuración: múltiplo 50 para las ventas nuevas.
-update public.sales_settings set cash_rounding_multiple = 50;
-select is((select cash_rounding_multiple from public.sales_settings), 50.00::numeric, 'el encargado cambia el múltiplo');
+update public.sales_settings set rounding_multiple = 50;
+select is((select rounding_multiple from public.sales_settings), 50.00::numeric, 'el encargado cambia el múltiplo');
+select throws_ok(
+  $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S2'), jsonb_build_array(pg_temp.it('SA', 2), pg_temp.it('SB', 1)),
+      jsonb_build_array(pg_temp.pay('cash', 3600)))$$,
+  'P0001', 'PAYMENT_MISMATCH', 'con múltiplo 50, cobrar 75 de más (3.600 por 3.525) supera el límite'
+);
 insert into t_s select 'V7', (public.register_sale(gen_random_uuid(), pg_temp.sid('S2'),
   jsonb_build_array(pg_temp.it('SA', 2), pg_temp.it('SB', 1)),
   jsonb_build_array(pg_temp.pay('cash', 3550, 3550)))).id;
-select is((select cash_rounding from public.sales where id = pg_temp.vid('V7')), 25.00::numeric, 'V7: con múltiplo 50, 3.525 -> 3.550 (+25)');
-select is((select cash_rounding from public.sales where id = pg_temp.vid('V2')), 50.00::numeric, 'las ventas anteriores no cambian con el nuevo múltiplo');
-update public.sales_settings set cash_rounding_multiple = 100;
+select is((select rounding_amount from public.sales where id = pg_temp.vid('V7')), 25.00::numeric, 'V7: con múltiplo 50, cobrar 3.550 por 3.525 (+25)');
+select is((select rounding_amount from public.sales where id = pg_temp.vid('V2')), 50.00::numeric, 'las ventas anteriores no cambian con el nuevo múltiplo');
+select is((select rounding_multiple from public.sales where id = pg_temp.vid('V7')), 50.00::numeric, 'V7 guarda el múltiplo vigente al vender (50)');
+select is((select rounding_multiple from public.sales where id = pg_temp.vid('V2')), 100.00::numeric, 'V2 guarda el múltiplo que regía entonces (100)');
+
+-- Compra de menos de la mitad del múltiplo: se cobra exacta (P-39). Con múltiplo 50 igual vale el mínimo de 25.
+insert into t_s select 'V8', (public.register_sale(gen_random_uuid(), pg_temp.sid('S2'),
+  jsonb_build_array(pg_temp.it('SL', 1)), jsonb_build_array(pg_temp.pay('cash', 48.40, 50)))).id;
+select is((select rounding_amount from public.sales where id = pg_temp.vid('V8')), 0.00::numeric, 'V8: 48,40 en efectivo exacto, sin redondeo');
+select is((select tendered_amount from public.sale_payments where sale_id = pg_temp.vid('V8')), 50.00::numeric, 'V8: recibió 50 (vuelto 1,60)');
+update public.sales_settings set rounding_multiple = 100;
 reset role;
 
 select is(
@@ -633,10 +656,10 @@ select throws_ok(
   'P0001', 'CASH_SESSION_CLOSED', 'anular con la sesión de caja cerrada -> CASH_SESSION_CLOSED (P-32)'
 );
 select is(
-  (select status::text from public.close_cash_session(pg_temp.sid('S2'), 3650)),
+  (select status::text from public.close_cash_session(pg_temp.sid('S2'), 3698.40)),
   'closed', 'el encargado cierra la Caja 2'
 );
-select is((select expected_cash from public.cash_sessions where id = pg_temp.sid('S2')), 3650.00::numeric, 'Caja 2: esperado = 100 + 3.550');
+select is((select expected_cash from public.cash_sessions where id = pg_temp.sid('S2')), 3698.40::numeric, 'Caja 2: esperado = 100 + 3.550 + 48,40');
 select is((select difference from public.cash_sessions where id = pg_temp.sid('S2')), 0.00::numeric, 'Caja 2: arqueo sin diferencia');
 reset role;
 
@@ -657,7 +680,7 @@ select throws_ok($$truncate public.sale_payments$$, '42501', null, 'sale_payment
 select throws_ok($$update public.payment_methods set is_cash = false where code = 'cash'$$, '23514', null, 'is_cash de un medio no se cambia');
 select throws_ok($$update public.payment_methods set code = 'otro' where code = 'debit'$$, '23514', null, 'el código de un medio no se cambia');
 select throws_ok($$delete from public.payment_methods where code = 'qr'$$, '42501', null, 'los medios de pago no se borran');
-select throws_ok($$insert into public.sales_settings (cash_rounding_multiple) values (10)$$, '23505', null, 'sales_settings admite una sola fila');
+select throws_ok($$insert into public.sales_settings (rounding_multiple) values (10)$$, '23505', null, 'sales_settings admite una sola fila');
 select throws_ok($$insert into public.payment_methods (code, name, is_cash) values ('efvo_dos', 'Otro efectivo', true)$$, '23505', null, 'no puede haber dos medios en efectivo');
 
 -- El segundo descuento del mismo ítem y lote lo frena un índice único.
@@ -673,9 +696,16 @@ select throws_ok(
   '23514', null, 'un movimiento sale sin ítem de venta se rechaza (CHECK)'
 );
 
+-- El límite del redondeo está en la propia fila.
+select throws_ok(
+  $$insert into public.sales (idempotency_key, request_hash, cash_session_id, total_amount, net_amount, vat_amount, rounding_amount, rounding_multiple)
+    values (gen_random_uuid(), 'x', (select id from public.cash_sessions limit 1), 100, 100, 0, 100, 100)$$,
+  '23514', null, 'CHECK: el redondeo no puede llegar a un múltiplo entero'
+);
+
 -- Una venta inconsistente no se puede confirmar: pagos que no suman.
-insert into public.sales (id, idempotency_key, request_hash, cash_session_id, total_amount, net_amount, vat_amount, cash_rounding, created_by)
-values ('00000000-0000-4000-8000-0000000000f1', gen_random_uuid(), 'x', pg_temp.sid('S2'), 100, 100, 0, 0, '00000000-0000-4000-8000-0000000000cc');
+insert into public.sales (id, idempotency_key, request_hash, cash_session_id, total_amount, net_amount, vat_amount, rounding_amount, rounding_multiple, created_by)
+values ('00000000-0000-4000-8000-0000000000f1', gen_random_uuid(), 'x', pg_temp.sid('S2'), 100, 100, 0, 0, 100, '00000000-0000-4000-8000-0000000000cc');
 select throws_ok(
   $$set constraints sales_consistency_check immediate$$,
   '23514', null, 'una venta sin ítems ni pagos no se puede confirmar (consistencia diferida)'

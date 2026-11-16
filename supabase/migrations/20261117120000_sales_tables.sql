@@ -1,5 +1,5 @@
 -- Etapa 5 (ventas y caja), paso 3 de 5: sesiones de caja, ventas, ítems y pagos.
--- Contrato: docs/DATA_CONTRACT.md v0.6.1, §15.3.3 a §15.3.7 y §15.7.
+-- Contrato: docs/DATA_CONTRACT.md v0.6.3, §15.3.3 a §15.3.7 y §15.7.
 --
 -- Migración aditiva: crea cuatro tablas nuevas y agrega UNA columna nulable
 -- (stock_movements.sale_item_id) con sus restricciones. Las filas existentes
@@ -105,7 +105,11 @@ create table public.sales (
   total_amount numeric(12, 2) not null,
   net_amount numeric(12, 2) not null,
   vat_amount numeric(12, 2) not null,
-  cash_rounding numeric(12, 2) not null default 0,
+  -- Σ de los pagos − total (P-30): lo que agregó (+) o descontó (−) el redondeo. La caja sugiere el
+  -- total redondeado y el cajero puede cambiarlo; la base solo exige que no llegue a un múltiplo.
+  rounding_amount numeric(12, 2) not null default 0,
+  -- Múltiplo vigente al vender (copia de sales_settings): deja el límite verificable en la propia fila.
+  rounding_multiple numeric(12, 2) not null,
   notes text,
   created_at timestamptz not null default now(),
   created_by uuid not null default auth.uid(),
@@ -117,6 +121,8 @@ create table public.sales (
   constraint sales_idempotency_key_key unique (idempotency_key),
   constraint sales_total_amount_check check (total_amount > 0),
   constraint sales_net_vat_total_check check (net_amount + vat_amount = total_amount),
+  constraint sales_rounding_multiple_check check (rounding_multiple > 0),
+  constraint sales_rounding_limit_check check (abs(rounding_amount) < rounding_multiple),
   constraint sales_void_fields_check check (
     (status = 'completed' and voided_at is null and voided_by is null and void_reason is null)
     or
@@ -284,7 +290,7 @@ begin
   end if;
 
   select coalesce(sum(p.amount), 0) into v_paid from public.sale_payments p where p.sale_id = new.id;
-  if v_paid <> new.total_amount + new.cash_rounding then
+  if v_paid <> new.total_amount + new.rounding_amount then
     raise exception 'Venta % inconsistente: los pagos no suman el total más el redondeo', new.id using errcode = '23514';
   end if;
 
