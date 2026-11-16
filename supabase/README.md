@@ -117,12 +117,22 @@ npm run check
 
   Lee `.env.local` y `.env.test.local`, solo acepta una URL local y deja
   movimientos ficticios (el ledger no se borra): correr `db reset` al terminar.
+- **Concurrencia de ventas y caja** (`supabase/scripts/concurrency-sales-test.mjs`): igual
+  que la anterior (mismo usuario `encargado@zahuy.test`, solo local). Cubre ventas
+  simultáneas sobre un lote, la misma venta reenviada en paralelo, anulaciones
+  simultáneas, ventas contra el cierre de caja y ventas con productos en orden opuesto:
+
+  ```bash
+  node supabase/scripts/concurrency-sales-test.mjs
+  ```
 - **Migración sobre datos existentes:** antes de subir una migración, aplicarla
   con `npx supabase@3.1.0 migration up` sobre la base local con el seed cargado
   y comparar conteos antes y después. Una migración nunca borra ni reescribe
   datos; si encuentra datos incompatibles tiene que fallar con un mensaje claro.
 - Después de una migración que cambie tablas, vistas, funciones o enums de
-  `public`: `npm run gen:types`.
+  `public`: `npm run gen:types`. Si el cambio agrega un valor a un enum que el frontend
+  también declara (por ejemplo `movement_type`), `src/types/contract-check.ts` falla hasta que
+  `efacelli` actualice `src/domain`: coordinarlo antes de subir el tipo generado.
 
 El CI corre `db start` y `test db` en cada Pull Request (job "Base de datos (migraciones y pgTAP)"). La prueba de concurrencia no corre en el CI: necesita los usuarios de prueba.
 

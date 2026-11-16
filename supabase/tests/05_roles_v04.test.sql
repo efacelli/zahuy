@@ -12,8 +12,8 @@ select * from no_plan();
 select enum_has_labels(
   'public', 'movement_type',
   array['entry', 'exit', 'adjustment_in', 'adjustment_out', 'shrinkage', 'damage', 'customer_return',
-        'supplier_return', 'internal_use'],
-  'movement_type incluye internal_use'
+        'supplier_return', 'internal_use', 'sale'],
+  'movement_type incluye internal_use (y sale, v0.6)'
 );
 select enum_has_labels(
   'public', 'expiry_status',

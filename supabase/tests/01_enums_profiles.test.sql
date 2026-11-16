@@ -13,7 +13,7 @@ select enum_has_labels('public', 'app_role', array['admin', 'manager', 'staff'])
 select enum_has_labels('public', 'sale_unit', array['unit', 'kg', 'l', 'pack', 'box', 'other']);
 select enum_has_labels(
   'public', 'movement_type',
-  array['entry', 'exit', 'adjustment_in', 'adjustment_out', 'shrinkage', 'damage', 'customer_return', 'supplier_return', 'internal_use']
+  array['entry', 'exit', 'adjustment_in', 'adjustment_out', 'shrinkage', 'damage', 'customer_return', 'supplier_return', 'internal_use', 'sale']
 );
 select enum_has_labels(
   'public', 'expiry_status',
