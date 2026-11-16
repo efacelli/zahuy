@@ -156,6 +156,18 @@ describe('pantalla de caja', () => {
   it('escanear suma al carrito; efectivo con redondeo, vuelto y ticket interno', async () => {
     const { fake, user } = setup()
     fake.setRpcResult('register_sale', { id: 'sale-1', sale_number: 15, total_amount: 1236.99, created_at: '2026-11-15T15:00:00Z' })
+    fake.setTable('sales_settings', [
+      {
+        id: 'sales-1',
+        rounding_multiple: 100,
+        quantity_discount_step: 6,
+        quantity_discount_percent: 5,
+        quantity_discount_max_percent: 30,
+        store_name: 'Almacén de prueba',
+        store_address: 'Calle Falsa 123',
+        store_tax_id: '20123456786',
+      },
+    ])
     await enterSale(user)
 
     await user.type(scanField(), '7790000000017{Enter}')
@@ -182,6 +194,10 @@ describe('pantalla de caja', () => {
     })
     const ticket = await screen.findByRole('dialog', { name: 'Venta n.º 15 registrada' })
     expect(within(ticket).getByText('NO VÁLIDO COMO FACTURA')).toBeInTheDocument()
+    // Encabezado con los datos del comercio cargados en Configuración (§18).
+    expect(within(ticket).getByText('Almacén de prueba')).toBeInTheDocument()
+    expect(ticket).toHaveTextContent('Calle Falsa 123')
+    expect(ticket).toHaveTextContent('CUIT 20-12345678-6')
     // El redondeo no se imprime: el total del ticket es lo cobrado (1.236,99 → 1.200).
     const printed = ticket.querySelector('[data-print="ticket"]') as HTMLElement
     expect(printed).not.toHaveTextContent(/Redondeo/)

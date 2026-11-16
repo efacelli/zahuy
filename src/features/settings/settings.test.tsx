@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { createFakeSupabase, fakeSession, FAKE_USER_ID } from '../../test/fakeSupabase'
 import { renderApp } from '../../test/renderApp'
 import { validateAlertDays } from './alert-settings-api'
+import { fetchSalesSettings, formatTaxId, isValidTaxId, validateSalesSettings } from './sales-settings-api'
 
 const DAIRY = '11111111-1111-4111-8111-111111111111'
 const CLEANING = '22222222-2222-4222-8222-222222222222'
@@ -157,5 +158,117 @@ describe('Configuración: usuarios (dueño)', () => {
     await user.click(within(confirm).getByRole('button', { name: 'Desactivar' }))
     await waitFor(() => expect(fake.writes).toHaveLength(2))
     expect(fake.writes[1]).toMatchObject({ table: 'profiles', payload: { is_active: false }, filters: { id: OTHER_USER } })
+  })
+})
+
+const SALES = {
+  id: 'sales-1',
+  rounding_multiple: 100,
+  quantity_discount_step: 6,
+  quantity_discount_percent: 5,
+  quantity_discount_max_percent: 30,
+  store_name: null,
+  store_address: null,
+  store_tax_id: null,
+}
+
+describe('validación de la configuración de ventas', () => {
+  const ok = {
+    rounding_multiple: '100',
+    quantity_discount_step: '6',
+    quantity_discount_percent: '5',
+    quantity_discount_max_percent: '30',
+    store_name: ' Almacén Zahuy ',
+    store_address: '',
+    store_tax_id: '20-12345678-6',
+  }
+
+  it('replica los CHECK de la base y normaliza el comercio', () => {
+    expect(validateSalesSettings(ok, true).update).toEqual({
+      rounding_multiple: 100,
+      quantity_discount_step: 6,
+      quantity_discount_percent: 5,
+      quantity_discount_max_percent: 30,
+      store_name: 'Almacén Zahuy',
+      store_address: null,
+      store_tax_id: '20123456786',
+    })
+    // Sin las columnas de §18 no se mandan los datos del comercio.
+    expect(validateSalesSettings(ok, false).update).not.toHaveProperty('store_name')
+    const bad = validateSalesSettings(
+      { ...ok, rounding_multiple: '0', quantity_discount_step: '2,5', quantity_discount_percent: '100', store_tax_id: '123' },
+      true,
+    )
+    expect(bad.update).toBeNull()
+    expect(Object.keys(bad.errors).sort()).toEqual(
+      ['quantity_discount_percent', 'quantity_discount_step', 'rounding_multiple', 'store_tax_id'].sort(),
+    )
+    expect(validateSalesSettings({ ...ok, quantity_discount_max_percent: '3' }, true).errors.quantity_discount_max_percent).toMatch(
+      /tope/,
+    )
+    expect(validateSalesSettings({ ...ok, store_tax_id: '20-12345678-0' }, true).errors.store_tax_id).toMatch(/verificador/)
+  })
+
+  it('CUIT: dígito verificador y formato', () => {
+    expect(isValidTaxId('20123456786')).toBe(true)
+    expect(isValidTaxId('20123456780')).toBe(false)
+    expect(formatTaxId('20123456786')).toBe('20-12345678-6')
+  })
+
+  it('sin la migración de §18, lee lo demás y marca el comercio como no disponible', async () => {
+    const calls: string[] = []
+    const client = {
+      from: () => ({
+        select: (columns: string) => ({
+          limit: async () => {
+            calls.push(columns)
+            return columns.includes('store_name')
+              ? { data: null, error: { code: '42703', message: 'column does not exist' } }
+              : { data: [{ ...SALES }], error: null }
+          },
+        }),
+      }),
+    } as unknown as Parameters<typeof fetchSalesSettings>[0]
+    const settings = await fetchSalesSettings(client)
+    expect(calls).toHaveLength(2)
+    expect(settings).toMatchObject({ rounding_multiple: 100, storeAvailable: false, store_name: null })
+  })
+})
+
+describe('Configuración: ventas y ticket', () => {
+  it('el encargado cambia el redondeo, el descuento y el nombre del comercio', async () => {
+    const { fake, user } = setup('manager')
+    fake.setTable('sales_settings', [{ ...SALES }])
+    const rounding = await screen.findByLabelText(/Redondear a múltiplos/)
+    expect(rounding).toHaveValue('100')
+    await user.clear(rounding)
+    await user.type(rounding, '50')
+    await user.clear(screen.getByLabelText(/Descuento por escalón/))
+    await user.type(screen.getByLabelText(/Descuento por escalón/), '4,5')
+    await user.type(screen.getByLabelText(/^Nombre/), 'Almacén Zahuy')
+    await user.click(screen.getByRole('button', { name: 'Guardar' }))
+
+    await waitFor(() => expect(fake.writes.some((w) => w.table === 'sales_settings')).toBe(true))
+    const write = fake.writes.find((w) => w.table === 'sales_settings')!
+    expect(write.op).toBe('update')
+    expect(write.filters).toEqual({ id: 'sales-1' })
+    expect(write.payload).toMatchObject({
+      rounding_multiple: 50,
+      quantity_discount_percent: 4.5,
+      store_name: 'Almacén Zahuy',
+      store_tax_id: null,
+    })
+    expect(await screen.findByText('Se guardó la configuración de ventas.')).toBeInTheDocument()
+  })
+
+  it('no guarda si un dato es inválido', async () => {
+    const { fake, user } = setup('manager')
+    fake.setTable('sales_settings', [{ ...SALES }])
+    const max = await screen.findByLabelText(/^Tope/)
+    await user.clear(max)
+    await user.type(max, '120')
+    await user.click(screen.getByRole('button', { name: 'Guardar' }))
+    expect(await screen.findByText('Escribí un porcentaje entre 0 y 99,99.')).toBeInTheDocument()
+    expect(fake.writes.some((w) => w.table === 'sales_settings')).toBe(false)
   })
 })
