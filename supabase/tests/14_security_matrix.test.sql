@@ -78,7 +78,10 @@ insert into t_expected values
   ('cash_sessions', false, false, false),
   ('sales', false, false, false),
   ('sale_items', false, false, false),
-  ('sale_payments', false, false, false);
+  ('sale_payments', false, false, false),
+  -- Historial de precios y aumentos masivos (v0.9): se escriben solo por trigger y RPC.
+  ('price_bulk_changes', false, false, false),
+  ('price_history', false, false, false);
 
 select is(
   (select count(*)::int from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r'
@@ -159,7 +162,8 @@ select is(
         + (select count(*) from public.sales) + (select count(*) from public.sale_items)
         + (select count(*) from public.sale_payments) + (select count(*) from public.v_cash_session_summary)
         + (select count(*) from public.v_cash_session_payments)
-        + (select count(*) from public.v_sales_daily) + (select count(*) from public.v_sales_daily_payments))::int,
+        + (select count(*) from public.v_sales_daily) + (select count(*) from public.v_sales_daily_payments)
+        + (select count(*) from public.price_bulk_changes) + (select count(*) from public.price_history))::int,
   0, 'inactivo: no lee ninguna otra tabla ni vista (aunque su rol sea admin)'
 );
 select throws_ok(
