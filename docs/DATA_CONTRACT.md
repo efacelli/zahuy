@@ -1919,7 +1919,7 @@ queda en `audit_log`; la matriz de seguridad (`14_security_matrix`) sigue pasand
 - **La escribe un trigger** `AFTER UPDATE OF sale_price, cost_price` de `products` (cualquier
   camino que cambie el precio o el costo deja fila, también la edición manual del encargado), no
   el cliente. `source` y `bulk_change_id` los pasan las RPC de §19.4 con `set_config(..., true)`
-  (válidos solo dentro de la transacción); sin eso, `source = 'manual'`.
+  (válidos solo dentro de la transacción); sin eso, `source = 'manual'`. **El trigger valida lo que recibe:** si `source` es `bulk_*`, el `bulk_change_id` tiene que existir en `price_bulk_changes` (y `bulk_revert` solo sobre uno ya aplicado); si no, la fila queda como `manual` y sin `bulk_change_id`. Así una edición manual nunca se etiqueta como parte de un aumento.
 - Triggers de solo-agregado (`UPDATE`/`DELETE`/`TRUNCATE` rechazados), como `stock_movements`.
 - Sin relleno: lo anterior queda en `audit_log`, que ya guarda la fila completa de cada
   producto editado.
@@ -1935,7 +1935,7 @@ queda en `audit_log`; la matriz de seguridad (`14_security_matrix`) sigue pasand
 | `created_at`, `created_by` | | Fijados por la base |
 | `percent` | `numeric(7,3)` | Aumento sobre el precio de góndola (negativo = baja). `CHECK (percent <> 0 AND abs(percent) <= 50)` |
 | `rounding_multiple` | `numeric(12,2)` | Múltiplo del redondeo del precio final; nulo = sin redondeo. `CHECK (> 0)` |
-| `brand_ids`, `supplier_ids`, `category_ids` | `uuid[]` | Filtros usados (nulos = sin ese filtro) |
+| `brand_ids`, `supplier_ids`, `category_ids`, `product_ids` | `uuid[]` | Filtros usados (nulos = sin ese filtro) |
 | `excluded_product_ids` | `uuid[]` | Productos que el usuario sacó de la vista previa |
 | `products_count` | `integer` | Cuántos se modificaron |
 | `status` | `text` | `applied` o `reverted` |
@@ -1949,16 +1949,16 @@ Inmutable salvo el paso `applied → reverted`. La leen y la usan solo encargado
 Todas `SECURITY DEFINER`, `search_path = ''`, solo encargado, dueño y programador
 (`private.is_manager_or_admin()`; si no, `NOT_AUTHORIZED`), `EXECUTE` solo para `authenticated`.
 
-**`preview_price_increase(p_brand_ids uuid[], p_supplier_ids uuid[], p_category_ids uuid[], p_percent numeric, p_rounding_multiple numeric default null)`**
+**`preview_price_increase(p_brand_ids uuid[], p_supplier_ids uuid[], p_category_ids uuid[], p_product_ids uuid[], p_percent numeric, p_rounding_multiple numeric default null)`**
 — `STABLE`, solo lectura. Devuelve una fila por producto **activo** que cumple **todos** los
-filtros dados: `product_id`, `sku`, `name`, `brand_name`, `category_name`, `supplier_name`,
+filtros dados (**marca, proveedor, categoría y producto**; con `p_product_ids` la pantalla elige «estos 40 productos»): `product_id`, `sku`, `name`, `brand_name`, `category_name`, `supplier_name`,
 `old_sale_price`, `old_price_with_vat`, `new_sale_price`, `new_price_with_vat`, `change_amount`
-(de góndola). Sin ningún filtro → `FILTER_REQUIRED` (para no tocar todo el catálogo sin querer;
+(de góndola; **0 si después del redondeo el precio no cambia**, para que la pantalla los muestre como «sin cambio»). Sin ningún filtro → `FILTER_REQUIRED` (para no tocar todo el catálogo sin querer;
 ver P-50).
 
-**`apply_price_increase(p_idempotency_key uuid, p_brand_ids uuid[], p_supplier_ids uuid[], p_category_ids uuid[], p_percent numeric, p_rounding_multiple numeric default null, p_excluded_product_ids uuid[] default '{}', p_notes text default null) returns price_bulk_changes`**
+**`apply_price_increase(p_idempotency_key uuid, p_brand_ids uuid[], p_supplier_ids uuid[], p_category_ids uuid[], p_product_ids uuid[], p_percent numeric, p_rounding_multiple numeric default null, p_excluded_product_ids uuid[] default '{}', p_notes text default null) returns price_bulk_changes`**
 — **recalcula** todo adentro (no confía en la vista previa del cliente), bloquea los productos
-afectados y los actualiza en una transacción. Errores: `FILTER_REQUIRED`, `INVALID_PERCENT`
+afectados con `FOR UPDATE` **ordenados por `id`** (el mismo orden que usan las ventas, §15: no se traba con una venta ni con otra operación concurrente) y los actualiza en una transacción. Errores: `FILTER_REQUIRED`, `INVALID_PERCENT`
 (cero, nulo o más de 50 % en valor absoluto), `INVALID_ROUNDING`, `NO_PRODUCTS` (ningún producto
 cumple) e `IDEMPOTENCY_CONFLICT` (misma clave con otros datos). El reintento con la misma clave
 devuelve el mismo registro sin aplicar de nuevo.
@@ -1966,7 +1966,7 @@ devuelve el mismo registro sin aplicar de nuevo.
 **`revert_price_change(p_idempotency_key uuid, p_bulk_change_id uuid, p_reason text) returns jsonb`**
 — deshace un aumento: devuelve `old_sale_price` solo en los productos cuyo precio **sigue siendo
 el que dejó ese aumento**; los que cambiaron después se **saltean** y se informan
-(`{"restored": n, "skipped_product_ids": [...]}`). Cada producto restaurado deja fila
+(`{"restored": n, "skipped_product_ids": [...]}`). También restaura los productos **que se desactivaron después** del aumento, si su precio sigue igual. Bloquea en el mismo orden que `apply_price_increase`. Cada producto restaurado deja fila
 `bulk_revert` en `price_history`. Motivo obligatorio (`REASON_REQUIRED`); ya deshecho →
 `ALREADY_REVERTED`; inexistente → `PRICE_CHANGE_NOT_FOUND`.
 
@@ -1975,6 +1975,8 @@ con múltiplo `m`: `private.round_price(nuevo_final, m)` = `nuevo_final` si `nue
 (se mantiene exacto), si no el múltiplo más cercano, **desde la mitad sube** (misma idea que
 `private.round_cash`, P-30/P-39). Luego `nuevo_sale_price = round(nuevo_final / (1 + IVA/100), 4)`.
 El precio nunca queda en 0 ni negativo; si el cálculo diera 0 el producto se saltea y se informa.
+
+**Productos sin cambio:** si después del redondeo `nuevo_sale_price = old_sale_price`, el producto **no se actualiza, no cuenta en `products_count` y no deja fila en `price_history`**.
 
 ### 19.5 Códigos de error nuevos
 
@@ -1993,14 +1995,14 @@ El precio nunca queda en 0 ni negativo; si el cálculo diera 0 el producto se sa
 
 ### 19.7 Pruebas que se exigirán
 
-Vista previa: filtros combinados con Y, sin filtros (`FILTER_REQUIRED`), solo productos activos,
+Vista previa: filtros combinados con Y (marca, proveedor, categoría y lista de productos), productos «sin cambio» con `change_amount = 0`, sin filtros (`FILTER_REQUIRED`), solo productos activos,
 exclusión de productos, redondeo exacto bajo la mitad del múltiplo y hacia arriba desde la mitad,
 precio final igual al de la vista previa. Aplicación: atómica (si un producto falla no se aplica
 ninguno), idempotente (misma clave dos veces → un solo aumento; otros datos → `IDEMPOTENCY_CONFLICT`),
 precio final de góndola exacto al centavo (`sale_price_with_vat`), 0 y 51 % → `INVALID_PERCENT`,
 `NO_PRODUCTS`, costos intactos, concurrencia con ventas (las ventas ven el precio viejo o el nuevo,
-nunca uno intermedio). Historial: una fila por producto cambiado con `source` y `bulk_change_id`
+nunca uno intermedio). Historial: los productos sin cambio no dejan fila ni cuentan; un `source = 'bulk_*'` con un `bulk_change_id` inexistente se guarda como `manual`; una fila por producto cambiado con `source` y `bulk_change_id`
 correctos; la edición manual de precio o costo también deja fila; solo-agregado. Deshacer:
-restaura solo lo que sigue igual, informa los saltados, `ALREADY_REVERTED`, motivo obligatorio.
+restaura solo lo que sigue igual (también productos desactivados después), informa los saltados, `ALREADY_REVERTED`, motivo obligatorio.
 Permisos: encargado, dueño y programador sí; empleado, inactivo y `anon` no. Migración sobre
 una base con productos y ventas previas: precios, ventas y huella de datos intactos.
