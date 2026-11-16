@@ -2,6 +2,7 @@ import type { RouteObject } from 'react-router'
 import { AlertsPage } from '../features/alerts/AlertsPage'
 import { AuditPage } from '../features/audit/AuditPage'
 import { PosPage } from '../features/pos/PosPage'
+import { RestockPage } from '../features/restock/RestockPage'
 import { SalesPage } from '../features/sales/SalesPage'
 import { ShiftsPage } from '../features/shifts/ShiftsPage'
 import { InventoryCountPage } from '../features/inventory/InventoryCountPage'
@@ -70,6 +71,7 @@ export const routes: RouteObject[] = [
           { path: 'movimientos', element: <MovementsPage /> },
           { path: 'inventario', element: <InventoryCountPage /> },
           { path: 'alertas', element: <AlertsPage /> },
+          { path: 'reposicion', element: <RestockPage /> },
           { path: 'catalogos', element: <CatalogsPage /> },
           {
             path: 'configuracion',
