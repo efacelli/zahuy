@@ -127,15 +127,15 @@ create function pg_temp.pid(p text) returns uuid language sql as $$ select id fr
 create function pg_temp.sid(c text) returns uuid language sql as $$ select id from t_c where code = c $$;
 create function pg_temp.vid(c text) returns uuid language sql as $$ select id from t_s where code = c $$;
 create function pg_temp.mid(c text) returns uuid language sql as $$ select id from public.payment_methods where code = c $$;
-create function pg_temp.it(p text, q numeric) returns jsonb language sql as
-  $$ select jsonb_build_object('product_id', pg_temp.pid(p), 'quantity', q) $$;
+create function pg_temp.it(p text, q numeric, d numeric default null) returns jsonb language sql as
+  $$ select jsonb_build_object('product_id', pg_temp.pid(p), 'quantity', q) || case when d is null then '{}'::jsonb else jsonb_build_object('discount_percent', d) end $$;
 create function pg_temp.pay(c text, a numeric, t numeric default null) returns jsonb language sql as
   $$ select jsonb_build_object('payment_method_id', pg_temp.mid(c), 'amount', a, 'tendered_amount', t) $$;
 create function pg_temp.stock_of(p text) returns numeric language sql as $$
   select coalesce(sum(b.quantity_available), 0) from public.product_batches b where b.product_id = pg_temp.pid(p) $$;
 create function pg_temp.lot(p text, d integer) returns numeric language sql as $$
   select b.quantity_available from public.product_batches b where b.product_id = pg_temp.pid(p) and b.expires_on = private.today_ar() + d $$;
-grant execute on function pg_temp.pid(text), pg_temp.sid(text), pg_temp.vid(text), pg_temp.mid(text), pg_temp.it(text, numeric),
+grant execute on function pg_temp.pid(text), pg_temp.sid(text), pg_temp.vid(text), pg_temp.mid(text), pg_temp.it(text, numeric, numeric),
   pg_temp.pay(text, numeric, numeric), pg_temp.stock_of(text), pg_temp.lot(text, integer) to authenticated;
 
 -- Catálogo creado por el encargado con las RPC.
@@ -378,16 +378,16 @@ select throws_ok(
 
 -- Stock insuficiente: no queda nada registrado (P-36: nunca stock negativo).
 select throws_ok(
-  $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SA', 1000)), jsonb_build_array(pg_temp.pay('cash', 1210000)))$$,
+  $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SA', 1000, 0)), jsonb_build_array(pg_temp.pay('cash', 1210000)))$$,
   'P0001', 'INSUFFICIENT_STOCK', 'sin stock suficiente -> INSUFFICIENT_STOCK'
 );
 select throws_ok(
-  $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SB', 9)), jsonb_build_array(pg_temp.pay('cash', 9900)))$$,
+  $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('SB', 9, 0)), jsonb_build_array(pg_temp.pay('cash', 9900)))$$,
   'P0001', 'INSUFFICIENT_STOCK', 'el lote vencido no cuenta: SB tiene 8 vendibles, no 13'
 );
 select throws_ok(
   $$select public.register_sale(gen_random_uuid(), pg_temp.sid('S1'),
-      jsonb_build_array(pg_temp.it('SL', 1), pg_temp.it('SA', 1000)), jsonb_build_array(pg_temp.pay('cash', 1210000)))$$,
+      jsonb_build_array(pg_temp.it('SL', 1), pg_temp.it('SA', 1000, 0)), jsonb_build_array(pg_temp.pay('cash', 1210000)))$$,
   'P0001', 'INSUFFICIENT_STOCK', 'una venta con un ítem sin stock falla entera'
 );
 select is(pg_temp.stock_of('SL'), 47::numeric, 'la venta fallida no descontó SL (queda 47 tras V6)');

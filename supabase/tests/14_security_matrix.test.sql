@@ -158,7 +158,8 @@ select is(
         + (select count(*) from public.sales_settings) + (select count(*) from public.cash_sessions)
         + (select count(*) from public.sales) + (select count(*) from public.sale_items)
         + (select count(*) from public.sale_payments) + (select count(*) from public.v_cash_session_summary)
-        + (select count(*) from public.v_cash_session_payments))::int,
+        + (select count(*) from public.v_cash_session_payments)
+        + (select count(*) from public.v_sales_daily) + (select count(*) from public.v_sales_daily_payments))::int,
   0, 'inactivo: no lee ninguna otra tabla ni vista (aunque su rol sea admin)'
 );
 select throws_ok(

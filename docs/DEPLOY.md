@@ -59,13 +59,13 @@ Lo hace una persona con la cuenta del negocio (crear cuentas y pagar no lo hace 
 - Es un paso **obligatorio** antes de producción (§8): ninguna migración llega a producción sin haberse aplicado y probado antes en staging.
 - Secretos de staging (contraseña de la base, claves, certificados de homologación de ARCA, `.env`): en el gestor de contraseñas, nunca en el repo, chats ni documentos. Las claves `service_role`/`sb_secret_` no se usan en el frontend ni se pegan en ningún lado.
 - Pasos para dejarlo listo (🔒, los hace una persona o el backend con la invitación ya aceptada y la contraseña tecleada por esa persona):
-  1. Auth igual que producción (tabla siguiente): sin registro público, contraseña de 10 o más con letras y números, Site URL de staging.
+  1. Auth igual que producción (tabla siguiente): sin registro público, contraseña de 10 o más con letras y números. **Staging no lleva Site URL ni sitio propio** (decisión del equipo, 2026-11-16): se prueba contra la base por la API y con la app local.
   2. `npx supabase@3.1.0 link --project-ref <ref-de-staging>` (pide la contraseña de la base).
   3. `npx supabase@3.1.0 db push --remote --dry-run`, revisar, y después `db push --remote --include-seed`.
   4. Verificar: RLS en todas las tablas, *Security Advisor* sin alertas críticas, un usuario `admin` de prueba (procedimiento de §4, Primer dueño) y una prueba manual.
 - Opcional, sin costo: un segundo sitio estático en Render apuntando a staging (§5) para probar la app completa.
 
-**Estado (2026-11-16):** `zahuy-staging` creado, con las 23 migraciones de entonces y el seed ficticio aplicados, Auth configurado (sin registro público, contraseña de 10 con letras y números) y probado: 0 tablas sin RLS, `anon` sin acceso, 0 descuadres de stock y una prueba de humo de ventas y caja por la API (20 de 20). Pendiente: Site URL y Redirect URLs de staging (hace falta una URL de sitio) y probar ahí el backup y la restauración.
+**Estado (2026-11-16):** `zahuy-staging` creado, con las 23 migraciones de entonces y el seed ficticio aplicados, Auth configurado (sin registro público, contraseña de 10 con letras y números) y probado: 0 tablas sin RLS, `anon` sin acceso, 0 descuadres de stock y una prueba de humo de ventas y caja por la API (20 de 20). El backup de datos de staging se descargó y se restauró en una base local con huella idéntica (§7.1). No se configura Site URL de staging (no habrá sitio de staging).
 
 ### Configuración de Auth (en los dos proyectos)
 
