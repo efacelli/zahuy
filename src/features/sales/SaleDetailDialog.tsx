@@ -11,6 +11,7 @@ import { newIdempotencyKey } from '../../lib/idempotency'
 import { useSupabase } from '../../lib/supabase-context'
 import { useRefreshStock } from '../movements/useRefreshStock'
 import { OPEN_SESSIONS_KEY } from '../pos/pos-api'
+import { PrintTicketButton } from '../pos/PrintTicketButton'
 import { TicketBody } from '../pos/TicketBody'
 import { canBeVoided, toTicket, voidSale, type SaleRow } from './sales-api'
 import styles from './Sales.module.css'
@@ -89,7 +90,7 @@ function DetailContent({ sale, canVoid, onClose }: { sale: SaleRow; canVoid: boo
                 Anular…
               </Button>
             )}
-            <Button onClick={() => window.print()}>Imprimir ticket</Button>
+            <PrintTicketButton />
             <Button variant="primary" onClick={onClose}>
               Cerrar
             </Button>

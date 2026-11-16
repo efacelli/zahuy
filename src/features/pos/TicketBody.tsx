@@ -1,6 +1,7 @@
 import { Fragment } from 'react'
 import { formatDateTime } from '../../lib/dates'
 import { formatMoney, formatNumber } from '../../lib/format'
+import { pageRule, useTicketPaper } from './ticket-paper'
 import styles from './Pos.module.css'
 
 export interface TicketLine {
@@ -33,8 +34,10 @@ export interface TicketData {
  * se muestra solo este bloque (estilos de impresión en Pos.module.css).
  */
 export function TicketBody({ ticket }: { ticket: TicketData }) {
+  const [paper] = useTicketPaper()
   return (
-    <div className={styles.ticket} data-print="ticket">
+    <div className={styles.ticket} data-print="ticket" data-paper={paper}>
+      <style media="print">{pageRule(paper)}</style>
       <p className={styles.ticketHead}>
         <strong>ZAHUY</strong>
         <br />

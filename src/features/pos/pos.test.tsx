@@ -6,6 +6,7 @@ import { renderApp } from '../../test/renderApp'
 import { DEFAULT_DISCOUNT_RULE } from '../../domain/quantity-discount'
 import { cartReducer, parseScanInput, priceCart, priceLine, type CartProduct } from './cart'
 import { planPayments, type PaymentDraft } from './payment'
+import { pageRule, readTicketPaper, resetTicketPaperMemory } from './ticket-paper'
 
 const YOGUR = {
   id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -53,7 +54,10 @@ function setup({ sessions = [SESSION] as unknown[] } = {}) {
   return { fake, user: userEvent.setup() }
 }
 
-beforeEach(() => window.localStorage.clear())
+beforeEach(() => {
+  window.localStorage.clear()
+  resetTicketPaperMemory()
+})
 
 const scanField = () => screen.getByLabelText('Código o producto')
 
@@ -178,6 +182,14 @@ describe('pantalla de caja', () => {
     })
     const ticket = await screen.findByRole('dialog', { name: 'Venta n.º 15 registrada' })
     expect(within(ticket).getByText('NO VÁLIDO COMO FACTURA')).toBeInTheDocument()
+
+    // Papel del ticket: térmica de 80 mm por defecto; el cambio se recuerda en el equipo.
+    const body = ticket.querySelector('[data-print="ticket"]')
+    expect(body).toHaveAttribute('data-paper', '80mm')
+    await user.selectOptions(within(ticket).getByLabelText('Papel'), 'Térmica 58 mm')
+    expect(body).toHaveAttribute('data-paper', '58mm')
+    expect(window.localStorage.getItem('zahuy.ticket.papel')).toBe('58mm')
+
     await user.click(within(ticket).getByRole('button', { name: 'Nueva venta' }))
     expect(await screen.findByText('El carrito está vacío.')).toBeInTheDocument()
   })
@@ -278,5 +290,19 @@ describe('pantalla de caja', () => {
     await user.type(scanField(), '7799999999999{Enter}')
     expect(await screen.findByRole('alert')).toHaveTextContent('No hay ningún producto activo con el código 7799999999999')
     expect(screen.getByText('El carrito está vacío.')).toBeInTheDocument()
+  })
+})
+
+describe('papel del ticket', () => {
+  it('un valor guardado inválido vuelve al de por defecto', () => {
+    window.localStorage.setItem('zahuy.ticket.papel', 'a3')
+    expect(readTicketPaper()).toBe('80mm')
+    window.localStorage.setItem('zahuy.ticket.papel', 'comun')
+    expect(readTicketPaper()).toBe('comun')
+  })
+
+  it('las térmicas imprimen sin margen; la hoja común con margen', () => {
+    expect(pageRule('58mm')).toBe('@page { margin: 0; }')
+    expect(pageRule('comun')).toContain('12mm')
   })
 })

@@ -363,7 +363,6 @@
   text-align: center;
 }
 
-/* Al imprimir, solo el ticket. */
 .discount {
   display: inline-flex;
   flex-direction: column;
@@ -397,6 +396,18 @@
   font-weight: 600;
 }
 
+.printControls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.printLabel {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+/* Al imprimir, solo el ticket, al ancho del papel elegido (ticket-paper.ts). */
 @media print {
   :global(body *) {
     visibility: hidden;
@@ -410,7 +421,34 @@
   .ticket {
     position: absolute;
     inset: 0 auto auto 0;
+    margin: 0;
     border: 0;
     color: #000;
+  }
+
+  /* Área imprimible habitual: 72 mm en papel de 80 y 48 mm en papel de 58. */
+  .ticket[data-paper='80mm'] {
+    width: 72mm;
+    max-width: none;
+    padding: 2mm 4mm;
+    font-size: 12px;
+  }
+
+  .ticket[data-paper='58mm'] {
+    width: 48mm;
+    max-width: none;
+    padding: 2mm 5mm;
+    font-size: 10px;
+  }
+
+  .ticket[data-paper='58mm'] tfoot tr:first-child th,
+  .ticket[data-paper='58mm'] tfoot tr:first-child td {
+    font-size: 12px;
+  }
+
+  .ticket[data-paper='comun'] {
+    width: 90mm;
+    max-width: none;
+    font-size: 12pt;
   }
 }
