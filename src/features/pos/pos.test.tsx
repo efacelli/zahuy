@@ -88,7 +88,8 @@ describe('carrito (reglas puras)', () => {
     expect(mixed).toMatchObject({ cashDue: 287, cashAmount: 300, rounding: 13, errors: [] })
 
     expect(planPayments(1237, [{ ...debit, amount: '1000' }]).errors[0]).toMatch(/Faltan/)
-    expect(planPayments(30, [cash]).errors[0]).toMatch(/menos de la mitad/)
+    expect(planPayments(30, [cash])).toMatchObject({ cashAmount: 30, rounding: 0, toPay: 30, change: 1970, errors: [] })
+    expect(planPayments(1037, [debit, { ...cash, tendered: '' }])).toMatchObject({ cashDue: 37, cashAmount: 37, rounding: 0, errors: [] })
     expect(planPayments(1237, [{ ...cash, tendered: '1000' }]).errors[0]).toMatch(/menor/)
   })
 })

@@ -55,9 +55,6 @@ export function planPayments(total: number, drafts: PaymentDraft[], step?: numbe
   if (!cash && nonCash.length > 0 && errors.length === 0 && nonCashSum !== total) {
     errors.push(`Faltan ${formatMoney(money(total - nonCashSum))} para completar el total.`)
   }
-  if (cash && cashDue > 0 && cashAmount === 0) {
-    errors.push('Lo que queda en efectivo es menos de la mitad del redondeo: cobralo con otro medio.')
-  }
 
   let tendered: number | null = null
   if (cash && cash.tendered.trim() !== '') {

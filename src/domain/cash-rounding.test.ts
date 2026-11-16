@@ -9,7 +9,8 @@ describe('redondeo del efectivo (P-30)', () => {
     expect(roundCash(1250)).toBe(1300)
     expect(roundCash(1280)).toBe(1300)
     expect(roundCash(1200)).toBe(1200)
-    expect(roundCash(30)).toBe(0)
+    expect(roundCash(30)).toBe(30)
+    expect(roundCash(49.99)).toBe(49.99)
     expect(roundCash(50)).toBe(100)
   })
 
