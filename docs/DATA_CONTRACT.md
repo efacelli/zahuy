@@ -2,9 +2,9 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.7.1 (rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
+| Versión | 0.8.0 (§17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
-| Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16) |
+| Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16); ranking de productos vendidos (§17) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
 
 > **v0.4.0 incorpora la segunda visita al cliente.** Lo más importante para el
@@ -1104,6 +1104,7 @@ volver a registrar la concordancia.
 | 0.6.3 | 2026-11-16 | Decisiones nuevas de `efacelli`: **P-30 cambia** (se redondea el total de la venta con cualquier medio de pago; el monto es una sugerencia que el cajero puede cambiar y la base solo exige un límite), **P-39 decidida** (menos de la mitad del múltiplo se cobra exacto; desaparece `CASH_AMOUNT_TOO_SMALL`) y P-40 de acuerdo. Renombres: `sales.cash_rounding` → `sales.rounding_amount`, `sales_settings.cash_rounding_multiple` → `rounding_multiple`, vista `cash_rounding_total` → `rounding_total`; nueva `sales.rounding_multiple` (múltiplo vigente al vender). Sigue siendo propuesta |
 | 0.7.0 | 2026-11-16 | **Propuesta** (§16): descuentos por cantidad (cada 6 unidades 5 %, editable en la caja, todos los productos) con columnas aditivas en `sales_settings`, `sale_items` y `sales`, `register_sale` con `discount_percent` opcional y código `INVALID_DISCOUNT`; vistas `v_sales_daily` y `v_sales_daily_payments` para las finanzas del dashboard. Preguntas P-41 a P-43; P-41 (tope 30 %) y P-42 (el cajero también puede subirlo) decididas por efacelli; P-43 (sugerido solo en cantidades enteras) por `ChinoNader18`, más sus ajustes: `CHECK < 100`, hash con el `discount_percent` enviado, y precisiones de `v_sales_daily` |
 | 0.7.1 | 2026-11-16 | Rol Programador (P-44, decisión de `efacelli`; revisado por `ChinoNader18`): rol `developer` ("Programador") con los mismos permisos que `admin`. Migración: `ALTER TYPE app_role ADD VALUE 'developer'` (sola) y `private.is_admin()` / `private.is_manager_or_admin()` aceptan `developer`; pgTAP del rol en la matriz de seguridad. Después, un dueño o programador cambia los perfiles de `efacelli` y `ChinoNader18` desde Configuración → Usuarios |
+| 0.8.0 | 2026-11-16 | **Propuesta** (§17): función de lectura `product_sales_ranking(p_from, p_to)` para más vendidos, menos vendidos y sin ventas en X días (solo encargado, dueño y programador); código `INVALID_DATE_RANGE`; preguntas P-46 a P-48 adoptadas. Sin cambios de tablas. Revisada y aprobada por `ChinoNader18`, con sus ajustes: `SECURITY DEFINER`, parámetros nulos → `INVALID_DATE_RANGE` y columna `product_created_at` |
 
 ---
 
@@ -1758,3 +1759,78 @@ fuera de rango (`INVALID_DISCOUNT`); líneas repetidas con porcentajes distintos
 (`Σ line_total = total_amount`, `Σ pagos = total + redondeo`); idempotencia con y sin
 `discount_percent`; ventas anteriores a la migración conservan sus importes;
 `v_sales_daily` con usuario permitido y denegado.
+
+## 17. Ranking de productos vendidos (PROPUESTA v0.8.0)
+
+> **Aprobada para implementar** (2026-11-16, revisión de `ChinoNader18` incorporada:
+> `SECURITY DEFINER`, parámetros nulos y `product_created_at`). Solo agrega una
+> función de lectura: no cambia tablas, columnas ni datos.
+
+### 17.1 Para qué
+
+Pedido de `efacelli` (2026-11-16): en el dashboard, **los más vendidos**, **los
+menos vendidos** y **los productos sin ventas en los últimos X días** (stock
+inmovilizado). Hoy el frontend no puede calcularlo sin traer todos los
+`sale_items` al navegador, y el empleado solo ve sus propias ventas (§15.7).
+
+### 17.2 Función `product_sales_ranking(p_from date, p_to date)`
+
+`STABLE`, `SECURITY DEFINER`, `search_path = ''`, `EXECUTE` solo para
+`authenticated` (convención de la base: toda función de `public` es `SECURITY
+DEFINER` y valida el rol adentro; lo verifica `14_security_matrix`). Si el usuario no es encargado, dueño o programador activo
+(`private.is_manager_or_admin()`), lanza `NOT_AUTHORIZED` (como §16.4, el
+empleado no ve el ranking). Si `p_from` o `p_to` es nulo, `p_from > p_to` o el
+rango supera 366 días, lanza `INVALID_DATE_RANGE` (código nuevo).
+
+Devuelve **una fila por producto activo** (también los que no vendieron nada
+en el período, con ceros), así el mismo resultado sirve para los tres usos.
+Las fechas son locales (`America/Argentina/Buenos_Aires`), ambos extremos
+incluidos, igual que `v_sales_daily`. Solo cuentan ventas `completed`.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `product_id` | `uuid` | — |
+| `sku` | `text` | Actual del producto |
+| `name` | `text` | Actual del producto |
+| `brand_name` | `text` | — |
+| `category_name` | `text` | — |
+| `supplier_name` | `text` (nulable) | — |
+| `sale_unit` | `sale_unit` | — |
+| `quantity_sold` | `numeric(12,3)` | Σ `sale_items.quantity` en el período; 0 si no vendió |
+| `sales_count` | `integer` | Ventas distintas que lo incluyen |
+| `revenue_total` | `numeric(12,2)` | Σ `line_total` (con IVA, después del descuento §16 cuando exista) |
+| `net_total` | `numeric(12,2)` | Σ `net_amount` |
+| `cost_total` | `numeric(12,2)` | Σ `round(quantity * unit_cost_price, 2)` |
+| `gross_margin` | `numeric(12,2)` | `net_total − cost_total` |
+| `last_sold_at` | `timestamptz` (nulable) | Última venta `completed` **de siempre** (no solo del período); `NULL` si nunca se vendió |
+| `stock_quantity` | `numeric(12,3)` | De `v_product_stock`, para ver cuánto stock quedó quieto |
+| `product_created_at` | `timestamptz` | `products.created_at`: para no contar como "sin ventas" un producto cargado dentro del período |
+
+Uso desde el frontend (PostgREST permite ordenar y paginar el resultado):
+
+- Más vendidos: `order=quantity_sold.desc` (o `revenue_total.desc`), `limit 10`, `quantity_sold > 0`.
+- Menos vendidos: `order=quantity_sold.asc`, `quantity_sold > 0`.
+- Sin ventas en X días: `p_from = hoy − X`, `quantity_sold = 0`, `stock_quantity > 0`, `product_created_at < p_from`, orden por `last_sold_at` (nulos primero).
+
+Notas de implementación: `revenue_total` no suma exactamente `v_sales_daily.total_amount`
+porque deja afuera los productos inactivos (P-47); el costo es `sale_items.unit_cost_price`
+(la copia de la venta, no el costo actual), igual que el margen de `v_sales_daily`.
+
+Índice sugerido si hace falta: `sales (status, created_at)`; `sale_items (product_id)` ya existe (§15.3.5).
+
+### 17.3 Preguntas
+
+| # | Pregunta | Propuesta |
+|---|---|---|
+| P-46 | ¿"Más vendido" por **cantidad** o por **importe**? | **Adoptada:** las dos columnas; el dashboard deja elegir (por defecto, importe, porque mezcla kg y unidades) |
+| P-47 | ¿Incluir productos **inactivos**? | **Adoptada:** no; el ranking es para decidir qué reponer o liquidar; un inactivo con ventas en el período igual aparece en `v_sales_daily` |
+| P-48 | ¿Función o vista? | **Adoptada:** función, porque el período es un parámetro; una vista sin parámetros obligaría a agrupar por día y producto (muchas filas) |
+
+### 17.4 Pruebas que se exigirán
+
+Encargado, dueño y programador ven el ranking; empleado e inactivo reciben
+`NOT_AUTHORIZED`; anon no puede ejecutar; ventas anuladas no cuentan;
+productos sin ventas aparecen con ceros y `last_sold_at` nulo; extremos del
+rango incluidos con hora local (venta a las 23:30 del último día); rango
+inválido o con parámetros nulos (`INVALID_DATE_RANGE`); `product_created_at`; `gross_margin = net_total − cost_total`;
+ventas de varios productos y líneas de kg con decimales.
