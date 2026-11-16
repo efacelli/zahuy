@@ -182,6 +182,10 @@ describe('pantalla de caja', () => {
     })
     const ticket = await screen.findByRole('dialog', { name: 'Venta n.º 15 registrada' })
     expect(within(ticket).getByText('NO VÁLIDO COMO FACTURA')).toBeInTheDocument()
+    // El redondeo no se imprime: el total del ticket es lo cobrado (1.236,99 → 1.200).
+    const printed = ticket.querySelector('[data-print="ticket"]') as HTMLElement
+    expect(printed).not.toHaveTextContent(/Redondeo/)
+    expect(within(printed).getByRole('rowheader', { name: 'Total' }).closest('tr')).toHaveTextContent(/1\.200,00/)
 
     // Papel del ticket: térmica de 80 mm por defecto; el cambio se recuerda en el equipo.
     const body = ticket.querySelector('[data-print="ticket"]')
