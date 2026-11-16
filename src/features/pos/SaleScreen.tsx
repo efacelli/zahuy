@@ -5,6 +5,7 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Icon } from '../../components/ui/Icon'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { isBarcodeLike, normalizeBarcode } from '../../domain/barcode'
+import { DEFAULT_DISCOUNT_RULE, discountError, type DiscountRule } from '../../domain/quantity-discount'
 import { SALE_UNIT_LABEL, isIntegerUnit } from '../../domain/units'
 import { formatMoney } from '../../lib/format'
 import { toAppError } from '../../lib/errors'
@@ -13,10 +14,10 @@ import { parseDecimalInput } from '../../lib/numbers'
 import { useSupabase } from '../../lib/supabase-context'
 import { useBarcodeScanner } from '../barcode/useBarcodeScanner'
 import { searchProducts } from '../movements/movements-api'
-import { cartReducer, cartTotal, lineTotal, parseScanInput, quantityError, type CartProduct } from './cart'
+import { cartReducer, parseScanInput, priceCart, quantityError, type CartProduct } from './cart'
 import { CloseSessionDialog } from './CloseSessionDialog'
 import { PaymentDialog, type CompletedSale } from './PaymentDialog'
-import { fetchSellable, findSellableByBarcode, type OpenSession } from './pos-api'
+import { fetchDiscountRule, fetchSellable, findSellableByBarcode, type OpenSession } from './pos-api'
 import { SaleTicket } from './SaleTicket'
 import styles from './Pos.module.css'
 
@@ -34,7 +35,10 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
   const [ticket, setTicket] = useState<CompletedSale | null>(null)
   /** Una clave por carrito: si se corta la conexión al cobrar, reintentar no duplica la venta (§15.6). */
   const [saleKey, setSaleKey] = useState(newIdempotencyKey)
-  const total = cartTotal(lines)
+  const rule = useQuery({ queryKey: ['discount-rule'], queryFn: () => fetchDiscountRule(client), staleTime: 300_000 })
+  const discountRule = rule.data ?? DEFAULT_DISCOUNT_RULE
+  const cart = priceCart(lines, discountRule)
+  const total = cart.total
 
   const { quantity: multiplier, text: searchText } = parseScanInput(text)
   const isCode = isBarcodeLike(searchText)
@@ -197,6 +201,9 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
                     Precio
                   </th>
                   <th scope="col" className={styles.num}>
+                    Descuento
+                  </th>
+                  <th scope="col" className={styles.num}>
                     Subtotal
                   </th>
                   <th scope="col">
@@ -205,7 +212,7 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
                 </tr>
               </thead>
               <tbody>
-                {lines.map((l) => (
+                {cart.lines.map((l) => (
                   <tr key={l.product.id}>
                     <td>
                       {l.product.name}
@@ -222,7 +229,19 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
                     </td>
                     <td className={styles.num}>{formatMoney(l.product.sale_price_with_vat)}</td>
                     <td className={styles.num}>
-                      <strong>{formatMoney(lineTotal(l))}</strong>
+                      <DiscountInput
+                        label={`Descuento de ${l.product.name}`}
+                        applied={l.appliedPercent}
+                        suggested={l.suggestedPercent}
+                        isCustom={l.discountPercent !== null}
+                        rule={discountRule}
+                        onChange={(percent) => dispatch({ type: 'discount', productId: l.product.id, percent })}
+                        onError={(text) => setMessage({ tone: 'error', text: `${l.product.name}: ${text}` })}
+                      />
+                    </td>
+                    <td className={styles.num}>
+                      {l.discountAmount > 0 && <s className={styles.muted}>{formatMoney(l.listTotal)}</s>}{' '}
+                      <strong>{formatMoney(l.total)}</strong>
                     </td>
                     <td>
                       <Button
@@ -249,6 +268,9 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
           <p className={styles.total} aria-live="polite">
             {formatMoney(total)}
           </p>
+          {cart.discountTotal > 0 && (
+            <p className={styles.discountTotal}>Descuentos: −{formatMoney(cart.discountTotal)}</p>
+          )}
           <p className={styles.muted}>
             {lines.length} {lines.length === 1 ? 'producto' : 'productos'}. Precios con IVA.
           </p>
@@ -265,8 +287,7 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
       {paying && (
         <PaymentDialog
           session={session}
-          lines={lines}
-          total={total}
+          cart={cart}
           idempotencyKey={saleKey}
           onCancel={() => {
             setPaying(false)
@@ -347,6 +368,66 @@ function QuantityInput({
         <Button size="sm" variant="ghost" aria-label={`Sumar uno: ${label}`} onClick={() => onChange(value + 1)}>
           +
         </Button>
+      )}
+    </span>
+  )
+}
+
+function DiscountInput({
+  label,
+  applied,
+  suggested,
+  isCustom,
+  rule,
+  onChange,
+  onError,
+}: {
+  label: string
+  applied: number
+  suggested: number
+  isCustom: boolean
+  rule: DiscountRule
+  onChange: (percent: number | null) => void
+  onError: (text: string) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const shown = draft ?? String(applied).replace('.', ',')
+  const commit = () => {
+    if (draft === null) return
+    setDraft(null)
+    // Vacío: vuelve al sugerido.
+    if (draft.trim() === '') return onChange(null)
+    const n = parseDecimalInput(draft)
+    const problem = n === null ? 'El descuento no es un número.' : discountError(n, rule)
+    if (problem || n === null) return onError(problem ?? '')
+    onChange(n === suggested ? null : n)
+  }
+  return (
+    <span className={styles.discount}>
+      <span className={styles.discountField}>
+        <input
+          className={`input ${styles.discountInput}`}
+          inputMode="decimal"
+          aria-label={`${label} (%)`}
+          value={shown}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commit()
+              focusScan()
+            }
+          }}
+        />
+        %
+      </span>
+      {isCustom ? (
+        <button type="button" className={styles.discountReset} onClick={() => onChange(null)}>
+          Sugerido: {String(suggested).replace('.', ',')} %
+        </button>
+      ) : (
+        suggested > 0 && <span className={styles.muted}>Sugerido</span>
       )}
     </span>
   )

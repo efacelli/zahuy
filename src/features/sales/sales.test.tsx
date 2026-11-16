@@ -24,8 +24,8 @@ function sale(overrides: Partial<SaleRow> = {}): SaleRow {
     seller: { full_name: 'Ana Cajera' },
     voider: null,
     sale_items: [
-      { product_name: 'Leche entera', product_sku: '000002', quantity: 3, unit_price_with_vat: 1270.75, line_total: 3812.25 },
-      { product_name: 'Agua mineral', product_sku: '000004', quantity: 2, unit_price_with_vat: 1089, line_total: 2178 },
+      { product_name: 'Leche entera', product_sku: '000002', quantity: 3, unit_price_with_vat: 1270.75, line_total: 3812.25, discount_percent: 0, discount_amount: 0 },
+      { product_name: 'Agua mineral', product_sku: '000004', quantity: 2, unit_price_with_vat: 1089, line_total: 2178, discount_percent: 0, discount_amount: 0 },
     ],
     sale_payments: [{ amount: 6000, tendered_amount: 10000, reference: null, payment_method: CASH }],
     ...overrides,

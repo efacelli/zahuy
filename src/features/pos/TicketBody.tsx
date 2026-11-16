@@ -1,13 +1,24 @@
+import { Fragment } from 'react'
 import { formatDateTime } from '../../lib/dates'
 import { formatMoney, formatNumber } from '../../lib/format'
 import styles from './Pos.module.css'
+
+export interface TicketLine {
+  name: string
+  quantity: number
+  /** Lo cobrado por la línea, ya con el descuento. */
+  lineTotal: number
+  /** Descuento por cantidad aplicado (§16); 0 o ausente si no hubo. */
+  discountPercent?: number
+  discountAmount?: number
+}
 
 /** Datos que muestra el ticket interno, venga de la caja recién cobrada o del historial. */
 export interface TicketData {
   saleNumber: number
   createdAt: string
   registerName: string
-  lines: { name: string; quantity: number; lineTotal: number }[]
+  lines: TicketLine[]
   total: number
   rounding: number
   payments: { name: string; amount: number }[]
@@ -36,12 +47,20 @@ export function TicketBody({ ticket }: { ticket: TicketData }) {
       <table>
         <tbody>
           {ticket.lines.map((l) => (
-            <tr key={l.name}>
-              <td>
-                {formatNumber(l.quantity)} × {l.name}
-              </td>
-              <td className={styles.num}>{formatMoney(l.lineTotal)}</td>
-            </tr>
+            <Fragment key={l.name}>
+              <tr>
+                <td>
+                  {formatNumber(l.quantity)} × {l.name}
+                </td>
+                <td className={styles.num}>{formatMoney(l.lineTotal + (l.discountAmount ?? 0))}</td>
+              </tr>
+              {(l.discountAmount ?? 0) > 0 && (
+                <tr>
+                  <td>&nbsp;&nbsp;Desc. {formatNumber(l.discountPercent ?? 0)} %</td>
+                  <td className={styles.num}>−{formatMoney(l.discountAmount ?? 0)}</td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
         <tfoot>
