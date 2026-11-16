@@ -29,6 +29,11 @@ describe('permissionsFor (contrato v0.4.0 §9)', () => {
     expect(permissionsFor('admin', true).manageUsers).toBe(true)
   })
 
+  it('el programador tiene los mismos permisos que el dueño (P-44)', () => {
+    expect(permissionsFor('developer', true)).toEqual(permissionsFor('admin', true))
+    expect(permissionsFor('developer', false).manageUsers).toBe(false)
+  })
+
   it('inactivo o sin perfil: nada', () => {
     expect(Object.values(permissionsFor('admin', false)).some(Boolean)).toBe(false)
     expect(Object.values(permissionsFor(null, true)).some(Boolean)).toBe(false)

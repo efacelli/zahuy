@@ -1,13 +1,14 @@
 /**
- * Roles y permisos (contrato v0.4.0, §4.1 y §9).
+ * Roles y permisos (contrato v0.4.0, §4.1 y §9; `developer` desde v0.7.1, P-44).
  *
  * Esto solo decide qué se MUESTRA. La autorización real la hace la base con
  * RLS y en cada RPC: si la UI se equivoca, la base rechaza igual.
  */
-export const APP_ROLES = ['admin', 'manager', 'staff'] as const
+export const APP_ROLES = ['developer', 'admin', 'manager', 'staff'] as const
 export type AppRole = (typeof APP_ROLES)[number]
 
 export const ROLE_LABEL: Record<AppRole, string> = {
+  developer: 'Programador',
   admin: 'Dueño',
   manager: 'Encargado',
   staff: 'Empleado',
@@ -48,7 +49,9 @@ const NONE: Permissions = {
 
 export function permissionsFor(role: AppRole | null | undefined, isActive: boolean): Permissions {
   if (!role || !isActive) return NONE
-  const manager = role === 'manager' || role === 'admin'
+  // El programador tiene los mismos permisos que el dueño (P-44).
+  const owner = role === 'admin' || role === 'developer'
+  const manager = role === 'manager' || owner
   return {
     manageInventory: manager,
     receiveStock: true,
@@ -58,6 +61,6 @@ export function permissionsFor(role: AppRole | null | undefined, isActive: boole
     updateBoxCount: true,
     viewDashboard: manager,
     configureAlerts: manager,
-    manageUsers: role === 'admin',
+    manageUsers: owner,
   }
 }

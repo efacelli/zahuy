@@ -9,7 +9,7 @@ select * from no_plan();
 -- ---------------------------------------------------------------------------
 -- Estructura
 -- ---------------------------------------------------------------------------
-select enum_has_labels('public', 'app_role', array['admin', 'manager', 'staff']);
+select enum_has_labels('public', 'app_role', array['admin', 'manager', 'staff', 'developer']);
 select enum_has_labels('public', 'sale_unit', array['unit', 'kg', 'l', 'pack', 'box', 'other']);
 select enum_has_labels(
   'public', 'movement_type',

@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.7.0 (ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
+| Versión | 0.7.1 (rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -183,6 +183,7 @@ quantity_available = SUM(signed_quantity) de sus movimientos
 | Valor | Persona | Descripción |
 |---|---|---|
 | `admin` | Dueño | Todo lo del encargado, y además gestiona usuarios (rol y activo) y lee `audit_log` |
+| `developer` | Programador | v0.7.1 (P-44): **los mismos permisos que `admin`** (todo, incluidos usuarios y `audit_log`). Existe para distinguir a quienes desarrollan el sistema (`efacelli`, `ChinoNader18`) del dueño del súper. En la base, toda comprobación de "dueño" (`private.is_admin()`) y de "encargado o dueño" (`private.is_manager_or_admin()`) también acepta `developer` |
 | `manager` | Encargado | Catálogos, alta y edición de productos (precios, stock mínimo, unidades por caja), todos los movimientos y reversiones, dashboard y configuración de alertas |
 | `staff` | Empleado | Consulta todo (incluidos costos y márgenes), registra **ingresos de mercadería** y **consumo interno**, y actualiza el **conteo de cajas** |
 
@@ -1102,6 +1103,7 @@ volver a registrar la concordancia.
 | 0.6.2 | 2026-11-15 | Precisiones surgidas al implementar la §15 en local (migraciones y pruebas listas, sin PR): código `PRODUCT_PRICE_INVALID`; importes con hasta 2 decimales (tolerancia de coma flotante del cliente); qué cuentan las vistas de caja para el empleado; idempotencia de `void_sale`; y aviso al frontend: agregar `sale` a `MovementType` al regenerar tipos. Sigue siendo propuesta |
 | 0.6.3 | 2026-11-16 | Decisiones nuevas de `efacelli`: **P-30 cambia** (se redondea el total de la venta con cualquier medio de pago; el monto es una sugerencia que el cajero puede cambiar y la base solo exige un límite), **P-39 decidida** (menos de la mitad del múltiplo se cobra exacto; desaparece `CASH_AMOUNT_TOO_SMALL`) y P-40 de acuerdo. Renombres: `sales.cash_rounding` → `sales.rounding_amount`, `sales_settings.cash_rounding_multiple` → `rounding_multiple`, vista `cash_rounding_total` → `rounding_total`; nueva `sales.rounding_multiple` (múltiplo vigente al vender). Sigue siendo propuesta |
 | 0.7.0 | 2026-11-16 | **Propuesta** (§16): descuentos por cantidad (cada 6 unidades 5 %, editable en la caja, todos los productos) con columnas aditivas en `sales_settings`, `sale_items` y `sales`, `register_sale` con `discount_percent` opcional y código `INVALID_DISCOUNT`; vistas `v_sales_daily` y `v_sales_daily_payments` para las finanzas del dashboard. Preguntas P-41 a P-43; P-41 (tope 30 %) y P-42 (el cajero también puede subirlo) decididas por efacelli; P-43 (sugerido solo en cantidades enteras) por `ChinoNader18`, más sus ajustes: `CHECK < 100`, hash con el `discount_percent` enviado, y precisiones de `v_sales_daily` |
+| 0.7.1 | 2026-11-16 | Rol Programador (P-44, decisión de `efacelli`; revisado por `ChinoNader18`): rol `developer` ("Programador") con los mismos permisos que `admin`. Migración: `ALTER TYPE app_role ADD VALUE 'developer'` (sola) y `private.is_admin()` / `private.is_manager_or_admin()` aceptan `developer`; pgTAP del rol en la matriz de seguridad. Después, un dueño o programador cambia los perfiles de `efacelli` y `ChinoNader18` desde Configuración → Usuarios |
 
 ---
 
