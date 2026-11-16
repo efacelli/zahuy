@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.6.1 (propuesta de la §15; lo demás sigue en 0.5.2) |
+| Versión | 0.6.2 (propuesta de la §15; lo demás sigue en 0.5.2) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos. **Propuesta:** ventas y caja (§15, sin implementar) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -1099,10 +1099,11 @@ volver a registrar la concordancia.
 | 0.5.2 | 2026-11-15 | Concordancia del backend con las versiones 0.4.0 a 0.5.1 (§14). Sin cambios de reglas |
 | 0.6.0 | 2026-11-15 | **Propuesta** de Etapa 5, Ventas y caja (§15): `payment_methods`, `cash_registers`, `cash_sessions`, `sales`, `sale_items`, `sale_payments`, `stock_movements.sale_item_id` y tipo `sale`; RPC `open_cash_session`, `close_cash_session`, `register_sale` (FEFO, idempotente, una sola vez) y `void_sale`; preguntas P-27 a P-38. No se implementa hasta aprobarla |
 | 0.6.1 | 2026-11-15 | Decisiones de `efacelli` sobre la propuesta de la §15: P-27 (ticket interno, no es factura), P-30 (redondeo del efectivo a la centena más cercana; `sales.cash_rounding`, `sales_settings.cash_rounding_multiple`, invariante `Σ amount = total_amount + cash_rounding`), P-36 (sin stock negativo; se carga el inventario antes) y aceptación de P-28, P-29, P-31 a P-35, P-37 y P-38. Nuevas preguntas P-39 y P-40. Sigue siendo propuesta |
+| 0.6.2 | 2026-11-15 | Precisiones surgidas al implementar la §15 en local (migraciones y pruebas listas, sin PR): código `PRODUCT_PRICE_INVALID`; importes con hasta 2 decimales (tolerancia de coma flotante del cliente); qué cuentan las vistas de caja para el empleado; idempotencia de `void_sale`; y aviso al frontend: agregar `sale` a `MovementType` al regenerar tipos. Sigue siendo propuesta |
 
 ---
 
-## 15. Etapa 5 — Ventas y caja (PROPUESTA v0.6.1)
+## 15. Etapa 5 — Ventas y caja (PROPUESTA v0.6.2)
 
 > **Estado: PROPUESTA con las decisiones de `efacelli` del 2026-11-15 (P-27 a
 > P-38, §15.9).** Las migraciones se escriben recién cuando `efacelli` apruebe
@@ -1155,6 +1156,10 @@ que resta. El `CHECK` de `reason` de `stock_movements` ("obligatorio salvo
 `entry` y `exit`") se recrea para exceptuar también a `sale`; las filas
 existentes lo cumplen, así que no hay riesgo de pérdida (se valida antes de
 aplicarlo).
+
+**Para el frontend:** al regenerar `src/types/database.ts` el enum de la base trae `sale`, y
+`src/types/contract-check.ts` falla hasta que `MovementType` (`src/domain/movements.ts`) lo
+incluya. Es un cambio de `efacelli`; el backend no toca `src/` salvo el archivo generado.
 
 `register_product_movement` y `register_stock_movement` **rechazan `sale`**
 (`INVALID_MOVEMENT_TYPE`): ese tipo solo lo escribe `register_sale`. Del mismo
@@ -1363,6 +1368,11 @@ sesión abierta (§15.6), una venta anulada nunca figura en una sesión cerrada.
 Retiros y aportes de efectivo no existen todavía (P-31). El redondeo ya está
 incluido porque se suma el `amount` del efectivo, no el valor de los ítems.
 
+Para el empleado, `sales_count`, `sales_total` y `voided_count` cuentan **solo sus ventas** (la
+RLS de `sales` es por vendedor, P-34); el encargado y el dueño ven los totales de la sesión.
+Una sesión **cerrada** que abrió el propio empleado le muestra `expected_cash`, `counted_cash` y
+`difference`; `cash_collected` y `cash_rounding_total` son solo del encargado y el dueño.
+
 **Arqueo a ciegas (P-40):** para el empleado, mientras la sesión está abierta,
 `expected_cash`, `cash_collected`, `cash_rounding_total`, `counted_cash` y
 `difference` vienen `NULL`; el encargado y el dueño ven todo. Al cerrar, la RPC
@@ -1472,6 +1482,10 @@ En una transacción, en este orden:
 
 Permisos (§15.7): cualquier usuario activo. Todo con `private.raise_business_error`.
 
+**Importes (todas las RPC de caja y ventas):** hasta 2 decimales. El servidor tolera el ruido
+de coma flotante del cliente (por ejemplo `0.30000000000000004` se toma como `0.30`) y
+rechaza lo que tenga decimales reales de más (`INVALID_AMOUNT` o `INVALID_PAYMENT`).
+
 #### `void_sale`
 
 ```
@@ -1487,6 +1501,10 @@ Solo encargado y dueño. Motivo obligatorio (`REASON_REQUIRED`). Venta inexisten
 clave devuelve la venta ya anulada). Solo se puede anular **mientras la sesión de
 caja de la venta siga abierta**; si ya se cerró → `CASH_SESSION_CLOSED` (la
 devolución posterior al cierre es de otra etapa, P-32).
+
+**Idempotencia:** la clave queda en `operation_key` de los movimientos compensatorios. Reintentar con
+la misma clave devuelve la venta ya anulada; anular una venta ya anulada con otra clave →
+`ALREADY_VOIDED`.
 
 Por cada movimiento `sale` de la venta crea un movimiento compensatorio
 `adjustment_in` al **mismo lote**, con `reverses_movement_id` (así sigue valiendo
@@ -1547,7 +1565,8 @@ Se suman a §8.6:
 | `PAYMENT_MISMATCH` | Los pagos no cierran: el efectivo no es el redondeo exigido de lo que falta (§15.6, paso 6), o sobra/falta importe sin pago en efectivo |
 | `CASH_AMOUNT_TOO_SMALL` | Lo que falta cobrar en efectivo se redondea a 0 (menos de la mitad del múltiplo): hay que pagarlo con otro medio (P-39) |
 | `INVALID_PAYMENT` | Importe de pago ≤ 0, o entregado menor al importe, o entregado en un medio que no es efectivo |
-| `INVALID_AMOUNT` | Monto de apertura o conteo negativo |
+| `INVALID_AMOUNT` | Monto de apertura o conteo negativo o con más de 2 decimales |
+| `PRODUCT_PRICE_INVALID` | El producto tiene precio 0: no se puede vender |
 | `SALE_NOT_FOUND` | Venta inexistente o no visible |
 | `ALREADY_VOIDED` | La venta ya está anulada |
 
