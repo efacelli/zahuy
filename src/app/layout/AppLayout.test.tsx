@@ -29,7 +29,9 @@ describe('AppLayout', () => {
 
   it('muestra la caja', async () => {
     await renderAt('/')
-    expect(screen.getByRole('link', { name: /caja/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Caja' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ventas' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Turnos de caja' })).toBeInTheDocument()
   })
 
   it('navega y marca la sección activa', async () => {

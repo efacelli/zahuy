@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Link } from 'react-router'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/States'
@@ -7,10 +8,12 @@ import { MOVEMENT_TYPE_INFO } from '../../domain/movements'
 import { formatQuantity } from '../../domain/units'
 import { formatDateTime } from '../../lib/dates'
 import { toAppError } from '../../lib/errors'
-import { formatMoney, formatNumber } from '../../lib/format'
+import { countLabel, formatMoney, formatNumber } from '../../lib/format'
 import { useSupabase } from '../../lib/supabase-context'
 import { fetchMovementHistory } from '../movements/movements-api'
 import { fetchInventorySummary } from './dashboard-api'
+import { CashDifferencesChart, DailySalesChart, PaymentMethodsChart } from './FinanceCharts'
+import { fetchFinance, FINANCE_RANGES, type FinanceRange } from './finance-api'
 import styles from './DashboardPage.module.css'
 
 const RECENT_MOVEMENTS = 6
@@ -26,8 +29,11 @@ export function DashboardPage() {
 
   return (
     <>
-      <PageHeader title="Dashboard" description="Cómo está el inventario hoy. Los números salen de la base, no se calculan acá." />
+      <PageHeader title="Dashboard" description="Cómo vienen las ventas y la caja, y cómo está el inventario hoy." />
 
+      <FinanceSection />
+
+      <h2 className={styles.blockTitle}>Inventario</h2>
       {summary.isPending ? (
         <LoadingState label="Cargando el resumen…" />
       ) : summary.error ? (
@@ -120,6 +126,89 @@ function SummaryTiles({ s }: { s: NonNullable<Awaited<ReturnType<typeof fetchInv
         detail="Productos donde las cajas contadas superan el stock."
         status={s.box_mismatch_products > 0 ? { tone: 'urgent', text: 'Contar' } : { tone: 'success', text: 'En orden' }}
       />
+    </section>
+  )
+}
+
+const RANGE_LABEL: Record<FinanceRange, string> = { 7: 'Últimos 7 días', 30: 'Últimos 30 días', 90: 'Últimos 90 días' }
+
+/** Ventas y caja: métricas y gráficos con las vistas de caja (§15.5). */
+function FinanceSection() {
+  const client = useSupabase()
+  const [range, setRange] = useState<FinanceRange>(30)
+  const finance = useQuery({
+    queryKey: ['dashboard', 'finance', range],
+    queryFn: () => fetchFinance(client, range),
+    placeholderData: keepPreviousData,
+  })
+
+  return (
+    <section aria-labelledby="finance-title" className={styles.finance}>
+      <div className={styles.financeHeader}>
+        <h2 id="finance-title" className={styles.blockTitle}>
+          Ventas y caja
+        </h2>
+        <div className={styles.ranges} role="group" aria-label="Período">
+          {FINANCE_RANGES.map((r) => (
+            <button
+              key={r}
+              type="button"
+              className={styles.range}
+              aria-pressed={range === r}
+              onClick={() => setRange(r)}
+            >
+              {RANGE_LABEL[r]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {finance.isPending ? (
+        <LoadingState label="Cargando ventas…" />
+      ) : finance.error ? (
+        <ErrorState message={toAppError(finance.error).message} onRetry={() => void finance.refetch()} />
+      ) : (
+        <div className={finance.isFetching ? styles.refetching : undefined}>
+          <div className={styles.tiles}>
+            <StatTile
+              label="Vendido"
+              value={formatMoney(finance.data.salesTotal)}
+              detail={`${countLabel(finance.data.salesCount, 'venta', 'ventas')}, con IVA.`}
+              to="/ventas"
+              linkLabel="Ver ventas"
+            />
+            <StatTile
+              label="Ticket promedio"
+              value={finance.data.salesCount > 0 ? formatMoney(finance.data.salesTotal / finance.data.salesCount) : '—'}
+              detail="Vendido dividido cantidad de ventas."
+            />
+            <StatTile
+              label="Diferencia de caja"
+              value={formatMoney(finance.data.differenceTotal)}
+              detail="Suma de faltantes (−) y sobrantes (+) de los turnos cerrados."
+              status={
+                finance.data.differenceTotal < -0.005
+                  ? { tone: 'danger', text: 'Faltante' }
+                  : finance.data.differenceTotal > 0.005
+                    ? { tone: 'warning', text: 'Sobrante' }
+                    : { tone: 'success', text: 'Justo' }
+              }
+              to="/turnos"
+              linkLabel="Ver turnos"
+            />
+            <StatTile
+              label="Redondeo"
+              value={formatMoney(finance.data.roundingTotal)}
+              detail={`Lo que sumó (+) o restó (−) el redondeo. Cajas abiertas ahora: ${formatNumber(finance.data.openSessions)}.`}
+            />
+          </div>
+          <div className={styles.charts}>
+            <DailySalesChart days={finance.data.days} />
+            <PaymentMethodsChart methods={finance.data.methods} />
+            <CashDifferencesChart closings={finance.data.closings} />
+          </div>
+        </div>
+      )}
     </section>
   )
 }

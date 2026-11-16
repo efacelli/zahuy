@@ -159,6 +159,9 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
         return builder
       },
       is: () => builder,
+      // Rangos de fechas: se registran pero no se aplican (los datos de prueba ya vienen del período).
+      gte: () => builder,
+      lte: () => builder,
       // En lecturas se registra pero no se aplica; en un UPDATE por ids, sí.
       in: (column: string, values: readonly unknown[]) => {
         inFilters[column] = values
