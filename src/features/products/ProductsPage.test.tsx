@@ -160,3 +160,43 @@ describe('Listado de productos', () => {
     expect(await screen.findByText(/todavía no está disponible en el servidor/)).toBeInTheDocument()
   })
 })
+
+describe('Exportar a Excel', () => {
+  it('arma un CSV que Excel en español abre directo', async () => {
+    const { productsToCsv, csvCell } = await import('./export-csv')
+    const csv = productsToCsv([
+      row({ sku: '000123', barcode: '7790001234567', name: 'Yerba; "suave" 1 kg', stock_quantity: 2.5, next_expires_on: '2026-12-31', next_expiry_status: 'expires_upcoming' }),
+    ] as never)
+    expect(csv.startsWith('﻿SKU;Código de barras;Nombre')).toBe(true)
+    const line = csv.split('\r\n')[1]!
+    expect(line).toContain('="000123";="7790001234567";"Yerba; ""suave"" 1 kg";Marca;Lácteos;;Unidad;450,50;700,0000;21,0;847,00;2,5;')
+    expect(line).toContain('31/12/2026')
+    // Una celda que empieza con = no se ejecuta como fórmula.
+    expect(csvCell('=HYPERLINK("x")')).toBe(`"'=HYPERLINK(""x"")"`)
+    expect(csvCell('-5')).toBe("'-5")
+  })
+
+  it('el botón baja todo el listado filtrado', async () => {
+    const created: Blob[] = []
+    const originalCreate = URL.createObjectURL
+    const originalRevoke = URL.revokeObjectURL
+    URL.createObjectURL = (b: Blob) => {
+      created.push(b)
+      return 'blob:x'
+    }
+    URL.revokeObjectURL = () => {}
+    try {
+      const { user } = setup([row({ name: 'Leche' }), row({ name: 'Queso' })])
+      await screen.findByText('Leche')
+      await user.click(screen.getByRole('button', { name: 'Exportar a Excel' }))
+      expect(await screen.findByText('Se exportaron 2 productos.')).toBeInTheDocument()
+      expect(created).toHaveLength(1)
+      const text = await created[0]!.text()
+      expect(text).toContain('Leche')
+      expect(text).toContain('Queso')
+    } finally {
+      URL.createObjectURL = originalCreate
+      URL.revokeObjectURL = originalRevoke
+    }
+  })
+})

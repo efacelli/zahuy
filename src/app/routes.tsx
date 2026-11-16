@@ -23,6 +23,7 @@ const EditProductPage = lazyPage(() => import('../features/products/EditProductP
 const NewProductPage = lazyPage(() => import('../features/products/NewProductPage'), 'NewProductPage')
 const ProductDetailPage = lazyPage(() => import('../features/products/ProductDetailPage'), 'ProductDetailPage')
 const ProductsPage = lazyPage(() => import('../features/products/ProductsPage'), 'ProductsPage')
+const LabelsPage = lazyPage(() => import('../features/labels/LabelsPage'), 'LabelsPage')
 const SettingsPage = lazyPage(() => import('../features/settings/SettingsPage'), 'SettingsPage')
 
 export const routes: RouteObject[] = [
@@ -84,6 +85,7 @@ export const routes: RouteObject[] = [
               </RequirePermission>
             ),
           },
+          { path: 'etiquetas', element: <LabelsPage /> },
           { path: 'catalogos', element: <CatalogsPage /> },
           {
             path: 'configuracion',
