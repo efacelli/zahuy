@@ -4,6 +4,7 @@ import { formatDateTime } from '../../lib/dates'
 import { formatMoney, formatNumber } from '../../lib/format'
 import { useSupabase } from '../../lib/supabase-context'
 import { fetchStoreInfo, formatTaxId, STORE_INFO_KEY } from '../settings/sales-settings-api'
+import { chargedTotal } from './ticket-total'
 import { pageRule, useTicketPaper } from './ticket-paper'
 import styles from './Pos.module.css'
 
@@ -31,15 +32,6 @@ export interface TicketData {
   change: number
   /** Venta anulada: el ticket lo dice bien visible. */
   voided?: boolean
-}
-
-/**
- * Total que se cobró: el de los productos más el redondeo del efectivo. El
- * redondeo nunca aparece en el ticket (decisión de efacelli); queda en el listado
- * de ventas y en el control de caja.
- */
-export function chargedTotal(ticket: Pick<TicketData, 'total' | 'rounding'>): number {
-  return Math.round((ticket.total + ticket.rounding) * 100) / 100
 }
 
 /**

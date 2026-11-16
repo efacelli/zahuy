@@ -58,6 +58,13 @@ export const BUSINESS_ERROR_MESSAGES: Record<string, string> = {
   ALREADY_VOIDED: 'Esa venta ya estaba anulada.',
   INVALID_DISCOUNT: 'El descuento no es válido: tiene que estar entre 0 y el tope, con hasta 2 decimales.',
   INVALID_DATE_RANGE: 'El período no es válido: elegí fechas de hasta un año, con la de inicio antes que la de fin.',
+  // Aumentos masivos de precios (contrato v0.9.1, §19.5).
+  FILTER_REQUIRED: 'Elegí al menos una marca, categoría, proveedor o producto.',
+  INVALID_PERCENT: 'El porcentaje no es válido: distinto de 0 y como máximo 50 % por vez.',
+  INVALID_ROUNDING: 'El redondeo no es válido.',
+  NO_PRODUCTS: 'Ningún producto cambia de precio con esos filtros (o quedaron todos excluidos).',
+  ALREADY_REVERTED: 'Ese aumento ya se había deshecho.',
+  PRICE_CHANGE_NOT_FOUND: 'Ese aumento no existe.',
 }
 
 /** Mensajes por nombre de restricción única (contrato §5). */

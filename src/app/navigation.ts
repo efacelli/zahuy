@@ -48,6 +48,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: 'clipboard',
     description: 'Qué pedir a cada proveedor para volver al stock mínimo.',
   },
+  {
+    path: '/precios',
+    label: 'Aumentos de precio',
+    icon: 'trendUp',
+    description: 'Subir o bajar precios de muchos productos a la vez.',
+    permission: 'manageInventory',
+  },
   { path: '/catalogos', label: 'Catálogos', icon: 'catalogs', description: 'Categorías, marcas y proveedores.' },
   {
     path: '/configuracion',

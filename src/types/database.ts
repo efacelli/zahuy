@@ -187,6 +187,76 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"price_bulk_changes": {
+                  Row: {
+                    "brand_ids": (string)[] | null,"category_ids": (string)[] | null,"created_at": string,"created_by": string,"excluded_product_ids": (string)[],"id": string,"idempotency_key": string,"notes": string | null,"percent": number,"product_ids": (string)[] | null,"products_count": number,"revert_idempotency_key": string | null,"revert_reason": string | null,"revert_result": Json | null,"reverted_at": string | null,"reverted_by": string | null,"rounding_multiple": number | null,"status": string,"supplier_ids": (string)[] | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "brand_ids"?: (string)[] | null,"category_ids"?: (string)[] | null,"created_at"?: string,"created_by"?: string,"excluded_product_ids"?: (string)[],"id"?: string,"idempotency_key": string,"notes"?: string | null,"percent": number,"product_ids"?: (string)[] | null,"products_count": number,"revert_idempotency_key"?: string | null,"revert_reason"?: string | null,"revert_result"?: Json | null,"reverted_at"?: string | null,"reverted_by"?: string | null,"rounding_multiple"?: number | null,"status"?: string,"supplier_ids"?: (string)[] | null
+                  }
+                  Update: {
+                    "brand_ids"?: (string)[] | null,"category_ids"?: (string)[] | null,"created_at"?: string,"created_by"?: string,"excluded_product_ids"?: (string)[],"id"?: string,"idempotency_key"?: string,"notes"?: string | null,"percent"?: number,"product_ids"?: (string)[] | null,"products_count"?: number,"revert_idempotency_key"?: string | null,"revert_reason"?: string | null,"revert_result"?: Json | null,"reverted_at"?: string | null,"reverted_by"?: string | null,"rounding_multiple"?: number | null,"status"?: string,"supplier_ids"?: (string)[] | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "price_bulk_changes_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "price_bulk_changes_reverted_by_fkey"
+      columns: ["reverted_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"price_history": {
+                  Row: {
+                    "bulk_change_id": string | null,"changed_at": string,"changed_by": string | null,"id": string,"new_cost_price": number,"new_sale_price": number,"old_cost_price": number,"old_sale_price": number,"product_id": string,"reason": string | null,"source": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "bulk_change_id"?: string | null,"changed_at"?: string,"changed_by"?: string | null,"id"?: string,"new_cost_price": number,"new_sale_price": number,"old_cost_price": number,"old_sale_price": number,"product_id": string,"reason"?: string | null,"source": string
+                  }
+                  Update: {
+                    "bulk_change_id"?: string | null,"changed_at"?: string,"changed_by"?: string | null,"id"?: string,"new_cost_price"?: number,"new_sale_price"?: number,"old_cost_price"?: number,"old_sale_price"?: number,"product_id"?: string,"reason"?: string | null,"source"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "price_history_bulk_change_id_fkey"
+      columns: ["bulk_change_id"]
+isOneToOne: false
+      referencedRelation: "price_bulk_changes"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "price_history_changed_by_fkey"
+      columns: ["changed_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "price_history_product_id_fkey"
+      columns: ["product_id"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "price_history_product_id_fkey"
+      columns: ["product_id"]
+isOneToOne: false
+      referencedRelation: "v_product_list"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "price_history_product_id_fkey"
+      columns: ["product_id"]
+isOneToOne: false
+      referencedRelation: "v_product_stock"
+      referencedColumns: ["product_id"]
+    }
+                  ]
                 },"product_batches": {
                   Row: {
                     "batch_number": string | null,"created_at": string,"created_by": string | null,"expires_on": string | null,"id": string,"notes": string | null,"product_id": string,"quantity_available": number,"quantity_initial": number,"received_on": string,"updated_at": string,"updated_by": string | null
@@ -411,14 +481,14 @@ isOneToOne: false
                   ]
                 },"sales_settings": {
                   Row: {
-                    "created_at": string,"created_by": string | null,"id": string,"quantity_discount_max_percent": number,"quantity_discount_percent": number,"quantity_discount_step": number,"rounding_multiple": number,"updated_at": string,"updated_by": string | null
+                    "created_at": string,"created_by": string | null,"id": string,"quantity_discount_max_percent": number,"quantity_discount_percent": number,"quantity_discount_step": number,"rounding_multiple": number,"store_address": string | null,"store_name": string | null,"store_tax_id": string | null,"updated_at": string,"updated_by": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"quantity_discount_max_percent"?: number,"quantity_discount_percent"?: number,"quantity_discount_step"?: number,"rounding_multiple"?: number,"updated_at"?: string,"updated_by"?: string | null
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"quantity_discount_max_percent"?: number,"quantity_discount_percent"?: number,"quantity_discount_step"?: number,"rounding_multiple"?: number,"store_address"?: string | null,"store_name"?: string | null,"store_tax_id"?: string | null,"updated_at"?: string,"updated_by"?: string | null
                   }
                   Update: {
-                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"quantity_discount_max_percent"?: number,"quantity_discount_percent"?: number,"quantity_discount_step"?: number,"rounding_multiple"?: number,"updated_at"?: string,"updated_by"?: string | null
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"quantity_discount_max_percent"?: number,"quantity_discount_percent"?: number,"quantity_discount_step"?: number,"rounding_multiple"?: number,"store_address"?: string | null,"store_name"?: string | null,"store_tax_id"?: string | null,"updated_at"?: string,"updated_by"?: string | null
                   }
                   Relationships: [
                     {
@@ -647,7 +717,35 @@ isOneToOne: false
                 }
           }
           Functions: {
-            "close_cash_session":
+            "apply_price_increase":
+{ Args: { "p_brand_ids": (string)[],"p_category_ids": (string)[],"p_excluded_product_ids"?: (string)[],"p_idempotency_key": string,"p_notes"?: string,"p_percent": number,"p_product_ids": (string)[],"p_rounding_multiple"?: number,"p_supplier_ids": (string)[] }; Returns: {
+              "brand_ids": (string)[] | null,
+"category_ids": (string)[] | null,
+"created_at": string,
+"created_by": string,
+"excluded_product_ids": (string)[],
+"id": string,
+"idempotency_key": string,
+"notes": string | null,
+"percent": number,
+"product_ids": (string)[] | null,
+"products_count": number,
+"revert_idempotency_key": string | null,
+"revert_reason": string | null,
+"revert_result": Json | null,
+"reverted_at": string | null,
+"reverted_by": string | null,
+"rounding_multiple": number | null,
+"status": string,
+"supplier_ids": (string)[] | null
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "price_bulk_changes"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"close_cash_session":
 { Args: { "p_cash_session_id": string,"p_close_notes"?: string,"p_counted_cash": number }; Returns: {
               "cash_register_id": string,
 "close_notes": string | null,
@@ -727,6 +825,11 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"preview_price_increase":
+{ Args: { "p_brand_ids": (string)[],"p_category_ids": (string)[],"p_percent": number,"p_product_ids": (string)[],"p_rounding_multiple"?: number,"p_supplier_ids": (string)[] }; Returns: {
+              "brand_name": string,"category_name": string,"change_amount": number,"name": string,"new_price_with_vat": number,"new_sale_price": number,"old_price_with_vat": number,"old_sale_price": number,"product_id": string,"sku": string,"supplier_name": string
+            }[]
+                           },
 "product_sales_ranking":
 { Args: { "p_from": string,"p_to": string }; Returns: {
               "brand_name": string,"category_name": string,"cost_total": number,"gross_margin": number,"last_sold_at": string,"name": string,"net_total": number,"product_created_at": string,"product_id": string,"quantity_sold": number,"revenue_total": number,"sale_unit": Database["public"]['Enums']["sale_unit"],"sales_count": number,"sku": string,"stock_quantity": number,"supplier_name": string
@@ -859,6 +962,9 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"revert_price_change":
+{ Args: { "p_bulk_change_id": string,"p_idempotency_key": string,"p_reason": string }; Returns: Json
+                           },
 "void_sale":
 { Args: { "p_idempotency_key": string,"p_reason": string,"p_sale_id": string }; Returns: {
               "cash_session_id": string,
