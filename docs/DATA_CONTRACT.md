@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.6.0 (propuesta de la §15; lo demás sigue en 0.5.2) |
+| Versión | 0.6.1 (propuesta de la §15; lo demás sigue en 0.5.2) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos. **Propuesta:** ventas y caja (§15, sin implementar) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -1098,13 +1098,15 @@ volver a registrar la concordancia.
 | 0.5.1 | 2026-11-15 | Búsqueda sin tildes ni mayúsculas: `products.search_name` generada y expuesta al final de `v_product_list` (§5.5, §7.3). Migración `20261116220000` |
 | 0.5.2 | 2026-11-15 | Concordancia del backend con las versiones 0.4.0 a 0.5.1 (§14). Sin cambios de reglas |
 | 0.6.0 | 2026-11-15 | **Propuesta** de Etapa 5, Ventas y caja (§15): `payment_methods`, `cash_registers`, `cash_sessions`, `sales`, `sale_items`, `sale_payments`, `stock_movements.sale_item_id` y tipo `sale`; RPC `open_cash_session`, `close_cash_session`, `register_sale` (FEFO, idempotente, una sola vez) y `void_sale`; preguntas P-27 a P-38. No se implementa hasta aprobarla |
+| 0.6.1 | 2026-11-15 | Decisiones de `efacelli` sobre la propuesta de la §15: P-27 (ticket interno, no es factura), P-30 (redondeo del efectivo a la centena más cercana; `sales.cash_rounding`, `sales_settings.cash_rounding_multiple`, invariante `Σ amount = total_amount + cash_rounding`), P-36 (sin stock negativo; se carga el inventario antes) y aceptación de P-28, P-29, P-31 a P-35, P-37 y P-38. Nuevas preguntas P-39 y P-40. Sigue siendo propuesta |
 
 ---
 
-## 15. Etapa 5 — Ventas y caja (PROPUESTA v0.6.0)
+## 15. Etapa 5 — Ventas y caja (PROPUESTA v0.6.1)
 
-> **Estado: PROPUESTA. No se implementa ninguna migración ni pantalla hasta que
-> `efacelli` apruebe este PR y se respondan las preguntas P-27 a P-38 (§15.9).**
+> **Estado: PROPUESTA con las decisiones de `efacelli` del 2026-11-15 (P-27 a
+> P-38, §15.9).** Las migraciones se escriben recién cuando `efacelli` apruebe
+> este PR y se prueban primero en staging. Quedan abiertas solo P-39 y P-40.
 > Todo lo vigente de las secciones 1 a 14 sigue igual. Esta sección solo agrega.
 > Fuentes: respuestas 38 a 43 del relevamiento (2 cajas a la vez; efectivo,
 > débito, crédito, QR y transferencia; cuenta corriente y descuentos por
@@ -1116,7 +1118,9 @@ volver a registrar la concordancia.
 **Entra en v0.6.0:** vender (carrito → una venta confirmada), cobrar con uno o
 varios medios de pago, descontar stock una sola vez, anular una venta, abrir y
 cerrar la caja (turno) con arqueo. Las ventas son **comprobantes internos no
-fiscales** (no hay factura ARCA, §15.8).
+fiscales** (no hay factura ARCA, §15.8). El ticket que imprime el frontend dice
+**"NO VÁLIDO COMO FACTURA"**: el negocio sigue facturando con su sistema actual
+hasta la etapa 6 (P-27).
 
 **No entra (queda para etapas siguientes, sin bloquearlas):** facturación
 ARCA, descuentos por cantidad, cuenta corriente y clientes, devoluciones
@@ -1235,6 +1239,7 @@ hacen el encargado y el dueño (una caja nueva es una fila). No se borran.
 | `total_amount` | `numeric(12,2)` | no | — | `CHECK (total_amount > 0)`. Suma de `sale_items.line_total` |
 | `net_amount` | `numeric(12,2)` | no | — | Suma de netos de los ítems (sin IVA) |
 | `vat_amount` | `numeric(12,2)` | no | — | Suma del IVA de los ítems. `CHECK (net_amount + vat_amount = total_amount)` |
+| `cash_rounding` | `numeric(12,2)` | no | `0` | v0.6.1 (P-30). Lo que el redondeo agregó (+) o descontó (−) a la parte pagada en efectivo: `amount` del efectivo `− cash_due` (§15.6). Es 0 si no hubo pago en efectivo. **No cambia** `total_amount` ni los ítems |
 | `notes` | `text` | sí | — | — |
 | `created_at` | `timestamptz` | no | `now()` | Momento de la venta; no lo fija el cliente |
 | `created_by` | `uuid` | no | `auth.uid()` | FK → `profiles.id`. Quién vendió |
@@ -1280,9 +1285,10 @@ etapa 6.
 | `tendered_amount` | `numeric(12,2)` | sí | — | Solo efectivo: lo que entregó el cliente. `CHECK (tendered_amount IS NULL OR tendered_amount >= amount)`. Vuelto = `tendered_amount − amount` |
 | `reference` | `text` | sí | — | Referencia opcional (últimos dígitos, n.º de operación). **Nunca el número de tarjeta completo ni datos sensibles** |
 
-Inmutable. `UNIQUE (sale_id, payment_method_id)`. **Invariante:** la suma de
-`amount` de una venta es igual a `sales.total_amount` (lo valida la RPC y un
-*constraint trigger* diferido, como el del ledger, §3). Solo el efectivo puede
+Inmutable. `UNIQUE (sale_id, payment_method_id)`. **Invariante (v0.6.1):** la
+suma de `amount` de una venta es igual a `sales.total_amount + sales.cash_rounding`
+(lo valida la RPC y un *constraint trigger* diferido, como el del ledger, §3).
+El `amount` del efectivo es lo que **entra de verdad en la caja**, ya redondeado. Solo el efectivo puede
 tener `tendered_amount` (lo valida la RPC por `payment_methods.is_cash`).
 
 #### 15.3.7 Cambios a `stock_movements`
@@ -1298,6 +1304,24 @@ Columna nueva, nulable, sin afectar filas existentes:
 error en la RPC, la base **no permite descontar dos veces el mismo ítem del
 mismo lote**. Es la forma concreta de "una venta descuenta stock una sola vez"
 que §5.7 dejaba anotada.
+
+#### 15.3.8 `sales_settings` (v0.6.1)
+
+Configuración de ventas: **una sola fila**, igual que la fila general de alertas
+(§5.9). Hoy guarda solo el múltiplo del redondeo del efectivo (P-30).
+
+| Columna | Tipo | Null | Default | Restricciones / notas |
+|---|---|---|---|---|
+| `id` | `uuid` | no | `gen_random_uuid()` | PK |
+| `cash_rounding_multiple` | `numeric(12,2)` | no | `100` | `CHECK (cash_rounding_multiple > 0)`. Múltiplo al que se redondea el efectivo (centena más cercana; desde la mitad sube) |
+| columnas comunes | | | | §2.5 |
+
+- Fila única: índice `sales_settings_singleton_key` sobre `((true))`. La migración
+  la crea con `100`; no se borra.
+- La lee cualquier usuario activo (el frontend la usa para mostrar el redondeo);
+  la edita el encargado o el dueño. Los cambios quedan en `audit_log`.
+- El cambio rige para las ventas **nuevas**: cada venta guarda su `cash_rounding`
+  ya calculado, así que las anteriores no se modifican.
 
 ### 15.4 Relaciones
 
@@ -1323,7 +1347,8 @@ el arqueo):
 | `sales_count` | `integer` | Ventas `completed` de la sesión |
 | `sales_total` | `numeric(12,2)` | Suma de `total_amount` de las `completed` |
 | `voided_count` | `integer` | Ventas anuladas |
-| `cash_collected` | `numeric(12,2)` | Suma de `amount` de pagos en efectivo de ventas `completed` |
+| `cash_collected` | `numeric(12,2)` | Suma de `amount` de pagos en efectivo de ventas `completed` (ya con el redondeo: lo que entró de verdad en la caja) |
+| `cash_rounding_total` | `numeric(12,2)` | Suma de `cash_rounding` de las ventas `completed` (v0.6.1). Explica la diferencia entre ventas y efectivo |
 | `expected_cash` | `numeric(12,2)` | Abierta: `opening_amount + cash_collected` calculado en vivo. Cerrada: el valor guardado |
 | `counted_cash`, `difference` | `numeric(12,2)` | Solo cerrada |
 
@@ -1335,7 +1360,13 @@ el arqueo):
 Fórmula del arqueo (v0.6.0): `expected_cash = opening_amount + Σ amount` de los
 pagos en efectivo de ventas `completed` de la sesión. Como solo se anula con la
 sesión abierta (§15.6), una venta anulada nunca figura en una sesión cerrada.
-Retiros y aportes de efectivo no existen todavía (P-31).
+Retiros y aportes de efectivo no existen todavía (P-31). El redondeo ya está
+incluido porque se suma el `amount` del efectivo, no el valor de los ítems.
+
+**Arqueo a ciegas (P-40):** para el empleado, mientras la sesión está abierta,
+`expected_cash`, `cash_collected`, `cash_rounding_total`, `counted_cash` y
+`difference` vienen `NULL`; el encargado y el dueño ven todo. Al cerrar, la RPC
+devuelve la diferencia a quien cerró (§15.6).
 
 ### 15.6 Funciones RPC
 
@@ -1414,10 +1445,28 @@ En una transacción, en este orden:
    `operation_key = sales.id` y su propio `idempotency_key` generado por la
    base. Si el stock vendible no alcanza → `INSUFFICIENT_STOCK` (con el
    producto en `DETAIL`) y **no se registra nada** (P-36).
-6. **Pagos.** Cada medio debe existir y estar activo
-   (`PAYMENT_METHOD_INVALID`). La suma de `amount` debe ser **exactamente**
-   `total_amount` (`PAYMENT_MISMATCH`). `tendered_amount` solo en efectivo y
-   ≥ `amount` (`INVALID_PAYMENT`).
+6. **Pagos y redondeo del efectivo (P-30).** El frontend manda el `amount` del
+   efectivo ya redondeado y la base **lo recalcula y lo exige** (la RPC no
+   recibe parámetros nuevos):
+   1. Cada medio debe existir y estar activo (`PAYMENT_METHOD_INVALID`) y cada
+      `amount` ser > 0 (`INVALID_PAYMENT`).
+   2. `cash_due = total_amount − Σ amount` de los pagos que **no** son efectivo.
+      Sin pago en efectivo, `cash_due` tiene que ser exactamente 0
+      (`PAYMENT_MISMATCH`). Con pago en efectivo y `cash_due <= 0` →
+      `PAYMENT_MISMATCH`.
+   3. El `amount` del efectivo tiene que ser
+      `private.round_cash(cash_due, sales_settings.cash_rounding_multiple)`, con
+      `round_cash(x, m) = floor(x / m + 0.5) * m` en `numeric` exacto: **centena
+      más cercana, y desde la mitad sube**. 1.237 → 1.200; 1.249 → 1.200;
+      1.250 → 1.300; 1.280 → 1.300; 1.200 → 1.200. Si no coincide →
+      `PAYMENT_MISMATCH`.
+   4. Si `cash_due > 0` pero se redondea a 0 (menos de la mitad del múltiplo:
+      menos de $50) → `CASH_AMOUNT_TOO_SMALL`: esa parte tiene que pagarse con
+      otro medio (P-39, a confirmar).
+   5. Se guarda `sales.cash_rounding = amount del efectivo − cash_due` (0 si no
+      hubo efectivo). Invariante: `Σ amount = total_amount + cash_rounding`.
+   6. `tendered_amount` solo en efectivo y ≥ `amount` (`INVALID_PAYMENT`); el
+      vuelto es `tendered_amount − amount`.
 7. **Guarda** `sales`, `sale_items` y `sale_payments` y devuelve la fila de
    `sales`. El frontend lee ítems y pagos con un `select` embebido.
 
@@ -1450,12 +1499,14 @@ vencido o un producto inactivo (igual que §8.3: corregir tiene que ser posible)
 | Objeto | Empleado (`staff`) | Encargado / dueño | Usuario inactivo |
 |---|---|---|---|
 | `payment_methods`, `cash_registers` | lee | lee / crea / edita | — |
-| `cash_sessions` | lee las que abrió | lee todas | — |
+| `sales_settings` | lee | edita | — |
+| `cash_sessions` | lee **las abiertas** (para elegir caja, P-33) y las que abrió | lee todas | — |
 | `sales`, `sale_items`, `sale_payments` | lee las que vendió | lee todas | — |
 | `open_cash_session`, `register_sale` | sí | sí | `NOT_AUTHORIZED` |
 | `close_cash_session` | solo la que abrió | cualquiera | `NOT_AUTHORIZED` |
 | `void_sale` | no (`NOT_AUTHORIZED`) | sí | `NOT_AUTHORIZED` |
-| `v_cash_session_summary`, `v_cash_session_payments` | las de sus sesiones | todas | sin filas |
+| `v_cash_session_summary` | las abiertas y las suyas, **sin** `expected_cash`, `cash_collected`, `cash_rounding_total`, `counted_cash` ni `difference` mientras están abiertas (P-40) | todas, con todo | sin filas |
+| `v_cash_session_payments` | las de sus propias sesiones | todas | sin filas |
 
 - `anon`: sin acceso a ninguna tabla, vista ni función nueva. Se agregan a la
   matriz de `14_security_matrix.test.sql` (§12).
@@ -1463,7 +1514,7 @@ vencido o un producto inactivo (igual que §8.3: corregir tiene que ser posible)
   `cash_sessions`, `sales`, `sale_items`, `sale_payments` ni sobre las columnas
   nuevas de `stock_movements`. Los catálogos (`payment_methods`, `cash_registers`)
   los edita el encargado con permisos por columna, como los de §5.2.
-- Las dos tablas de catálogo entran en `audit_log` (§5.8). Las ventas ya son su
+- Los catálogos y `sales_settings` entran en `audit_log` (§5.8). Las ventas ya son su
   propio registro inmutable (`created_by`, `voided_by`).
 - Las ventas **no guardan** datos de tarjetas, tokens ni credenciales de
   billeteras; `reference` es texto libre acotado y la UI lo rotula así.
@@ -1493,7 +1544,8 @@ Se suman a §8.6:
 | `CASH_SESSION_CLOSED` | Vender, cerrar de nuevo o anular en una sesión ya cerrada |
 | `EMPTY_SALE` | Venta sin ítems |
 | `PAYMENT_METHOD_INVALID` | Medio de pago inexistente o inactivo |
-| `PAYMENT_MISMATCH` | La suma de pagos no es el total |
+| `PAYMENT_MISMATCH` | Los pagos no cierran: el efectivo no es el redondeo exigido de lo que falta (§15.6, paso 6), o sobra/falta importe sin pago en efectivo |
+| `CASH_AMOUNT_TOO_SMALL` | Lo que falta cobrar en efectivo se redondea a 0 (menos de la mitad del múltiplo): hay que pagarlo con otro medio (P-39) |
 | `INVALID_PAYMENT` | Importe de pago ≤ 0, o entregado menor al importe, o entregado en un medio que no es efectivo |
 | `INVALID_AMOUNT` | Monto de apertura o conteo negativo |
 | `SALE_NOT_FOUND` | Venta inexistente o no visible |
@@ -1503,24 +1555,25 @@ Reutiliza: `NOT_AUTHORIZED`, `PRODUCT_NOT_FOUND`, `PRODUCT_INACTIVE`,
 `INVALID_QUANTITY`, `INSUFFICIENT_STOCK`, `REASON_REQUIRED`,
 `IDEMPOTENCY_CONFLICT`, `INVALID_MOVEMENT_TYPE`.
 
-**Preguntas abiertas** (la respuesta propuesta es lo que se implementa si nadie
-indica otra cosa; las marcadas ⚠ conviene preguntarlas al cliente o al contador
-antes de aprobar):
+**Preguntas** (P-27 a P-38: decisiones de `efacelli` del 2026-11-15, en el PR de esta
+propuesta; P-39 y P-40 siguen abiertas):
 
-| # | Pregunta | Propuesta | Estado |
+| # | Pregunta | Decisión | Estado |
 |---|---|---|---|
-| P-27 ⚠ | ¿Se emite factura ARCA en cada venta o solo si el cliente la pide? (respuesta 40 del relevamiento: sin respuesta) | v0.6.0 son comprobantes internos no fiscales; la facturación se diseña en la etapa 6 con el contador | Abierta |
-| P-28 | Descuentos por cantidad (cada 6 = 5 %, 12 = 10 %, 18 = 15 %) | Fuera de v0.6.0. Se agregarán columnas de descuento por ítem y una tabla de reglas; el empleado podrá quitarlo. Hay que definir a qué productos aplica | Abierta |
-| P-29 | Cuenta corriente y clientes | Fuera de v0.6.0. Se reserva un medio de pago `account` y `sales.customer_id` nulable para esa etapa | Abierta |
-| P-30 ⚠ | Redondeo del efectivo (sin monedas chicas) | Sin redondeo: el total es el de los ítems | Abierta |
-| P-31 | Retiros y aportes de efectivo durante el turno, y qué hacer si el arqueo no cierra | Sin retiros en v0.6.0; la diferencia se guarda y el encargado la ve. Una sesión cerrada no se reabre | Abierta |
-| P-32 | ¿Se puede anular una venta de un turno ya cerrado? | No: solo con la sesión abierta. Después, devolución (etapa posterior) | Abierta |
-| P-33 | ¿Una caja la usa una sola persona por turno o se comparte? | Cualquier usuario activo vende en cualquier sesión abierta; cada venta registra quién vendió | Abierta |
-| P-34 | ¿El empleado ve las ventas de otros? | No: solo las propias (§15.7). El encargado ve todas | Abierta |
-| P-35 | Pesables con etiqueta de balanza (prefijo `2`, peso en gramos) | La venta recibe la cantidad en kg; leer la etiqueta es del frontend. Falta definir el campo de código de balanza por producto (§11) | Abierta |
-| P-36 ⚠ | Vender producto sin stock registrado. Tras la importación (P-26) los ~3.000 productos tienen stock 0, y no se podría vender hasta cargar lotes | Se mantiene la regla de CLAUDE.md: **no hay stock negativo**; la venta se rechaza con `INSUFFICIENT_STOCK`. Si el negocio necesita vender antes de cargar el stock hace falta una decisión explícita (no se asume) | Abierta |
-| P-37 | Tickets e impresión | Del frontend; el contrato aporta `sale_number`, ítems, pagos y vuelto | Abierta |
-| P-38 | ¿Se puede vender más de lo que hay en lotes vencidos si el producto "está bien"? | No: los lotes vencidos no se venden (P-15) | Abierta |
+| P-27 | ¿Se emite factura ARCA en cada venta? | La caja emite un **ticket interno no fiscal** que dice "NO VÁLIDO COMO FACTURA"; el súper sigue facturando con su sistema actual. La factura electrónica desde Zahuy se diseña en la etapa 6 con el contador | Adoptada |
+| P-28 | Descuentos por cantidad (cada 6 = 5 %, 12 = 10 %, 18 = 15 %) | Fuera de v0.6.x. Se agregarán columnas de descuento por ítem y una tabla de reglas; el empleado podrá quitarlo. Hay que definir a qué productos aplica | Adoptada |
+| P-29 | Cuenta corriente y clientes | Fuera de v0.6.x. Se reserva un medio de pago `account` y `sales.customer_id` nulable para esa etapa | Adoptada |
+| P-30 | Redondeo del efectivo | Solo la parte pagada en efectivo se redondea a la **centena más cercana** (desde la mitad sube: 1.237 → 1.200, 1.250 → 1.300). La diferencia queda en `sales.cash_rounding` (puede ser + o −) y el múltiplo es configurable (`sales_settings`, §15.3.8). Se envía el `amount` ya redondeado y la base lo exige (§15.6, paso 6). Invariante `Σ amount = total_amount + cash_rounding`. El arqueo suma lo que entró de verdad | Adoptada |
+| P-31 | Retiros y aportes de efectivo durante el turno; arqueo que no cierra | Sin retiros en v0.6.x; la diferencia se guarda y el encargado la ve. Una sesión cerrada no se reabre | Adoptada |
+| P-32 | ¿Se puede anular una venta de un turno ya cerrado? | No: solo con la sesión abierta. Después, devolución (etapa posterior) | Adoptada |
+| P-33 | ¿Una caja la usa una sola persona por turno o se comparte? | Cualquier usuario activo vende en cualquier sesión abierta; cada venta registra quién vendió | Adoptada |
+| P-34 | ¿El empleado ve las ventas de otros? | No: solo las propias (§15.7). El encargado ve todas | Adoptada |
+| P-35 | Pesables con etiqueta de balanza | La venta recibe la cantidad en kg; leer la etiqueta es del frontend. Falta definir el campo de código de balanza por producto (§11) | Adoptada |
+| P-36 | Vender producto sin stock registrado | Se mantiene **sin stock negativo** (`INSUFFICIENT_STOCK`). Antes de usar la caja, el súper carga el stock real (inventario inicial con el lector). No hay excepción | Adoptada |
+| P-37 | Tickets e impresión | Del frontend; el contrato aporta `sale_number`, ítems, pagos y vuelto | Adoptada |
+| P-38 | ¿Se vende de lotes vencidos? | No: los lotes vencidos no se venden (P-15) | Adoptada |
+| P-39 | Una compra de menos de la mitad del múltiplo (menos de $50) pagada en efectivo daría $0 | Propuesta: la base responde `CASH_AMOUNT_TOO_SMALL` y esa parte se paga con otro medio (el frontend ya lo hace así). Alternativas: cobrar el mínimo de $100 o permitir el cobro exacto de lo pequeño. Decide el negocio | Abierta |
+| P-40 | Arqueo a ciegas: el frontend no muestra lo esperado al cerrar, pero con la API el empleado podría consultarlo | Propuesta del backend: la base no se lo entrega al empleado mientras la sesión está abierta (§15.5, §15.7), aunque sí le permite ver las sesiones abiertas para vender (P-33). El encargado y el dueño ven todo | Abierta |
 
 ### 15.10 Pruebas que se exigirán al implementar (se suman a §12)
 
@@ -1535,6 +1588,19 @@ antes de aprobar):
 - Pagos: suma distinta del total → `PAYMENT_MISMATCH`; efectivo con vuelto;
   `tendered_amount` en tarjeta → `INVALID_PAYMENT`; medio inactivo →
   `PAYMENT_METHOD_INVALID`; pago mixto efectivo + QR.
+- Redondeo del efectivo (P-30), con múltiplo 100: total 1.237 en efectivo → `amount`
+  1.200 y `cash_rounding` −37; 1.249 → 1.200 (−49); 1.250 → 1.300 (+50);
+  1.280 → 1.300 (+20); 1.200 → 1.200 (0). Pago mixto: el redondeo aplica solo a
+  lo que falta tras los pagos no efectivo. Un `amount` de efectivo distinto del
+  exigido → `PAYMENT_MISMATCH`; efectivo con `cash_due <= 0` →
+  `PAYMENT_MISMATCH`; sin efectivo y pagos que no suman el total →
+  `PAYMENT_MISMATCH`; `cash_due` de $30 en efectivo → `CASH_AMOUNT_TOO_SMALL`.
+  Cambiar `cash_rounding_multiple` no modifica ventas anteriores. Invariante
+  `Σ amount = total_amount + cash_rounding` en toda venta; el arqueo suma el
+  `amount` del efectivo (con redondeo).
+- Arqueo a ciegas (P-40): el empleado ve las sesiones abiertas pero
+  `expected_cash` y compañía vienen `NULL`; el encargado los ve; al cerrar, el
+  cálculo no depende de lo que vea quien cierra.
 - Idempotencia: misma clave y misma solicitud dos veces → una sola venta y un
   solo descuento de stock; misma clave con otros ítems → `IDEMPOTENCY_CONFLICT`;
   reintento después del cierre de la caja → devuelve la venta original.
@@ -1564,8 +1630,11 @@ antes de aprobar):
 ### 15.11 Plan de migraciones (cuando se apruebe)
 
 Todas aditivas y sin borrar nada, en este orden: (1) `ALTER TYPE movement_type
-ADD VALUE 'sale'` (sola); (2) enums y tablas de catálogos y caja con sus filas
-iniciales; (3) `sales`, `sale_items`, `sale_payments` y la columna
+ADD VALUE 'sale'` (sola); (2) enums y tablas de catálogos, caja y `sales_settings` con sus filas
+iniciales (los 5 medios de pago, Caja 1 y 2, múltiplo 100) y, en el mismo PR,
+agregar `payment_methods`, `cash_registers` y `sales_settings` a `v_seeded` de
+`supabase/scripts/restore-prepare.sql` (si no, el paso previo de restauración se
+detiene y avisa); (3) `sales`, `sale_items`, `sale_payments` y la columna
 `stock_movements.sale_item_id` con sus índices, más el recreado del `CHECK` de
 `reason`; (4) vistas y RPC; (5) cambios a `register_product_movement`,
 `register_stock_movement` y `reverse_stock_movement` para rechazar `sale`;
