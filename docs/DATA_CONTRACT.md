@@ -1105,7 +1105,7 @@ volver a registrar la concordancia.
 | 0.7.0 | 2026-11-16 | **Propuesta** (§16): descuentos por cantidad (cada 6 unidades 5 %, editable en la caja, todos los productos) con columnas aditivas en `sales_settings`, `sale_items` y `sales`, `register_sale` con `discount_percent` opcional y código `INVALID_DISCOUNT`; vistas `v_sales_daily` y `v_sales_daily_payments` para las finanzas del dashboard. Preguntas P-41 a P-43; P-41 (tope 30 %) y P-42 (el cajero también puede subirlo) decididas por efacelli; P-43 (sugerido solo en cantidades enteras) por `ChinoNader18`, más sus ajustes: `CHECK < 100`, hash con el `discount_percent` enviado, y precisiones de `v_sales_daily` |
 | 0.7.1 | 2026-11-16 | Rol Programador (P-44, decisión de `efacelli`; revisado por `ChinoNader18`): rol `developer` ("Programador") con los mismos permisos que `admin`. Migración: `ALTER TYPE app_role ADD VALUE 'developer'` (sola) y `private.is_admin()` / `private.is_manager_or_admin()` aceptan `developer`; pgTAP del rol en la matriz de seguridad. Después, un dueño o programador cambia los perfiles de `efacelli` y `ChinoNader18` desde Configuración → Usuarios |
 | 0.8.0 | 2026-11-16 | **Propuesta** (§17): función de lectura `product_sales_ranking(p_from, p_to)` para más vendidos, menos vendidos y sin ventas en X días (solo encargado, dueño y programador); código `INVALID_DATE_RANGE`; preguntas P-46 a P-48 adoptadas. Sin cambios de tablas. Revisada y aprobada por `ChinoNader18`, con sus ajustes: `SECURITY DEFINER`, parámetros nulos → `INVALID_DATE_RANGE` y columna `product_created_at` |
-| 0.9.0 | 2026-11-16 | **Propuesta** del backend (issue #68): §18 datos del comercio (`store_name`, `store_address`, `store_tax_id`, nulables, en `sales_settings`) y §19 historial de precios (`price_history`, solo-agregado, escrita por trigger) y aumentos masivos (`price_bulk_changes`, `preview_price_increase`, `apply_price_increase`, `revert_price_change`); errores nuevos y preguntas P-49 a P-54 (P-49, P-52 y P-53 dependen del cliente). No se implementa hasta aprobarla |
+| 0.9.0 | 2026-11-16 | **Propuesta** del backend (issue #68): §18 datos del comercio (`store_name`, `store_address`, `store_tax_id`, nulables, en `sales_settings`) y §19 historial de precios (`price_history`, solo-agregado, escrita por trigger) y aumentos masivos (`price_bulk_changes`, `preview_price_increase`, `apply_price_increase`, `revert_price_change`); errores nuevos y preguntas P-49 a P-54 (P-49, P-52 y P-53 dependen del cliente). P-50, P-51 y P-54 decididas por `efacelli` y ajustes de su revisión incorporados (filtro por producto, productos sin cambio, origen validado en el trigger, bloqueo ordenado, deshacer con inactivos). Quedan abiertas P-49, P-52 y P-53 (cliente). No se implementa hasta aprobarla |
 
 ---
 
@@ -1987,11 +1987,11 @@ El precio nunca queda en 0 ni negativo; si el cálculo diera 0 el producto se sa
 
 | # | Pregunta | Estado |
 |---|---|---|
-| P-50 | ¿Se permite un aumento a **todo el catálogo** sin filtros? | **Abierta (efacelli).** Propuesta: no; si hace falta, se agrega un parámetro explícito `p_all_products boolean default false` |
-| P-51 | ¿Cuál es el **tope** por operación? | **Abierta (efacelli).** Propuesta: 50 % en valor absoluto, constante en la base (cambiarlo es una migración) |
+| P-50 | ¿Se permite un aumento a **todo el catálogo** sin filtros? | **Decidida (efacelli, 2026-11-16):** no; sin ningún filtro → `FILTER_REQUIRED`. Con el filtro por producto (`p_product_ids`) alcanza para elegir cualquier lista | Adoptada |
+| P-51 | ¿Cuál es el **tope** por operación? | **Decidida (efacelli, 2026-11-16):** 50 % en valor absoluto, **fijo en la base** (cambiarlo es una migración) | Adoptada |
 | P-52 | ¿Se ajusta mirando el **costo** o el precio de góndola, y se mantiene el margen? | **Abierta (cliente).** Propuesta: solo precio de góndola; el ajuste por costo llega con la etapa de compras |
 | P-53 | **Múltiplo del redondeo** del precio final ($10, $50…) | **Abierta (cliente).** El mecanismo (parámetro por operación) no depende de la respuesta |
-| P-54 | ¿Qué pasa al **deshacer** si un producto cambió de precio después? | **Abierta.** Propuesta: se saltea y se informa, nunca se pisa un precio posterior |
+| P-54 | ¿Qué pasa al **deshacer** si un producto cambió de precio después? | **Decidida (efacelli, 2026-11-16):** se saltea y se informa; nunca se pisa un precio posterior. También se restauran los productos desactivados después, si su precio sigue igual | Adoptada |
 
 ### 19.7 Pruebas que se exigirán
 
