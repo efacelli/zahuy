@@ -2,6 +2,7 @@ import type { RouteObject } from 'react-router'
 import { AlertsPage } from '../features/alerts/AlertsPage'
 import { AuditPage } from '../features/audit/AuditPage'
 import { PosPage } from '../features/pos/PosPage'
+import { SalesPage } from '../features/sales/SalesPage'
 import { InventoryCountPage } from '../features/inventory/InventoryCountPage'
 import { ImportProductsPage } from '../features/import/ImportProductsPage'
 import { LoginPage } from '../features/auth/LoginPage'
@@ -30,6 +31,7 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <HomePage /> },
           { path: 'caja', element: <PosPage /> },
+          { path: 'ventas', element: <SalesPage /> },
           { path: 'productos', element: <ProductsPage /> },
           {
             path: 'productos/nuevo',
