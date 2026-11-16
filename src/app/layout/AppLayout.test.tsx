@@ -39,7 +39,7 @@ describe('AppLayout', () => {
     const router = await renderAt('/')
     await user.click(screen.getByRole('link', { name: 'Productos' }))
     expect(router.state.location.pathname).toBe('/productos')
-    expect(screen.getByRole('heading', { level: 1, name: 'Productos' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Productos' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Productos' })).toHaveAttribute('aria-current', 'page')
   })
 
