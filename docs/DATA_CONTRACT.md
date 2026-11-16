@@ -1101,7 +1101,7 @@ volver a registrar la concordancia.
 | 0.6.1 | 2026-11-15 | Decisiones de `efacelli` sobre la propuesta de la §15: P-27 (ticket interno, no es factura), P-30 (redondeo del efectivo a la centena más cercana; `sales.cash_rounding`, `sales_settings.cash_rounding_multiple`, invariante `Σ amount = total_amount + cash_rounding`), P-36 (sin stock negativo; se carga el inventario antes) y aceptación de P-28, P-29, P-31 a P-35, P-37 y P-38. Nuevas preguntas P-39 y P-40. Sigue siendo propuesta |
 | 0.6.2 | 2026-11-15 | Precisiones surgidas al implementar la §15 en local (migraciones y pruebas listas, sin PR): código `PRODUCT_PRICE_INVALID`; importes con hasta 2 decimales (tolerancia de coma flotante del cliente); qué cuentan las vistas de caja para el empleado; idempotencia de `void_sale`; y aviso al frontend: agregar `sale` a `MovementType` al regenerar tipos. Sigue siendo propuesta |
 | 0.6.3 | 2026-11-16 | Decisiones nuevas de `efacelli`: **P-30 cambia** (se redondea el total de la venta con cualquier medio de pago; el monto es una sugerencia que el cajero puede cambiar y la base solo exige un límite), **P-39 decidida** (menos de la mitad del múltiplo se cobra exacto; desaparece `CASH_AMOUNT_TOO_SMALL`) y P-40 de acuerdo. Renombres: `sales.cash_rounding` → `sales.rounding_amount`, `sales_settings.cash_rounding_multiple` → `rounding_multiple`, vista `cash_rounding_total` → `rounding_total`; nueva `sales.rounding_multiple` (múltiplo vigente al vender). Sigue siendo propuesta |
-| 0.7.0 | 2026-11-16 | **Propuesta** (§16): descuentos por cantidad (cada 6 unidades 5 %, editable en la caja, todos los productos) con columnas aditivas en `sales_settings`, `sale_items` y `sales`, `register_sale` con `discount_percent` opcional y código `INVALID_DISCOUNT`; vistas `v_sales_daily` y `v_sales_daily_payments` para las finanzas del dashboard. Preguntas P-41 a P-43. No se implementa hasta resolverlas |
+| 0.7.0 | 2026-11-16 | **Propuesta** (§16): descuentos por cantidad (cada 6 unidades 5 %, editable en la caja, todos los productos) con columnas aditivas en `sales_settings`, `sale_items` y `sales`, `register_sale` con `discount_percent` opcional y código `INVALID_DISCOUNT`; vistas `v_sales_daily` y `v_sales_daily_payments` para las finanzas del dashboard. Preguntas P-41 a P-43; P-41 (tope 30 %) y P-42 (el cajero también puede subirlo) decididas por efacelli el mismo día |
 
 ---
 
@@ -1652,7 +1652,7 @@ proyecto real, backup verificado (`docs/DEPLOY.md` §7).
 
 ## 16. Descuentos por cantidad y métricas de ventas (PROPUESTA v0.7.0)
 
-> **Propuesta.** No se implementa hasta que `efacelli` resuelva P-41 a P-43 y el
+> **Propuesta.** P-41 y P-42 decididas; falta P-43 (la define `ChinoNader18`) y que el
 > backend la acepte. Reemplaza lo que P-28 dejaba "fuera de v0.6.x".
 
 ### 16.1 Regla de negocio (decisión de `efacelli`, 2026-11-16)
@@ -1663,7 +1663,7 @@ proyecto real, backup verificado (`docs/DEPLOY.md` §7).
 - Aplica a **todos los productos** (no hay lista de excluidos).
 - Es una **sugerencia**: quien está en la caja (cualquier usuario activo, también el
   empleado) puede **cambiar el porcentaje de cada línea o quitarlo**, igual que el
-  redondeo (P-30). La base guarda lo sugerido y lo aplicado.
+  redondeo (P-30): puede **bajarlo, quitarlo o subirlo**, siempre hasta el tope de **30 %** (P-41, P-42). La base guarda lo sugerido y lo aplicado.
 - El descuento se aplica **antes** del redondeo del total: se redondea lo que queda
   después de descontar.
 
@@ -1676,7 +1676,7 @@ con los valores de la decisión):
 |---|---|---|---|---|
 | `quantity_discount_step` | `integer` | no | `6` | `CHECK (> 0)`. Cada cuántas unidades sube el descuento |
 | `quantity_discount_percent` | `numeric(5,2)` | no | `5` | `CHECK (>= 0 AND <= 100)`. Cuánto sube por cada escalón |
-| `quantity_discount_max_percent` | `numeric(5,2)` | no | **P-41** | `CHECK (>= 0 AND <= 100)`. Tope del descuento por línea (sugerido y editado) |
+| `quantity_discount_max_percent` | `numeric(5,2)` | no | `30` | `CHECK (>= 0 AND <= 100)`. Tope del descuento por línea: limita el sugerido y lo que escribe el cajero (P-41) |
 
 `sale_items` (§15.3.5), columnas nuevas. Las filas ya existentes quedan con
 `list_line_total = line_total` y descuentos en 0 (backfill en la misma migración):
@@ -1739,13 +1739,13 @@ Hasta que existan, el dashboard grafica con `v_cash_session_summary` y
 
 | # | Pregunta | Estado |
 |---|---|---|
-| P-41 | ¿Hay un **tope** al descuento por línea? Con la regla tal cual, 120 unidades darían 100 %. Propuesta: un tope configurable (por ejemplo 30 %) que también limita lo que escribe el cajero | **Pendiente (efacelli)** |
-| P-42 | ¿El cajero puede **subir** el descuento por encima del sugerido (hasta el tope) o solo bajarlo / quitarlo? | **Pendiente (efacelli)** |
-| P-43 | Productos por **kg o litro** (cantidades con decimales): ¿"6 unidades" son 6 kg, o el descuento solo aplica a los que se venden por unidad? | **Pendiente (efacelli)** |
+| P-41 | ¿Hay un **tope** al descuento por línea? Con la regla tal cual, 120 unidades darían 100 % | **Decidida (efacelli):** tope de **30 %** por línea, configurable en `sales_settings.quantity_discount_max_percent`; limita el sugerido (36 unidades o más → 30 %) y lo que escribe el cajero | Adoptada |
+| P-42 | ¿El cajero puede **subir** el descuento por encima del sugerido (hasta el tope) o solo bajarlo / quitarlo? | **Decidida (efacelli):** puede bajarlo, quitarlo **y subirlo**, entre 0 y el tope, en cualquier línea (también en una que no tenía sugerido) | Adoptada |
+| P-43 | Productos por **kg o litro** (cantidades con decimales): ¿"6 unidades" son 6 kg, o el descuento solo aplica a los que se venden por unidad? | **Pendiente (`ChinoNader18`, a pedido de efacelli)** |
 
 ### 16.6 Pruebas que se exigirán
 
-Sugerido en 5, 6, 11, 12, 18 unidades y con tope; editado a 0, a un valor válido y
+Sugerido en 5, 6, 11, 12, 18, 36 y 60 unidades (tope 30 %); editado hacia arriba hasta 30 %; editado a 0, a un valor válido y
 fuera de rango (`INVALID_DISCOUNT`); líneas repetidas con porcentajes distintos;
 `line_total + discount_amount = list_line_total`; invariantes de §15 intactos
 (`Σ line_total = total_amount`, `Σ pagos = total + redondeo`); idempotencia con y sin
