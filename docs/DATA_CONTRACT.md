@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.6.2 (propuesta de la §15; lo demás sigue en 0.5.2) |
+| Versión | 0.6.3 (propuesta de la §15; lo demás sigue en 0.5.2) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos. **Propuesta:** ventas y caja (§15, sin implementar) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -1100,14 +1100,17 @@ volver a registrar la concordancia.
 | 0.6.0 | 2026-11-15 | **Propuesta** de Etapa 5, Ventas y caja (§15): `payment_methods`, `cash_registers`, `cash_sessions`, `sales`, `sale_items`, `sale_payments`, `stock_movements.sale_item_id` y tipo `sale`; RPC `open_cash_session`, `close_cash_session`, `register_sale` (FEFO, idempotente, una sola vez) y `void_sale`; preguntas P-27 a P-38. No se implementa hasta aprobarla |
 | 0.6.1 | 2026-11-15 | Decisiones de `efacelli` sobre la propuesta de la §15: P-27 (ticket interno, no es factura), P-30 (redondeo del efectivo a la centena más cercana; `sales.cash_rounding`, `sales_settings.cash_rounding_multiple`, invariante `Σ amount = total_amount + cash_rounding`), P-36 (sin stock negativo; se carga el inventario antes) y aceptación de P-28, P-29, P-31 a P-35, P-37 y P-38. Nuevas preguntas P-39 y P-40. Sigue siendo propuesta |
 | 0.6.2 | 2026-11-15 | Precisiones surgidas al implementar la §15 en local (migraciones y pruebas listas, sin PR): código `PRODUCT_PRICE_INVALID`; importes con hasta 2 decimales (tolerancia de coma flotante del cliente); qué cuentan las vistas de caja para el empleado; idempotencia de `void_sale`; y aviso al frontend: agregar `sale` a `MovementType` al regenerar tipos. Sigue siendo propuesta |
+| 0.6.3 | 2026-11-16 | Decisiones nuevas de `efacelli`: **P-30 cambia** (se redondea el total de la venta con cualquier medio de pago; el monto es una sugerencia que el cajero puede cambiar y la base solo exige un límite), **P-39 decidida** (menos de la mitad del múltiplo se cobra exacto; desaparece `CASH_AMOUNT_TOO_SMALL`) y P-40 de acuerdo. Renombres: `sales.cash_rounding` → `sales.rounding_amount`, `sales_settings.cash_rounding_multiple` → `rounding_multiple`, vista `cash_rounding_total` → `rounding_total`; nueva `sales.rounding_multiple` (múltiplo vigente al vender). Sigue siendo propuesta |
 
 ---
 
-## 15. Etapa 5 — Ventas y caja (PROPUESTA v0.6.2)
+## 15. Etapa 5 — Ventas y caja (PROPUESTA v0.6.3)
 
-> **Estado: PROPUESTA con las decisiones de `efacelli` del 2026-11-15 (P-27 a
-> P-38, §15.9).** Las migraciones se escriben recién cuando `efacelli` apruebe
-> este PR y se prueban primero en staging. Quedan abiertas solo P-39 y P-40.
+> **Estado: PROPUESTA con las decisiones de `efacelli` (P-27 a P-40, §15.9; la
+> última sobre el redondeo es del 2026-11-16).** No quedan preguntas abiertas.
+> Las migraciones ya están escritas y probadas en local (PR de implementación,
+> en borrador sobre este); se fusionan después de este PR y pasan primero por
+> staging.
 > Todo lo vigente de las secciones 1 a 14 sigue igual. Esta sección solo agrega.
 > Fuentes: respuestas 38 a 43 del relevamiento (2 cajas a la vez; efectivo,
 > débito, crédito, QR y transferencia; cuenta corriente y descuentos por
@@ -1244,7 +1247,8 @@ hacen el encargado y el dueño (una caja nueva es una fila). No se borran.
 | `total_amount` | `numeric(12,2)` | no | — | `CHECK (total_amount > 0)`. Suma de `sale_items.line_total` |
 | `net_amount` | `numeric(12,2)` | no | — | Suma de netos de los ítems (sin IVA) |
 | `vat_amount` | `numeric(12,2)` | no | — | Suma del IVA de los ítems. `CHECK (net_amount + vat_amount = total_amount)` |
-| `cash_rounding` | `numeric(12,2)` | no | `0` | v0.6.1 (P-30). Lo que el redondeo agregó (+) o descontó (−) a la parte pagada en efectivo: `amount` del efectivo `− cash_due` (§15.6). Es 0 si no hubo pago en efectivo. **No cambia** `total_amount` ni los ítems |
+| `rounding_amount` | `numeric(12,2)` | no | `0` | v0.6.3 (P-30). `Σ amount de los pagos − total_amount`: lo que el redondeo agregó (+) o descontó (−) al total. La caja sugiere el total redondeado y el cajero puede cambiarlo; la base no exige un valor, solo el límite `CHECK (abs(rounding_amount) < rounding_multiple)`. **No cambia** `total_amount` ni los ítems |
+| `rounding_multiple` | `numeric(12,2)` | no | — | Múltiplo de `sales_settings` vigente al vender (copia). `CHECK (rounding_multiple > 0)`. Deja el límite del redondeo verificable en la propia fila aunque después cambie la configuración |
 | `notes` | `text` | sí | — | — |
 | `created_at` | `timestamptz` | no | `now()` | Momento de la venta; no lo fija el cliente |
 | `created_by` | `uuid` | no | `auth.uid()` | FK → `profiles.id`. Quién vendió |
@@ -1290,43 +1294,29 @@ etapa 6.
 | `tendered_amount` | `numeric(12,2)` | sí | — | Solo efectivo: lo que entregó el cliente. `CHECK (tendered_amount IS NULL OR tendered_amount >= amount)`. Vuelto = `tendered_amount − amount` |
 | `reference` | `text` | sí | — | Referencia opcional (últimos dígitos, n.º de operación). **Nunca el número de tarjeta completo ni datos sensibles** |
 
-Inmutable. `UNIQUE (sale_id, payment_method_id)`. **Invariante (v0.6.1):** la
-suma de `amount` de una venta es igual a `sales.total_amount + sales.cash_rounding`
+Inmutable. `UNIQUE (sale_id, payment_method_id)`. **Invariante (v0.6.3):** la
+suma de `amount` de una venta es igual a `sales.total_amount + sales.rounding_amount`
 (lo valida la RPC y un *constraint trigger* diferido, como el del ledger, §3).
-El `amount` del efectivo es lo que **entra de verdad en la caja**, ya redondeado. Solo el efectivo puede
-tener `tendered_amount` (lo valida la RPC por `payment_methods.is_cash`).
-
-#### 15.3.7 Cambios a `stock_movements`
-
-Columna nueva, nulable, sin afectar filas existentes:
-
-| Columna | Tipo | Null | Notas |
-|---|---|---|---|
-| `sale_item_id` | `uuid` | sí | FK → `sale_items.id` (`RESTRICT`). Origen del movimiento de venta. Índice `stock_movements_sale_item_id_idx` |
-
-Índice único parcial `stock_movements_sale_item_batch_key` sobre
-`(sale_item_id, batch_id) WHERE movement_type = 'sale'`: aunque hubiera un
-error en la RPC, la base **no permite descontar dos veces el mismo ítem del
-mismo lote**. Es la forma concreta de "una venta descuenta stock una sola vez"
-que §5.7 dejaba anotada.
+El `amount` del efectivo es lo que **entra de verdad en la caja**. Solo el efectivo
+puede tener `tendered_amount` (lo valida la RPC por `payment_methods.is_cash`).
 
 #### 15.3.8 `sales_settings` (v0.6.1)
 
 Configuración de ventas: **una sola fila**, igual que la fila general de alertas
-(§5.9). Hoy guarda solo el múltiplo del redondeo del efectivo (P-30).
+(§5.9). Hoy guarda solo el múltiplo del redondeo del total de la venta (P-30).
 
 | Columna | Tipo | Null | Default | Restricciones / notas |
 |---|---|---|---|---|
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
-| `cash_rounding_multiple` | `numeric(12,2)` | no | `100` | `CHECK (cash_rounding_multiple > 0)`. Múltiplo al que se redondea el efectivo (centena más cercana; desde la mitad sube) |
+| `rounding_multiple` | `numeric(12,2)` | no | `100` | `CHECK (rounding_multiple > 0)`. Múltiplo del redondeo del total (centena más cercana; desde la mitad sube; menos de la mitad se cobra exacto) |
 | columnas comunes | | | | §2.5 |
 
 - Fila única: índice `sales_settings_singleton_key` sobre `((true))`. La migración
   la crea con `100`; no se borra.
 - La lee cualquier usuario activo (el frontend la usa para mostrar el redondeo);
   la edita el encargado o el dueño. Los cambios quedan en `audit_log`.
-- El cambio rige para las ventas **nuevas**: cada venta guarda su `cash_rounding`
-  ya calculado, así que las anteriores no se modifican.
+- El cambio rige para las ventas **nuevas**: cada venta guarda su `rounding_amount`
+  y el múltiplo con que se vendió (`rounding_multiple`), así que las anteriores no se modifican.
 
 ### 15.4 Relaciones
 
@@ -1353,7 +1343,7 @@ el arqueo):
 | `sales_total` | `numeric(12,2)` | Suma de `total_amount` de las `completed` |
 | `voided_count` | `integer` | Ventas anuladas |
 | `cash_collected` | `numeric(12,2)` | Suma de `amount` de pagos en efectivo de ventas `completed` (ya con el redondeo: lo que entró de verdad en la caja) |
-| `cash_rounding_total` | `numeric(12,2)` | Suma de `cash_rounding` de las ventas `completed` (v0.6.1). Explica la diferencia entre ventas y efectivo |
+| `rounding_total` | `numeric(12,2)` | Suma de `rounding_amount` de las ventas `completed` (v0.6.3, todos los medios de pago). Explica la diferencia entre el valor de las ventas y lo cobrado |
 | `expected_cash` | `numeric(12,2)` | Abierta: `opening_amount + cash_collected` calculado en vivo. Cerrada: el valor guardado |
 | `counted_cash`, `difference` | `numeric(12,2)` | Solo cerrada |
 
@@ -1371,10 +1361,10 @@ incluido porque se suma el `amount` del efectivo, no el valor de los ítems.
 Para el empleado, `sales_count`, `sales_total` y `voided_count` cuentan **solo sus ventas** (la
 RLS de `sales` es por vendedor, P-34); el encargado y el dueño ven los totales de la sesión.
 Una sesión **cerrada** que abrió el propio empleado le muestra `expected_cash`, `counted_cash` y
-`difference`; `cash_collected` y `cash_rounding_total` son solo del encargado y el dueño.
+`difference`; `cash_collected` y `rounding_total` son solo del encargado y el dueño.
 
 **Arqueo a ciegas (P-40):** para el empleado, mientras la sesión está abierta,
-`expected_cash`, `cash_collected`, `cash_rounding_total`, `counted_cash` y
+`expected_cash`, `cash_collected`, `rounding_total`, `counted_cash` y
 `difference` vienen `NULL`; el encargado y el dueño ven todo. Al cerrar, la RPC
 devuelve la diferencia a quien cerró (§15.6).
 
@@ -1455,28 +1445,27 @@ En una transacción, en este orden:
    `operation_key = sales.id` y su propio `idempotency_key` generado por la
    base. Si el stock vendible no alcanza → `INSUFFICIENT_STOCK` (con el
    producto en `DETAIL`) y **no se registra nada** (P-36).
-6. **Pagos y redondeo del efectivo (P-30).** El frontend manda el `amount` del
-   efectivo ya redondeado y la base **lo recalcula y lo exige** (la RPC no
-   recibe parámetros nuevos):
-   1. Cada medio debe existir y estar activo (`PAYMENT_METHOD_INVALID`) y cada
-      `amount` ser > 0 (`INVALID_PAYMENT`).
-   2. `cash_due = total_amount − Σ amount` de los pagos que **no** son efectivo.
-      Sin pago en efectivo, `cash_due` tiene que ser exactamente 0
-      (`PAYMENT_MISMATCH`). Con pago en efectivo y `cash_due <= 0` →
-      `PAYMENT_MISMATCH`.
-   3. El `amount` del efectivo tiene que ser
-      `private.round_cash(cash_due, sales_settings.cash_rounding_multiple)`, con
-      `round_cash(x, m) = floor(x / m + 0.5) * m` en `numeric` exacto: **centena
-      más cercana, y desde la mitad sube**. 1.237 → 1.200; 1.249 → 1.200;
-      1.250 → 1.300; 1.280 → 1.300; 1.200 → 1.200. Si no coincide →
-      `PAYMENT_MISMATCH`.
-   4. Si `cash_due > 0` pero se redondea a 0 (menos de la mitad del múltiplo:
-      menos de $50) → `CASH_AMOUNT_TOO_SMALL`: esa parte tiene que pagarse con
-      otro medio (P-39, a confirmar).
-   5. Se guarda `sales.cash_rounding = amount del efectivo − cash_due` (0 si no
-      hubo efectivo). Invariante: `Σ amount = total_amount + cash_rounding`.
-   6. `tendered_amount` solo en efectivo y ≥ `amount` (`INVALID_PAYMENT`); el
+6. **Pagos y redondeo del total (P-30).** La caja **sugiere** el total redondeado
+   (`round_cash`, abajo) y el cajero puede cambiar el monto a cobrar. La base **no
+   exige** el valor sugerido; solo valida (la RPC no recibe parámetros nuevos):
+   1. Cada medio debe existir y estar activo (`PAYMENT_METHOD_INVALID`), cada
+      `amount` ser > 0 y no repetirse el medio (`INVALID_PAYMENT`).
+   2. `tendered_amount` solo en efectivo y ≥ `amount` (`INVALID_PAYMENT`); el
       vuelto es `tendered_amount − amount`.
+   3. `rounding_amount = Σ amount − total_amount` tiene que cumplir
+      `abs(rounding_amount) < sales_settings.rounding_multiple`; si no, →
+      `PAYMENT_MISMATCH`. Rige para **cualquier medio** de pago (efectivo,
+      débito, crédito, QR o transferencia, solos o combinados).
+   4. Se guarda `sales.rounding_amount` y `sales.rounding_multiple` (el vigente).
+      Invariante: `Σ amount = total_amount + rounding_amount`.
+
+   **Monto sugerido:** `private.round_cash(x, m)` = `x` si `x < m / 2` (se cobra
+   exacto, P-39); si no, `floor(x / m + 0.5) * m` en `numeric` exacto: **múltiplo
+   más cercano, y desde la mitad sube**. Con `m = 100`: 1.237 → 1.200; 1.249 →
+   1.200; 1.250 → 1.300; 1.280 → 1.300; 1.200 → 1.200; 49,99 → 49,99; 30 → 30.
+   El frontend aplica la misma regla; las pruebas de la base la fijan para que no
+   diverjan. Con un solo medio, ese medio paga todo el monto a cobrar; si se
+   combinan, el efectivo cubre lo que falta (eso lo arma el frontend).
 7. **Guarda** `sales`, `sale_items` y `sale_payments` y devuelve la fila de
    `sales`. El frontend lee ítems y pagos con un `select` embebido.
 
@@ -1523,7 +1512,7 @@ vencido o un producto inactivo (igual que §8.3: corregir tiene que ser posible)
 | `open_cash_session`, `register_sale` | sí | sí | `NOT_AUTHORIZED` |
 | `close_cash_session` | solo la que abrió | cualquiera | `NOT_AUTHORIZED` |
 | `void_sale` | no (`NOT_AUTHORIZED`) | sí | `NOT_AUTHORIZED` |
-| `v_cash_session_summary` | las abiertas y las suyas, **sin** `expected_cash`, `cash_collected`, `cash_rounding_total`, `counted_cash` ni `difference` mientras están abiertas (P-40) | todas, con todo | sin filas |
+| `v_cash_session_summary` | las abiertas y las suyas, **sin** `expected_cash`, `cash_collected`, `rounding_total`, `counted_cash` ni `difference` mientras están abiertas (P-40) | todas, con todo | sin filas |
 | `v_cash_session_payments` | las de sus propias sesiones | todas | sin filas |
 
 - `anon`: sin acceso a ninguna tabla, vista ni función nueva. Se agregan a la
@@ -1562,8 +1551,7 @@ Se suman a §8.6:
 | `CASH_SESSION_CLOSED` | Vender, cerrar de nuevo o anular en una sesión ya cerrada |
 | `EMPTY_SALE` | Venta sin ítems |
 | `PAYMENT_METHOD_INVALID` | Medio de pago inexistente o inactivo |
-| `PAYMENT_MISMATCH` | Los pagos no cierran: el efectivo no es el redondeo exigido de lo que falta (§15.6, paso 6), o sobra/falta importe sin pago en efectivo |
-| `CASH_AMOUNT_TOO_SMALL` | Lo que falta cobrar en efectivo se redondea a 0 (menos de la mitad del múltiplo): hay que pagarlo con otro medio (P-39) |
+| `PAYMENT_MISMATCH` | La diferencia entre lo cobrado y el total llega a un múltiplo del redondeo (`abs(Σ amount − total) >= rounding_multiple`, §15.6 paso 6), o no hay pagos |
 | `INVALID_PAYMENT` | Importe de pago ≤ 0, o entregado menor al importe, o entregado en un medio que no es efectivo |
 | `INVALID_AMOUNT` | Monto de apertura o conteo negativo o con más de 2 decimales |
 | `PRODUCT_PRICE_INVALID` | El producto tiene precio 0: no se puede vender |
@@ -1574,15 +1562,15 @@ Reutiliza: `NOT_AUTHORIZED`, `PRODUCT_NOT_FOUND`, `PRODUCT_INACTIVE`,
 `INVALID_QUANTITY`, `INSUFFICIENT_STOCK`, `REASON_REQUIRED`,
 `IDEMPOTENCY_CONFLICT`, `INVALID_MOVEMENT_TYPE`.
 
-**Preguntas** (P-27 a P-38: decisiones de `efacelli` del 2026-11-15, en el PR de esta
-propuesta; P-39 y P-40 siguen abiertas):
+**Preguntas** (P-27 a P-40: decisiones de `efacelli`, en el PR de esta
+propuesta; todas resueltas):
 
 | # | Pregunta | Decisión | Estado |
 |---|---|---|---|
 | P-27 | ¿Se emite factura ARCA en cada venta? | La caja emite un **ticket interno no fiscal** que dice "NO VÁLIDO COMO FACTURA"; el súper sigue facturando con su sistema actual. La factura electrónica desde Zahuy se diseña en la etapa 6 con el contador | Adoptada |
 | P-28 | Descuentos por cantidad (cada 6 = 5 %, 12 = 10 %, 18 = 15 %) | Fuera de v0.6.x. Se agregarán columnas de descuento por ítem y una tabla de reglas; el empleado podrá quitarlo. Hay que definir a qué productos aplica | Adoptada |
 | P-29 | Cuenta corriente y clientes | Fuera de v0.6.x. Se reserva un medio de pago `account` y `sales.customer_id` nulable para esa etapa | Adoptada |
-| P-30 | Redondeo del efectivo | Solo la parte pagada en efectivo se redondea a la **centena más cercana** (desde la mitad sube: 1.237 → 1.200, 1.250 → 1.300). La diferencia queda en `sales.cash_rounding` (puede ser + o −) y el múltiplo es configurable (`sales_settings`, §15.3.8). Se envía el `amount` ya redondeado y la base lo exige (§15.6, paso 6). Invariante `Σ amount = total_amount + cash_rounding`. El arqueo suma lo que entró de verdad | Adoptada |
+| P-30 | Redondeo del total | **Cambió el 2026-11-16.** Se redondea **el total de la venta con cualquier medio de pago** a la centena más cercana (desde la mitad sube: 1.237 → 1.200, 1.250 → 1.300); con menos de $50 se cobra exacto. El monto redondeado es una **sugerencia**: el cajero puede cambiarlo, por ejemplo para volver al total exacto. La base no exige el valor sugerido, solo el límite `abs(rounding_amount) < rounding_multiple` (`PAYMENT_MISMATCH`). Columnas: `sales.rounding_amount` (= Σ pagos − total, ± ) y `sales.rounding_multiple`; configuración `sales_settings.rounding_multiple` (§15.3.8). El arqueo suma lo que entró de verdad en efectivo | Adoptada |
 | P-31 | Retiros y aportes de efectivo durante el turno; arqueo que no cierra | Sin retiros en v0.6.x; la diferencia se guarda y el encargado la ve. Una sesión cerrada no se reabre | Adoptada |
 | P-32 | ¿Se puede anular una venta de un turno ya cerrado? | No: solo con la sesión abierta. Después, devolución (etapa posterior) | Adoptada |
 | P-33 | ¿Una caja la usa una sola persona por turno o se comparte? | Cualquier usuario activo vende en cualquier sesión abierta; cada venta registra quién vendió | Adoptada |
@@ -1591,8 +1579,8 @@ propuesta; P-39 y P-40 siguen abiertas):
 | P-36 | Vender producto sin stock registrado | Se mantiene **sin stock negativo** (`INSUFFICIENT_STOCK`). Antes de usar la caja, el súper carga el stock real (inventario inicial con el lector). No hay excepción | Adoptada |
 | P-37 | Tickets e impresión | Del frontend; el contrato aporta `sale_number`, ítems, pagos y vuelto | Adoptada |
 | P-38 | ¿Se vende de lotes vencidos? | No: los lotes vencidos no se venden (P-15) | Adoptada |
-| P-39 | Una compra de menos de la mitad del múltiplo (menos de $50) pagada en efectivo daría $0 | Propuesta: la base responde `CASH_AMOUNT_TOO_SMALL` y esa parte se paga con otro medio (el frontend ya lo hace así). Alternativas: cobrar el mínimo de $100 o permitir el cobro exacto de lo pequeño. Decide el negocio | Abierta |
-| P-40 | Arqueo a ciegas: el frontend no muestra lo esperado al cerrar, pero con la API el empleado podría consultarlo | Propuesta del backend: la base no se lo entrega al empleado mientras la sesión está abierta (§15.5, §15.7), aunque sí le permite ver las sesiones abiertas para vender (P-33). El encargado y el dueño ven todo | Abierta |
+| P-39 | Una compra de menos de la mitad del múltiplo (menos de $50) | **Decidida (efacelli):** se cobra exacta, sin redondear ($30 → $30, $49,99 → $49,99). Desde $50 rige la centena más cercana. Desaparece `CASH_AMOUNT_TOO_SMALL` | Adoptada |
+| P-40 | Arqueo a ciegas: el frontend no muestra lo esperado al cerrar, pero con la API el empleado podría consultarlo | La base no se lo entrega al empleado mientras la sesión está abierta (§15.5, §15.7), aunque sí le permite ver las sesiones abiertas para vender (P-33). El encargado y el dueño ven todo. `efacelli` de acuerdo; el frontend trata `NULL` como "sin dato" | Adoptada |
 
 ### 15.10 Pruebas que se exigirán al implementar (se suman a §12)
 
@@ -1607,16 +1595,16 @@ propuesta; P-39 y P-40 siguen abiertas):
 - Pagos: suma distinta del total → `PAYMENT_MISMATCH`; efectivo con vuelto;
   `tendered_amount` en tarjeta → `INVALID_PAYMENT`; medio inactivo →
   `PAYMENT_METHOD_INVALID`; pago mixto efectivo + QR.
-- Redondeo del efectivo (P-30), con múltiplo 100: total 1.237 en efectivo → `amount`
-  1.200 y `cash_rounding` −37; 1.249 → 1.200 (−49); 1.250 → 1.300 (+50);
-  1.280 → 1.300 (+20); 1.200 → 1.200 (0). Pago mixto: el redondeo aplica solo a
-  lo que falta tras los pagos no efectivo. Un `amount` de efectivo distinto del
-  exigido → `PAYMENT_MISMATCH`; efectivo con `cash_due <= 0` →
-  `PAYMENT_MISMATCH`; sin efectivo y pagos que no suman el total →
-  `PAYMENT_MISMATCH`; `cash_due` de $30 en efectivo → `CASH_AMOUNT_TOO_SMALL`.
-  Cambiar `cash_rounding_multiple` no modifica ventas anteriores. Invariante
-  `Σ amount = total_amount + cash_rounding` en toda venta; el arqueo suma el
-  `amount` del efectivo (con redondeo).
+- Redondeo del total (P-30), con múltiplo 100: la base **acepta** cobrar el sugerido
+  (1.237 → 1.200, `rounding_amount` −37; 1.250 → 1.300, +50; 49,99 → 49,99, 0) y
+  cualquier otro monto cuya diferencia con el total sea menor que 100 (el cajero
+  puede volver al total exacto); rechaza con `PAYMENT_MISMATCH` una diferencia de
+  100 o más, hacia arriba o hacia abajo, con cualquier medio de pago; el límite
+  también está en la fila (`CHECK`). `round_cash` devuelve lo mismo que el
+  frontend. Cambiar `rounding_multiple` cambia el límite de las ventas nuevas y no
+  modifica las anteriores (cada venta guarda el suyo). Invariante
+  `Σ amount = total_amount + rounding_amount` en toda venta; el arqueo suma el
+  `amount` del efectivo.
 - Arqueo a ciegas (P-40): el empleado ve las sesiones abiertas pero
   `expected_cash` y compañía vienen `NULL`; el encargado los ve; al cerrar, el
   cálculo no depende de lo que vea quien cierra.
