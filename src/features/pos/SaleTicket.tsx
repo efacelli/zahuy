@@ -2,6 +2,7 @@ import { Button } from '../../components/ui/Button'
 import { Modal } from '../../components/ui/Modal'
 import { formatMoney } from '../../lib/format'
 import type { CompletedSale } from './PaymentDialog'
+import { PrintTicketButton } from './PrintTicketButton'
 import { TicketBody } from './TicketBody'
 import styles from './Pos.module.css'
 
@@ -14,7 +15,7 @@ export function SaleTicket({ sale, registerName, onNext }: { sale: CompletedSale
       onClose={onNext}
       footer={
         <>
-          <Button onClick={() => window.print()}>Imprimir ticket</Button>
+          <PrintTicketButton />
           <Button variant="primary" onClick={onNext}>
             Nueva venta
           </Button>
