@@ -20,12 +20,13 @@ import { usePermissions } from '../auth/useProfile'
 import { fetchMovementHistory, type MovementHistoryRow } from '../movements/movements-api'
 import { BoxCountDialog } from './BoxCountDialog'
 import { fetchProductSummary } from './list-api'
+import { PriceHistorySection } from './PriceHistorySection'
 import styles from './ProductDetail.module.css'
 
 type BatchColumn = 'batch' | 'received' | 'expiry' | 'available'
 type MovementColumn = 'date' | 'type' | 'quantity' | 'batch' | 'reason' | 'author'
 
-/** Ficha del producto: datos, stock con desglose, lotes y últimos movimientos. */
+/** Ficha del producto: datos, stock con desglose, lotes, últimos movimientos e historial de precios. */
 export function ProductDetailPage() {
   const { id = '' } = useParams()
   const client = useSupabase()
@@ -177,6 +178,8 @@ export function ProductDetailPage() {
           <Link to="/movimientos">Movimientos</Link>.
         </p>
       )}
+
+      {permissions.manageInventory && <PriceHistorySection productId={p.id} productName={p.name} vatRate={p.vat_rate} />}
 
       <BoxCountDialog product={editingBoxes ? p : null} onClose={() => setEditingBoxes(false)} />
     </>

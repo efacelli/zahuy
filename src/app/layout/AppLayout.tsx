@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router'
 import logoMark from '../../assets/brand/zahuy-logo-mark.png'
 import { Icon } from '../../components/ui/Icon'
+import { LoadingState } from '../../components/ui/States'
 import { UserMenu } from '../../features/auth/UserMenu'
 import { BarcodeScanListener } from '../../features/barcode/BarcodeScanListener'
 import { NAV_ITEMS } from '../navigation'
@@ -57,7 +58,9 @@ export function AppLayout() {
           <UserMenu />
         </header>
         <main id="main" className={styles.content} tabIndex={-1}>
-          <Outlet />
+          <Suspense fallback={<LoadingState label="Cargando pantalla…" />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

@@ -220,3 +220,51 @@ describe('edición del producto', () => {
     expect(await screen.findByText('No tenés permiso para esta sección')).toBeInTheDocument()
   })
 })
+
+describe('historial de precios en la ficha', () => {
+  it('el encargado ve los cambios con precio final, origen y usuario', async () => {
+    const { fake } = setup('manager')
+    fake.setTable('price_history', [
+      {
+        id: 'h1',
+        product_id: ID,
+        changed_at: '2026-11-16T15:00:00Z',
+        old_sale_price: 1000,
+        new_sale_price: 1080,
+        old_cost_price: 450.5,
+        new_cost_price: 450.5,
+        source: 'bulk_increase',
+        reason: 'Lista noviembre',
+        author: { full_name: 'Encargado de prueba' },
+      },
+    ])
+    const table = await screen.findByRole('table', { name: 'Cambios de precio de Yogur frutilla 190 g' })
+    expect(within(table).getByText('Aumento masivo')).toBeInTheDocument()
+    expect(within(table).getByText('Lista noviembre')).toBeInTheDocument()
+    expect(within(table).getByText('Encargado de prueba')).toBeInTheDocument()
+    // 1000 y 1080 sin IVA → 1210 y 1306,80 con IVA 21 %.
+    expect(within(table).getByText('$ 1.306,80', { exact: false })).toBeInTheDocument()
+    expect(within(table).getByText(/\+8 %/)).toBeInTheDocument()
+    expect(within(table).getByText('Sin cambio')).toBeInTheDocument()
+    const call = fake.from.mock.calls.find((c) => c[0] === 'price_history')
+    expect(call).toBeTruthy()
+  })
+
+  it('sin cambios muestra el estado vacío', async () => {
+    setup('manager')
+    expect(await screen.findByText('Sin cambios de precio')).toBeInTheDocument()
+  })
+
+  it('sin la migración avisa que no está habilitado', async () => {
+    const { fake } = setup('manager')
+    fake.setTable('price_history', null, { code: 'PGRST205', message: 'not found' })
+    expect(await screen.findByText('El historial de precios todavía no está habilitado en la base.')).toBeInTheDocument()
+  })
+
+  it('el empleado no ve el historial (incluye costos)', async () => {
+    const { fake } = setup('staff')
+    expect(await screen.findByRole('table', { name: 'Lotes de Yogur frutilla 190 g' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Historial de precios' })).not.toBeInTheDocument()
+    expect(fake.from.mock.calls.some((c) => c[0] === 'price_history')).toBe(false)
+  })
+})
