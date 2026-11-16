@@ -35,7 +35,8 @@ const SESSION = {
   opening_amount: 5000,
   sales_count: 0,
   sales_total: 0,
-  expected_cash: 5000,
+  // P-40: el empleado no ve lo esperado mientras la caja está abierta.
+  expected_cash: null,
 }
 
 function setup({ sessions = [SESSION] as unknown[] } = {}) {

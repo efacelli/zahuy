@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { DEFAULT_CASH_STEP } from '../../domain/cash-rounding'
 import type { CartProduct } from './cart'
 
 /*
@@ -21,7 +22,6 @@ export interface OpenSession {
   opening_amount: number
   sales_count: number
   sales_total: number
-  expected_cash: number
 }
 
 export interface PaymentMethod {
@@ -67,7 +67,7 @@ export async function fetchCashRegisters(client: SupabaseClient): Promise<CashRe
 export async function fetchOpenSessions(client: SupabaseClient): Promise<OpenSession[]> {
   const { data, error } = await client
     .from('v_cash_session_summary')
-    .select('cash_session_id, cash_register_id, cash_register_name, opened_at, opening_amount, sales_count, sales_total, expected_cash')
+    .select('cash_session_id, cash_register_id, cash_register_name, opened_at, opening_amount, sales_count, sales_total')
     .eq('status', 'open')
     .order('cash_register_name')
   if (error) throw error
@@ -75,8 +75,18 @@ export async function fetchOpenSessions(client: SupabaseClient): Promise<OpenSes
     ...s,
     opening_amount: Number(s.opening_amount),
     sales_total: Number(s.sales_total),
-    expected_cash: Number(s.expected_cash),
   }))
+}
+
+/**
+ * Múltiplo del redondeo (`sales_settings`, una sola fila, propuesta §15). Si
+ * todavía no existe, se usa el de la decisión de efacelli ($100).
+ */
+export async function fetchRoundingMultiple(client: SupabaseClient): Promise<number> {
+  const { data, error } = await client.from('sales_settings').select('rounding_multiple').limit(1)
+  if (error) return DEFAULT_CASH_STEP
+  const value = Number(((data ?? []) as { rounding_multiple: number | string }[])[0]?.rounding_multiple)
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_CASH_STEP
 }
 
 export async function fetchPaymentMethods(client: SupabaseClient): Promise<PaymentMethod[]> {

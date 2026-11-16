@@ -3,13 +3,14 @@ import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { Icon } from '../../components/ui/Icon'
 import { Modal } from '../../components/ui/Modal'
+import { DEFAULT_CASH_STEP } from '../../domain/cash-rounding'
 import { formatMoney } from '../../lib/format'
 import { toAppError } from '../../lib/errors'
 import { useSupabase } from '../../lib/supabase-context'
 import type { CartLine } from './cart'
 import { lineTotal } from './cart'
 import { planPayments, type PaymentDraft } from './payment'
-import { fetchPaymentMethods, registerSale, type OpenSession, type PaymentMethod } from './pos-api'
+import { fetchPaymentMethods, fetchRoundingMultiple, registerSale, type OpenSession, type PaymentMethod } from './pos-api'
 import styles from './Pos.module.css'
 
 export interface CompletedSale {
@@ -53,7 +54,9 @@ export function PaymentDialog({
 
   const cash = methods.data?.find((m) => m.is_cash)
   const current = drafts ?? (cash ? [draftFor(cash)] : [])
-  const plan = planPayments(total, current, charged ?? '')
+  const multiple = useQuery({ queryKey: ['rounding-multiple'], queryFn: () => fetchRoundingMultiple(client), staleTime: 300_000 })
+  const step = multiple.data ?? DEFAULT_CASH_STEP
+  const plan = planPayments(total, current, charged ?? '', step)
   const single = current.length === 1
 
   const update = (methodId: string, patch: Partial<PaymentDraft>) =>
@@ -174,7 +177,7 @@ export function PaymentDialog({
           )}
         </span>
         <span id="pay-charged-hint" className={styles.chargedHint}>
-          Redondeado a la centena (menos de $50, exacto). Se puede cambiar si hace falta.
+          Redondeado a {formatMoney(step)} (menos de {formatMoney(step / 2)}, exacto). Se puede cambiar si hace falta.
         </span>
       </div>
 
