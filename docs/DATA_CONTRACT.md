@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.9.2 (convención de ruta de imágenes de productos, §5.5; propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
+| Versión | 0.10.0 (§20 importe manual para productos de balanza y líneas libres, aprobada para implementar; convención de ruta de imágenes de productos, §5.5; propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16); ranking de productos vendidos (§17); datos del comercio y aumentos de precios (§18 y §19, propuesta) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -1112,6 +1112,7 @@ volver a registrar la concordancia.
 | 0.9.0 | 2026-11-16 | **Propuesta** del backend (issue #68): §18 datos del comercio (`store_name`, `store_address`, `store_tax_id`, nulables, en `sales_settings`) y §19 historial de precios (`price_history`, solo-agregado, escrita por trigger) y aumentos masivos (`price_bulk_changes`, `preview_price_increase`, `apply_price_increase`, `revert_price_change`); errores nuevos y preguntas P-49 a P-54 (P-49, P-52 y P-53 dependen del cliente). P-50, P-51 y P-54 decididas por `efacelli` y ajustes de su revisión incorporados (filtro por producto, productos sin cambio, origen validado en el trigger, bloqueo ordenado, deshacer con inactivos). Quedan abiertas P-49, P-52 y P-53 (cliente). No se implementa hasta aprobarla |
 | 0.9.1 | 2026-11-16 | Cierre de las preguntas abiertas de la v0.9.0: P-49 (CUIT del ticket: opcional y por ahora sin cargar, a confirmar con el contador), P-52 (el aumento toca solo el precio de góndola, no costos) y P-53 (múltiplo del redondeo elegido en cada aumento, $10 por defecto en pantalla), decididas por `ChinoNader18` por delegación de `efacelli`. Sin cambios de esquema respecto de la v0.9.0 |
 | 0.9.2 | 2026-11-17 | Aclaración sin cambios de esquema: convención de ruta de las imágenes de productos en el bucket `product-images` (§5.5), que el contrato dejaba para cuando el frontend implementara la carga |
+| 0.10.0 | 2026-11-17 | **Propuesta** del frontend (§20): importe manual para productos pesados con etiqueta de balanza. Campo opcional `manual_line_total` en los ítems de `register_sale`, columnas aditivas `price_source` y `catalog_line_total` en `sale_items` y código `INVALID_MANUAL_PRICE`; líneas libres sin producto ni stock (§20.8, `INVALID_FREE_ITEM`). P-55 a P-60 decididas. Revisada y aprobada por `ChinoNader18` con sus precisiones: excepción explícita a §15.1, hash sin cambios cuando no hay campos nuevos, margen solo sobre líneas con costo y `free_net_total` en `v_sales_daily`, consistencia diferida sin las líneas libres |
 
 ---
 
@@ -2012,3 +2013,177 @@ correctos; la edición manual de precio o costo también deja fila; solo-agregad
 restaura solo lo que sigue igual (también productos desactivados después), informa los saltados, `ALREADY_REVERTED`, motivo obligatorio.
 Permisos: encargado, dueño y programador sí; empleado, inactivo y `anon` no. Migración sobre
 una base con productos y ventas previas: precios, ventas y huella de datos intactos.
+
+---
+
+## 20. Importe manual para productos de balanza y líneas libres (v0.10.0, aprobada)
+
+**Estado:** propuesta del frontend (`efacelli`), **aprobada por el backend (`ChinoNader18`,
+2026-11-17)**. La implementa el backend en una rama aparte, con pruebas y paso por staging.
+
+### 20.1 Para qué
+
+La balanza del comercio (Kretz Report NX) imprime etiquetas con código EAN-13 de peso
+variable: `20` + PLU (5 dígitos) + **peso en gramos** (5 dígitos) + dígito verificador.
+Ejemplo real: `2000005002458` → PLU 5, 0,245 kg. El comercio **no lleva una tabla de qué
+PLU es cada producto** y carga la balanza a mano, así que la etiqueta no sirve para saber
+qué producto es ni el precio por kilo que usó la balanza.
+
+Decisión de `efacelli` (2026-11-17): al cobrar, la caja toma el peso del código, el
+cajero **elige el producto** (solo los que se venden por kilo) y **escribe el importe**
+impreso en la etiqueta. Hoy `register_sale` no lo permite: el precio lo calcula siempre
+la base (§15.6, paso 4).
+
+**Excepción explícita al principio «el precio lo pone la base» (§15.1).** Este es el único
+lugar donde el cliente decide el importe. Queda acotado: solo `sale_unit = 'kg'` (y las
+líneas libres de §20.8), importe > 0 con 2 decimales, y la diferencia queda auditable
+(`price_source`, `catalog_line_total` y `sales.created_by`).
+
+Decisiones (`efacelli`, 2026-11-17): P-55 **cualquier usuario activo** puede hacerlo
+(queda quién vendió, como toda venta); P-56 la base **no limita** la diferencia con el
+precio de Zahuy (la caja **avisa** si difiere más de 20 %, sin bloquear); P-57 se permite
+**al escanear la etiqueta y también a mano** (peso e importe escritos) por si la etiqueta
+no se lee.
+
+### 20.2 `register_sale` (cambio compatible)
+
+Cada elemento de `p_items` admite un campo opcional nuevo:
+
+```
+{ "product_id": uuid, "quantity": number, "discount_percent": number|null,
+  "manual_line_total": number|null }
+```
+
+- Sin `manual_line_total` (o `null`) → todo igual que hoy. Las llamadas actuales siguen
+  funcionando.
+- Con valor → es el **importe con IVA de la línea**, tal como figura en la etiqueta:
+  - Solo para productos con `sale_unit = 'kg'`; si no → `INVALID_MANUAL_PRICE` (nuevo).
+  - Mayor que 0 y con hasta 2 decimales (mismo criterio de ruido de coma flotante que
+    los importes de §15.6); si no → `INVALID_AMOUNT`.
+  - No admite descuento por cantidad: `discount_percent` tiene que ser `null` o `0`; si no
+    → `INVALID_DISCOUNT`. (Con P-43 el sugerido de un producto por kilo ya es 0.)
+  - Líneas repetidas del mismo producto (dos etiquetas del mismo fiambre): se suman
+    cantidades **e importes**. Si unas traen `manual_line_total` y otras no →
+    `INVALID_MANUAL_PRICE` (la caja nunca lo arma así).
+- El `manual_line_total` entra en el `request_hash` **tal como lo envía el cliente**
+  (`null` si no lo manda), igual que `discount_percent` (§16.3). **Cuando ningún ítem lo trae,
+  el hash conserva exactamente el formato actual**, así un reintento de una venta hecha antes
+  de la migración no da un `IDEMPOTENCY_CONFLICT` falso.
+- Stock, FEFO, pagos, redondeo e idempotencia: sin cambios.
+
+### 20.3 Cambios de esquema en `sale_items` (aditivos)
+
+| Columna | Tipo | Null | Default | Notas |
+|---|---|---|---|---|
+| `price_source` | `text` | no | `'list'` | `CHECK (price_source IN ('list','manual'))`. Las filas existentes quedan en `'list'` |
+| `catalog_line_total` | `numeric(12,2)` | sí | — | Solo con `manual`: `round(quantity * products.sale_price_with_vat, 2)` en ese instante, para auditar la diferencia. `CHECK ((price_source = 'manual') = (catalog_line_total IS NOT NULL))` |
+
+Con `price_source = 'manual'`:
+- `list_line_total = line_total = manual_line_total` y `discount_amount = 0` (siguen
+  valiendo los `CHECK` de §16.2).
+- `unit_price_with_vat = round(line_total / quantity, 2)` (informativo; por el redondeo,
+  `quantity * unit_price_with_vat` puede diferir de `line_total` en centavos).
+- `net_amount` y `vat_amount` se calculan sobre `line_total`, igual que hoy.
+
+### 20.4 Lectura
+
+Las vistas y consultas de ventas no cambian. El frontend lee `price_source` y
+`catalog_line_total` con el `select` embebido de ítems para marcar en la venta y en el
+ticket las líneas con importe de etiqueta.
+
+### 20.5 Códigos de error nuevos
+
+`INVALID_MANUAL_PRICE`, `INVALID_FREE_ITEM` (§20.8).
+
+### 20.6 Preguntas
+
+| # | Pregunta | Estado |
+|---|---|---|
+| P-55 | ¿Quién puede cobrar con importe manual? | **Decidida (`efacelli`, 2026-11-17):** cualquier usuario activo | Adoptada |
+| P-56 | ¿La base limita la diferencia con el precio de Zahuy? | **Decidida (`efacelli`, 2026-11-17):** no; la caja avisa si difiere más de 20 % y deja cobrar. Queda `catalog_line_total` para auditar | Adoptada |
+| P-57 | ¿Solo al escanear la etiqueta o también a mano? | **Decidida (`efacelli`, 2026-11-17):** las dos; la base no distingue el origen | Adoptada |
+| P-58 | ¿Hace falta guardar el código escaneado (para detectar una etiqueta cobrada dos veces)? | **Decidida (`efacelli` y `ChinoNader18`, 2026-11-17):** no por ahora; la caja avisa si se escanea el mismo código dos veces en la misma venta. Agregar la columna después es trivial. Con esto, el `products.scale_plu` sugerido en el issue #68 ya no hace falta (el cajero elige el producto) | Adoptada |
+| P-59 | ¿Quién agrega líneas libres y qué escribe? | **Decidida (`efacelli`, 2026-11-17):** cualquier usuario activo, con descripción obligatoria | Adoptada |
+| P-60 | ¿Qué IVA lleva una línea libre? | **Decidida (`efacelli`, 2026-11-17):** el cajero elige 21 % o 10,5 %, 21 % por defecto | Adoptada |
+
+### 20.8 Líneas libres (productos que no están en el catálogo)
+
+Decisión de `efacelli` (2026-11-17): en la caja se puede cobrar algo que **no está cargado
+como producto** (por ejemplo, pan casero de un proveedor ocasional). Hoy no se puede: toda
+línea es un producto y descuenta stock de un lote.
+
+Una **línea libre** lleva descripción, IVA, cantidad e importe; **no descuenta stock** y
+no genera movimientos. Decisiones: P-59 la agrega **cualquier usuario activo**, con
+**descripción obligatoria**; P-60 el cajero elige **IVA 21 % o 10,5 %** (21 % por defecto),
+necesario para discriminarlo bien en una factura A.
+
+**`register_sale`:** un ítem sin `product_id` es una línea libre:
+
+```
+{ "product_id": null, "description": text, "vat_rate": 21 | 10.5,
+  "quantity": integer, "manual_line_total": number }
+```
+
+- `description`: 1 a 80 caracteres después de `trim`; `vat_rate` en (10.50, 21.00);
+  `quantity` entero ≥ 1; `manual_line_total` > 0 con hasta 2 decimales. Si no →
+  `INVALID_FREE_ITEM` (nuevo), salvo el importe, que sigue con `INVALID_AMOUNT`.
+- Sin descuento por cantidad (`discount_percent` `null` o `0`; si no → `INVALID_DISCOUNT`).
+- No se agrupan: cada línea libre queda como un ítem propio.
+- Entran en el `request_hash` con todos sus campos, en el orden en que se envían.
+
+**`sale_items`, cambios (aditivos o de relajar restricciones; las filas existentes no cambian):**
+
+- Quitar el `NOT NULL` de `product_id`, `product_sku` y `unit_cost_price` es solo un cambio de
+  metadatos; un `CHECK` asegura que esas tres **solo** pueden ser nulas con `price_source = 'free'`.
+
+- `price_source` admite además `'free'`: `CHECK (price_source IN ('list','manual','free'))`
+  y `CHECK ((price_source = 'free') = (product_id IS NULL))`.
+- `product_id`, `product_sku` y `unit_cost_price` pasan a **nulables**, solo para
+  `free` (sin costo conocido: no entra en el margen). `UNIQUE (sale_id, product_id)` sigue
+  valiendo para los productos (los `NULL` no chocan).
+- `product_name` guarda la descripción; `unit_price_with_vat = round(line_total / quantity, 2)`;
+  `list_line_total = line_total`, `discount_amount = 0`, `catalog_line_total` `NULL`.
+
+**Efectos en lo existente (revisados por `ChinoNader18`, 2026-11-17):**
+- `void_sale`: recorre los movimientos de la venta; una línea libre no tiene, así que no hay
+  nada que compensar. Sin cambios.
+- `product_sales_ranking`: el grupo con `product_id` nulo no coincide con ningún producto y no
+  aparece. Sin cambios; se cubre con una prueba.
+- **Consistencia diferida de cada venta** (`check_sale_consistency`): hoy exige que el stock
+  descontado de cada ítem sea exactamente su cantidad; se **exceptúan** las líneas con
+  `price_source = 'free'`, que no tienen movimientos.
+- **Margen en `v_sales_daily` (cambia la definición de una columna publicada):** una línea
+  libre no tiene costo, y dejarla solo fuera de `cost_total` inflaría el margen con todo su
+  neto. Por eso `gross_margin = Σ (net_amount − quantity × unit_cost_price)` **solo de las
+  líneas con `unit_cost_price` informado**; `total_amount`, `net_amount` y `vat_amount` siguen
+  incluyendo las libres (son ventas reales). Columna nueva `free_net_total` (neto de las
+  líneas libres del día), para que el dashboard muestre el margen sobre lo que tiene costo y,
+  aparte, lo cobrado en líneas libres.
+- **Riesgo conocido (no bloquea):** una línea libre podría usarse para cobrar mercadería del
+  catálogo sin descontarla del stock (el faltante aparecería como merma sin explicación). El
+  control es el rastro (descripción obligatoria, quién vendió, fecha) y la lista de líneas
+  libres recientes para el encargado. Si hiciera falta, un tope por línea libre en
+  `sales_settings` (`NULL` = sin tope) se agrega sin migrar datos; lo mismo un tope de
+  diferencia para el importe manual (`manual_price_max_ratio`, `NULL` = sin límite) contra
+  errores de tipeo como 24.500 en vez de 245,00.
+- Lectura: el frontend lista las líneas libres recientes (descripción, importe, fecha,
+  quién) para que el encargado decida darlas de alta como producto.
+
+### 20.7 Pruebas que se exigirán
+
+Venta con un ítem manual (importe exacto en `line_total`, `catalog_line_total` con el precio
+del momento, IVA discriminado sobre el importe manual), mezclada con ítems normales; dos
+líneas manuales del mismo producto se suman; mezcla manual y no manual del mismo producto →
+`INVALID_MANUAL_PRICE`; producto por unidad con importe manual → `INVALID_MANUAL_PRICE`;
+importe 0, negativo o con 3 decimales → `INVALID_AMOUNT`; con `discount_percent` > 0 →
+`INVALID_DISCOUNT`; idempotencia (mismo importe → misma venta; otro importe con la misma
+clave → `IDEMPOTENCY_CONFLICT`); anulación de una venta con ítem manual (stock compensado,
+importes intactos); ventas anteriores a la migración con `price_source = 'list'`;
+empleado activo sí, inactivo y `anon` no. Líneas libres: venta solo con líneas libres y mezclada,
+sin movimientos de stock, IVA 10,5 y 21, descripción vacía o de 81 caracteres, IVA 27 y cantidad
+fraccionaria → `INVALID_FREE_ITEM`; anulación sin compensaciones; ranking sin las líneas libres;
+ventas existentes intactas. Margen diario con una venta mixta (libre + normal) y con una sola
+libre (`gross_margin` solo sobre líneas con costo, `free_net_total` correcto); consistencia
+diferida con una venta que tiene líneas libres; ranking sin líneas libres; hash de una venta con
+líneas libres (mismo orden → misma venta; otro orden o campo → `IDEMPOTENCY_CONFLICT`); hash de
+una venta sin campos nuevos idéntico al de antes de la migración.
