@@ -497,3 +497,8 @@
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
+
+/* En pantallas angostas la tabla del carrito se desplaza dentro de la tarjeta. */
+.cartScroll {
+  overflow-x: auto;
+}

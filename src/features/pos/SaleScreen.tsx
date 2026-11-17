@@ -223,6 +223,7 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
               El carrito está vacío.
             </p>
           ) : (
+            <div className={styles.cartScroll}>
             <table className={styles.cart} aria-label="Productos del carrito">
               <thead>
                 <tr>
@@ -310,6 +311,7 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </section>
 
