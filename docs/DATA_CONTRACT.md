@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.10.0 (§20 importe manual para productos de balanza y líneas libres, aprobada para implementar; convención de ruta de imágenes de productos, §5.5; propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
+| Versión | 0.12.0 (propuesta: §22 facturación electrónica ARCA; §21 PLU de balanza en productos, aprobada para implementar; §20 importe manual para productos de balanza y líneas libres, aprobada para implementar; convención de ruta de imágenes de productos, §5.5; propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16); ranking de productos vendidos (§17); datos del comercio y aumentos de precios (§18 y §19, propuesta) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -349,6 +349,7 @@ futura.
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
 | `sku` | `text` | no | generado | **Lo genera la base** (v0.4.0): `lpad(nextval('products_sku_seq')::text, 6, '0')` → `000001`, `000002`… Único: `unique index products_sku_key on upper(sku)`; `CHECK (sku = trim(sku) and length(sku) between 1 and 40)`. No se edita desde la app ([P-05](#13-preguntas-abiertas)) |
 | `barcode` | `text` | sí | — | `CHECK (barcode ~ '^[0-9]{8,14}$')`; único parcial `products_barcode_key` `WHERE barcode IS NOT NULL`. Se lee con el lector USB |
+| `scale_plu` | `text` | sí | — | **v0.11.0 (§21).** PLU de la balanza (5 dígitos). Solo productos por kilo. Único entre los que lo tienen |
 | `legacy_code` | `text` | sí | — | v0.5.0 (P-25): código propio del sistema anterior del cliente (ej. `31884325`, `001`). `CHECK (legacy_code = trim(legacy_code) and length(legacy_code) between 1 and 40)`; único parcial `products_legacy_code_key` sobre `upper(legacy_code)` `WHERE legacy_code IS NOT NULL`. Se busca igual que el SKU. Lo edita encargado o dueño |
 | `name` | `text` | no | — | 1–150 caracteres |
 | `search_name` | `text` | no | generada | v0.5.1: `GENERATED ALWAYS AS (lower(private.unaccent_text(name))) STORED`. Nombre sin tildes y en minúscula para buscar ("lacteos" encuentra "Lácteos"). No se escribe |
@@ -1113,6 +1114,8 @@ volver a registrar la concordancia.
 | 0.9.1 | 2026-11-16 | Cierre de las preguntas abiertas de la v0.9.0: P-49 (CUIT del ticket: opcional y por ahora sin cargar, a confirmar con el contador), P-52 (el aumento toca solo el precio de góndola, no costos) y P-53 (múltiplo del redondeo elegido en cada aumento, $10 por defecto en pantalla), decididas por `ChinoNader18` por delegación de `efacelli`. Sin cambios de esquema respecto de la v0.9.0 |
 | 0.9.2 | 2026-11-17 | Aclaración sin cambios de esquema: convención de ruta de las imágenes de productos en el bucket `product-images` (§5.5), que el contrato dejaba para cuando el frontend implementara la carga |
 | 0.10.0 | 2026-11-17 | **Propuesta** del frontend (§20): importe manual para productos pesados con etiqueta de balanza. Campo opcional `manual_line_total` en los ítems de `register_sale`, columnas aditivas `price_source` y `catalog_line_total` en `sale_items` y código `INVALID_MANUAL_PRICE`; líneas libres sin producto ni stock (§20.8, `INVALID_FREE_ITEM`). P-55 a P-60 decididas. Revisada y aprobada por `ChinoNader18` con sus precisiones: excepción explícita a §15.1, hash sin cambios cuando no hay campos nuevos, margen solo sobre líneas con costo y `free_net_total` en `v_sales_daily`, consistencia diferida sin las líneas libres |
+| 0.11.0 | 2026-11-17 | **Propuesta** del frontend (§21): `products.scale_plu` para que la etiqueta de la balanza identifique el producto. El comercio va a armar la lista de PLU de fiambrería. Columna aditiva, `create_product` con `p_scale_plu`, `v_product_list` la expone al final. P-61 a P-63 decididas por `efacelli`. Aprobada por `ChinoNader18` con sus precisiones: firma nueva de `create_product`, errores `23514`/`23505`, `grant update (scale_plu)` |
+| 0.12.0 | 2026-11-17 | **Propuesta** del backend (§22): facturación electrónica ARCA desde una Edge Function (WSAA + WSFEv1), `fiscal_settings` y `fiscal_documents`, flujo idempotente, nota de crédito y contingencia CAEA (diseño). P-64 a P-70 abiertas, la mayoría para el contador. Sin datos fiscales del comercio en el repositorio |
 
 ---
 
@@ -2187,6 +2190,89 @@ libre (`gross_margin` solo sobre líneas con costo, `free_net_total` correcto); 
 diferida con una venta que tiene líneas libres; ranking sin líneas libres; hash de una venta con
 líneas libres (mismo orden → misma venta; otro orden o campo → `IDEMPOTENCY_CONFLICT`); hash de
 una venta sin campos nuevos idéntico al de antes de la migración.
+
+## 21. PLU de balanza en productos (v0.11.0, aprobada)
+
+**Estado:** propuesta del frontend (`efacelli`), **aprobada por el backend (`ChinoNader18`,
+2026-11-17)** con las precisiones de §21.2 y §21.3.
+
+### 21.1 Para qué
+
+Con §20 el cajero elige a mano qué fiambre es cada etiqueta, porque el comercio no tenía
+una tabla de PLU. Ahora el comercio va a **armar la lista de productos de fiambrería con
+un PLU para cada uno** y cargarla igual en la balanza (Kretz Report NX) y en el sistema.
+Con eso, al escanear la etiqueta (`20` + PLU + gramos + verificador, §20.1) la caja ya
+sabe qué producto es. Esto revisa lo que decía P-58: `scale_plu` vuelve a hacer falta.
+
+Nada cambia en `register_sale` ni en §20: la venta sigue usando `manual_line_total`. El PLU
+solo sirve para **preseleccionar el producto** en el diálogo de la caja.
+
+### 21.2 Cambio de esquema en `products` (aditivo)
+
+| Columna | Tipo | Null | Default | Restricciones / notas |
+|---|---|---|---|---|
+| `scale_plu` | `text` | sí | — | `CHECK (scale_plu ~ '^[0-9]{5}$' and scale_plu <> '00000')`. `CHECK (scale_plu IS NULL OR sale_unit = 'kg')`. Único parcial `products_scale_plu_key` `WHERE scale_plu IS NOT NULL` |
+
+- Las filas existentes quedan con `NULL`: nada cambia para ellas.
+- El PLU se guarda **con los ceros a la izquierda** (`00005`), tal como viene en el código.
+  La pantalla acepta `5` y lo completa a `00005`.
+- Lo cargan y editan **encargado, dueño y programador**, igual que `legacy_code`.
+  `authenticated` tiene `UPDATE` por columna sobre `products`, así que la migración agrega
+  `grant update (scale_plu)`; sin eso nadie podría editarlo. El empleado queda frenado por
+  `products_restrict_staff_update`, que ya compara el registro completo (no hay que
+  cambiarlo). El cambio queda en `audit_log` como cualquier cambio de producto.
+- Un producto inactivo **conserva** su PLU (la unicidad lo sigue reservando). Para
+  reusarlo hay que borrárselo primero. La caja solo busca entre los activos.
+- Si un producto con PLU pasa a otra unidad de venta, el `CHECK` lo rechaza: primero se
+  le quita el PLU.
+- **Errores** (para que la UI los distinga, como en §8.6):
+  - PLU mal formado, PLU en un producto que no es por kilo, o cambio de unidad con PLU
+    puesto: `23514` (violación de `CHECK`).
+  - PLU repetido: `23505` sobre `products_scale_plu_key` → «Ese PLU ya es de otro producto».
+
+### 21.3 Escritura y lectura
+
+- `create_product` recibe `p_scale_plu text default null` (mismas validaciones). Para que
+  PostgREST no quede con dos sobrecargas, la migración **reemplaza** la función (borra la
+  firma anterior y crea la nueva con los mismos permisos, sin tocar datos). Los llamadores
+  que no pasan el parámetro siguen funcionando por el `default null`. La edición de un
+  producto existente es la misma actualización de hoy, con la columna nueva.
+- `v_product_list` agrega `scale_plu` **al final** (después de `search_name`), mismas
+  columnas y tipos de antes. La búsqueda del frontend usa `ilike` sobre columnas de la
+  vista, así que alcanza con incluirla ahí (escribir `00005` encuentra el producto).
+- La caja busca directamente en `products` (`scale_plu = :plu`, `is_active`,
+  `sale_unit = 'kg'`), con la misma RLS de lectura de productos. No hace falta RPC.
+
+### 21.4 Comportamiento en la caja (frontend)
+
+1. Se escanea la etiqueta. Si hay un producto activo por kilo con ese PLU, el diálogo
+   «Producto de balanza» se abre **con ese producto ya elegido** (el cajero lo puede
+   cambiar).
+2. Si no hay ninguno, el diálogo se abre como hoy (el cajero elige).
+3. El importe se sigue escribiendo de la etiqueta (P-61, decidida), con el aviso de §20 si difiere
+   más de 20 % del precio de Zahuy.
+
+### 21.5 Carga inicial
+
+El comercio manda la lista (PLU → nombre del producto). La carga se hace desde la app,
+producto por producto, o, si son muchos, con un script de una sola vez revisado por las
+dos partes, con backup previo y sin tocar otras columnas.
+
+### 21.6 Preguntas
+
+| ID | Pregunta | Propuesta | Estado |
+|---|---|---|---|
+| P-61 | Con el producto identificado, ¿el importe se sigue escribiendo o se completa con peso × precio de Zahuy? | **Decidida (`efacelli`, 2026-11-17):** se sigue escribiendo; la balanza tiene sus propios precios cargados a mano y la etiqueta es lo que ve el cliente | Adoptada |
+| P-62 | ¿El PLU es siempre de 5 dígitos? | **Decidida (`efacelli`, 2026-11-17):** sí, 5 dígitos. Confirmado con una etiqueta real impresa por la Kretz del comercio: `2000005002458` → PLU `00005` con ceros a la izquierda (§20.1). Si la balanza se reconfigurara con otro formato, se ajusta el `CHECK` con otra migración | Adoptada |
+| P-63 | ¿Puede un mismo PLU apuntar a dos productos (por ejemplo, el mismo fiambre en dos presentaciones)? | **Decidida (`efacelli`, 2026-11-17):** no, único; si la balanza usa el mismo PLU para dos cosas, la caja no podría distinguirlas | Adoptada |
+
+### 21.7 Pruebas que se exigirán
+
+PLU válido guardado con ceros; `'5'`, `'000005'`, `'0000a'` y `'00000'` rechazados; PLU en un
+producto por unidad rechazado; cambiar a otra unidad un producto con PLU rechazado; PLU
+repetido → `products_scale_plu_key`; un producto inactivo conserva el PLU; el empleado no
+puede cambiarlo y el encargado sí; `create_product` con y sin `p_scale_plu`; `v_product_list`
+con la columna al final; productos existentes intactos después de la migración.
 
 ## 22. Facturación electrónica ARCA (PROPUESTA v0.12.0)
 
