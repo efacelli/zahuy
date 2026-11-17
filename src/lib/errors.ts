@@ -168,3 +168,9 @@ function isNetworkError(error: unknown): boolean {
   }
   return false
 }
+
+/** Columna inexistente: la migración que la agrega todavía no se aplicó en esa base. */
+export function isMissingColumn(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code
+  return code === '42703' || code === 'PGRST204'
+}

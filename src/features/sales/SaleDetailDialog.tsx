@@ -6,6 +6,7 @@ import { Icon } from '../../components/ui/Icon'
 import { Modal } from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/toast-context'
 import { formatDateTime } from '../../lib/dates'
+import { formatMoney, formatNumber } from '../../lib/format'
 import { toAppError } from '../../lib/errors'
 import { newIdempotencyKey } from '../../lib/idempotency'
 import { useSupabase } from '../../lib/supabase-context'
@@ -132,6 +133,8 @@ function DetailContent({ sale, canVoid, onClose }: { sale: SaleRow; canVoid: boo
         </p>
       )}
 
+      <PriceNotes sale={sale} />
+
       <TicketBody ticket={toTicket(sale)} />
 
       {voiding && (
@@ -155,4 +158,37 @@ function DetailContent({ sale, canVoid, onClose }: { sale: SaleRow; canVoid: boo
       )}
     </Modal>
   )
+}
+
+/** Las líneas que no se cobraron con el precio de Zahuy (§20), para que se vean al revisar la venta. */
+function PriceNotes({ sale }: { sale: SaleRow }) {
+  const lines = sale.sale_items.filter((i) => i.price_source !== 'list')
+  if (lines.length === 0) return null
+  return (
+    <ul className={styles.priceNotes} aria-label="Importes que no son del precio de Zahuy">
+      {lines.map((i, n) =>
+        i.price_source === 'manual' ? (
+          <li key={n}>
+            <strong>{i.product_name}</strong>: importe de etiqueta de balanza, {formatMoney(i.line_total)} por{' '}
+            {formatNumber(i.quantity)} kg.
+            {i.catalog_line_total !== null && (
+              <> Con el precio de Zahuy hubiera sido {formatMoney(i.catalog_line_total)}{differenceLabel(i.line_total, i.catalog_line_total)}.</>
+            )}
+          </li>
+        ) : (
+          <li key={n}>
+            <strong>{i.product_name}</strong>: producto sin cargar, {formatMoney(i.line_total)} con IVA{' '}
+            {formatNumber(i.vat_rate)} %. No descontó stock.
+          </li>
+        ),
+      )}
+    </ul>
+  )
+}
+
+function differenceLabel(charged: number, catalog: number): string {
+  if (catalog <= 0) return ''
+  const pct = Math.round(((charged - catalog) / catalog) * 1000) / 10
+  if (pct === 0) return ''
+  return ` (${pct > 0 ? '+' : '−'}${formatNumber(Math.abs(pct))} %)`
 }

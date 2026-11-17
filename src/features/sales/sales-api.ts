@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { isMissingColumn } from '../../lib/errors'
 import { DEFAULT_PAGE_SIZE, pageRange } from '../../lib/pagination'
 import type { TicketData } from '../pos/TicketBody'
 
@@ -31,8 +32,14 @@ export interface SaleRow {
   voider: { full_name: string } | null
   sale_items: {
     product_name: string
-    product_sku: string
+    /** null en las líneas libres (§20.8). */
+    product_sku: string | null
     quantity: number
+    vat_rate: number
+    /** list = precio de Zahuy; manual = importe de la etiqueta de balanza; free = producto sin cargar (§20). */
+    price_source: PriceSource
+    /** Con `manual`: lo que daba el precio de Zahuy en ese momento. */
+    catalog_line_total: number | null
     unit_price_with_vat: number
     line_total: number
     /** Descuento por cantidad (§16.2); 0 en ventas anteriores. */
@@ -47,13 +54,21 @@ export interface SaleRow {
   }[]
 }
 
-const SALE_COLUMNS =
+export type PriceSource = 'list' | 'manual' | 'free'
+
+const ITEM_COLUMNS = 'product_name, product_sku, quantity, vat_rate, unit_price_with_vat, line_total, discount_percent, discount_amount'
+
+const saleColumns = (itemColumns: string) =>
   'id, sale_number, created_at, status, total_amount, rounding_amount, notes, voided_at, void_reason, ' +
   'cash_session:cash_sessions(status, cash_register:cash_registers(name)), ' +
   'seller:profiles!sales_created_by_fkey(full_name), ' +
   'voider:profiles!sales_voided_by_fkey(full_name), ' +
-  'sale_items(product_name, product_sku, quantity, unit_price_with_vat, line_total, discount_percent, discount_amount), ' +
+  `sale_items(${itemColumns}), ` +
   'sale_payments(amount, tendered_amount, reference, payment_method:payment_methods(name, is_cash, sort_order))'
+
+/** Con las columnas de §20; si la base todavía no las tiene, sin ellas (todo es precio de lista). */
+const SALE_COLUMNS = saleColumns(`${ITEM_COLUMNS}, price_source, catalog_line_total`)
+const SALE_COLUMNS_BEFORE_S20 = saleColumns(ITEM_COLUMNS)
 
 export interface SalesParams {
   status: SaleStatus | null
@@ -73,6 +88,9 @@ function normalize(row: SaleRow): SaleRow {
       line_total: Number(i.line_total),
       discount_percent: Number(i.discount_percent ?? 0),
       discount_amount: Number(i.discount_amount ?? 0),
+      vat_rate: Number(i.vat_rate),
+      price_source: i.price_source ?? 'list',
+      catalog_line_total: i.catalog_line_total == null ? null : Number(i.catalog_line_total),
     })),
     sale_payments: (row.sale_payments ?? [])
       .map((p) => ({
@@ -85,10 +103,14 @@ function normalize(row: SaleRow): SaleRow {
 }
 
 export async function fetchSales(client: SupabaseClient, p: SalesParams): Promise<{ rows: SaleRow[]; total: number }> {
-  let q = client.from('sales').select(SALE_COLUMNS, { count: 'exact' })
-  if (p.status) q = q.eq('status', p.status)
   const [from, to] = pageRange(p.page, DEFAULT_PAGE_SIZE)
-  const { data, error, count } = await q.order('created_at', { ascending: false }).order('id').range(from, to)
+  const query = (columns: string) => {
+    let q = client.from('sales').select(columns, { count: 'exact' })
+    if (p.status) q = q.eq('status', p.status)
+    return q.order('created_at', { ascending: false }).order('id').range(from, to)
+  }
+  let { data, error, count } = await query(SALE_COLUMNS)
+  if (error && isMissingColumn(error)) ({ data, error, count } = await query(SALE_COLUMNS_BEFORE_S20))
   if (error) throw error
   return { rows: ((data ?? []) as unknown as SaleRow[]).map(normalize), total: count ?? 0 }
 }
@@ -109,6 +131,7 @@ export function toTicket(sale: SaleRow): TicketData {
     lines: sale.sale_items.map((i) => ({
       name: i.product_name,
       quantity: i.quantity,
+      manual: i.price_source !== 'list',
       lineTotal: i.line_total,
       discountPercent: i.discount_percent,
       discountAmount: i.discount_amount,

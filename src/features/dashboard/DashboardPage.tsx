@@ -12,9 +12,10 @@ import { countLabel, formatMoney, formatNumber } from '../../lib/format'
 import { useSupabase } from '../../lib/supabase-context'
 import { fetchMovementHistory } from '../movements/movements-api'
 import { fetchInventorySummary } from './dashboard-api'
+import { FreeLines } from './FreeLines'
 import { ProductRanking } from './ProductRanking'
 import { CashDifferencesChart, DailyMarginChart, DailySalesChart, PaymentMethodsChart } from './FinanceCharts'
-import { fetchFinance, FINANCE_RANGES, type FinanceRange } from './finance-api'
+import { fetchFinance, FINANCE_RANGES, type FinanceData, type FinanceRange } from './finance-api'
 import styles from './DashboardPage.module.css'
 
 const RECENT_MOVEMENTS = 6
@@ -200,11 +201,7 @@ function FinanceSection() {
             <StatTile
               label="Margen bruto"
               value={formatMoney(finance.data.marginTotal)}
-              detail={
-                finance.data.netTotal > 0
-                  ? `${formatNumber(Math.round((finance.data.marginTotal / finance.data.netTotal) * 1000) / 10)} % de lo vendido sin IVA (${formatMoney(finance.data.netTotal)}), menos el costo de cada venta.`
-                  : 'Lo vendido sin IVA menos el costo de cada venta.'
-              }
+              detail={marginDetail(finance.data)}
               status={finance.data.marginTotal < -0.005 ? { tone: 'danger', text: 'Bajo el costo' } : undefined}
             />
             <StatTile
@@ -225,8 +222,23 @@ function FinanceSection() {
             <CashDifferencesChart closings={finance.data.closings} />
           </div>
           <ProductRanking range={range} />
+          <FreeLines range={range} />
         </div>
       )}
     </section>
   )
+}
+
+/**
+ * El margen solo cuenta lo que tiene costo: los productos sin cargar quedan
+ * afuera (§20.8) y se informan aparte, para no inflar ni achicar el porcentaje.
+ */
+function marginDetail(data: FinanceData): string {
+  const costed = Math.round((data.netTotal - data.freeNetTotal) * 100) / 100
+  if (costed <= 0) return 'Lo vendido sin IVA menos el costo de cada venta.'
+  const pct = formatNumber(Math.round((data.marginTotal / costed) * 1000) / 10)
+  const base = `${pct} % de lo vendido sin IVA (${formatMoney(costed)}), menos el costo de cada venta.`
+  return data.freeNetTotal > 0
+    ? `${base} No incluye ${formatMoney(data.freeNetTotal)} sin IVA de productos sin cargar (no tienen costo).`
+    : base
 }
