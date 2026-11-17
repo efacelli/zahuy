@@ -344,7 +344,7 @@ select throws_ok(
 
 -- Venta inconsistente a mano: el total de descuentos tiene que coincidir con los ítems.
 insert into public.sales (id, idempotency_key, request_hash, cash_session_id, total_amount, net_amount, vat_amount, discount_total, rounding_amount, rounding_multiple, created_by)
-values ('00000000-0000-4000-8000-0000000000f2', gen_random_uuid(), 'x', pg_temp.sid('S1'), 100, 100, 0, 50, 0, 100, '00000000-0000-4000-8000-0000000000dc');
+values ('00000000-0000-4000-8000-0000000000f2', gen_random_uuid(), 'x', pg_temp.sid('S1'), 100, 0, 100, 50, 0, 100, '00000000-0000-4000-8000-0000000000dc');
 select throws_ok($$set constraints sales_consistency_check immediate$$, '23514', null, 'una venta con descuentos que no coinciden no se puede confirmar');
 
 -- ---------------------------------------------------------------------------
@@ -388,8 +388,8 @@ select is(
 );
 select ok(
   (select gross_margin from public.v_sales_daily where sale_date = private.today_ar())
-    = (select net_amount - cost_total from public.v_sales_daily where sale_date = private.today_ar()),
-  'margen bruto = neto - costo'
+    = (select net_amount - free_net_total - cost_total from public.v_sales_daily where sale_date = private.today_ar()),
+  'margen bruto = neto - neto de líneas libres - costo (v0.10.0)'
 );
 select is(
   (select discount_total from public.v_sales_daily where sale_date = private.today_ar()) > 0,
