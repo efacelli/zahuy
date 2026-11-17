@@ -7,7 +7,7 @@ import { DEFAULT_CASH_STEP } from '../../domain/cash-rounding'
 import { formatMoney } from '../../lib/format'
 import { toAppError } from '../../lib/errors'
 import { useSupabase } from '../../lib/supabase-context'
-import type { PricedCart } from './cart'
+import { lineName, toSaleItem, type PricedCart } from './cart'
 import { planPayments, type PaymentDraft } from './payment'
 import { fetchPaymentMethods, fetchRoundingMultiple, registerSale, type OpenSession, type PaymentMethod } from './pos-api'
 import type { TicketLine } from './TicketBody'
@@ -81,7 +81,7 @@ export function PaymentDialog({
       registerSale(client, {
         p_idempotency_key: idempotencyKey,
         p_cash_session_id: session.cash_session_id,
-        p_items: lines.map((l) => ({ product_id: l.product.id, quantity: l.quantity, discount_percent: l.appliedPercent })),
+        p_items: lines.map(toSaleItem),
         p_payments: plan.payments,
         p_notes: null,
       }),
@@ -95,7 +95,8 @@ export function PaymentDialog({
         saleNumber: row.sale_number,
         createdAt: row.created_at,
         lines: lines.map((l) => ({
-          name: l.product.name,
+          name: lineName(l),
+          manual: l.kind !== 'product',
           quantity: l.quantity,
           lineTotal: l.total,
           discountPercent: l.appliedPercent,

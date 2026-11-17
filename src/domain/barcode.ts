@@ -41,6 +41,33 @@ export function barcodeWarning(raw: string): string | null {
 }
 
 /* ------------------------------------------------------------------ */
+/* Etiquetas de la balanza (Kretz Report NX del comercio, §20.1)       */
+/* ------------------------------------------------------------------ */
+
+export interface ScaleLabel {
+  code: string
+  /** PLU de la balanza (5 dígitos). El comercio no lo vincula a un producto. */
+  plu: string
+  /** Peso en kg, con 3 decimales (el código trae gramos). */
+  weightKg: number
+}
+
+/**
+ * EAN-13 de peso variable: `20` + PLU (5) + gramos (5) + verificador.
+ * Ejemplo real: `2000005002458` → PLU 00005, 0,245 kg. Null si no es una
+ * etiqueta de balanza válida (otro prefijo, verificador mal o peso 0).
+ * Ojo: la caja busca primero el código entre los productos; recién si no
+ * existe lo trata como etiqueta.
+ */
+export function parseScaleLabel(raw: string): ScaleLabel | null {
+  const code = normalizeBarcode(raw)
+  if (!/^20[0-9]{11}$/.test(code) || hasValidCheckDigit(code) !== true) return null
+  const grams = Number(code.slice(7, 12))
+  if (grams <= 0) return null
+  return { code, plu: code.slice(2, 7), weightKg: grams / 1000 }
+}
+
+/* ------------------------------------------------------------------ */
 /* Detector del lector: teclas muy seguidas que terminan en Enter      */
 /* ------------------------------------------------------------------ */
 

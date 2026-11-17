@@ -10,6 +10,8 @@ import styles from './Pos.module.css'
 
 export interface TicketLine {
   name: string
+  /** Importe escrito en la caja (etiqueta de balanza o producto sin cargar, §20). */
+  manual?: boolean
   quantity: number
   /** Lo cobrado por la línea, ya con el descuento. */
   lineTotal: number
@@ -69,8 +71,8 @@ export function TicketBody({ ticket }: { ticket: TicketData }) {
       {ticket.voided && <p className={styles.ticketWarning}>VENTA ANULADA</p>}
       <table>
         <tbody>
-          {ticket.lines.map((l) => (
-            <Fragment key={l.name}>
+          {ticket.lines.map((l, i) => (
+            <Fragment key={i}>
               <tr>
                 <td>
                   {formatNumber(l.quantity)} × {l.name}

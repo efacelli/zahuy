@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { DEFAULT_CASH_STEP } from '../../domain/cash-rounding'
 import { DEFAULT_DISCOUNT_RULE, type DiscountRule } from '../../domain/quantity-discount'
-import type { CartProduct } from './cart'
+import type { CartProduct, SaleItemParam } from './cart'
 
 /*
  * Caja: nombres de la PROPUESTA de contrato v0.6.0 (§15, PR #58). Si el
@@ -146,8 +146,11 @@ export interface SalePaymentParam {
 export interface RegisterSaleParams {
   p_idempotency_key: string
   p_cash_session_id: string
-  /** `discount_percent` explícito: lo que ve el cajero es lo que aplica la base (§16.3). */
-  p_items: { product_id: string; quantity: number; discount_percent: number }[]
+  /**
+   * `discount_percent` explícito: lo que ve el cajero es lo que aplica la base (§16.3).
+   * Importe manual de balanza y líneas libres: §20.2 y §20.8.
+   */
+  p_items: SaleItemParam[]
   p_payments: SalePaymentParam[]
   p_notes: string | null
 }
@@ -165,4 +168,27 @@ export async function registerSale(client: SupabaseClient, params: RegisterSaleP
   if (error) throw error
   const row = data as RegisteredSale
   return { ...row, total_amount: Number(row.total_amount) }
+}
+
+/**
+ * ¿La base ya acepta importes manuales y líneas libres (§20)? Se detecta por la
+ * columna `sale_items.price_source`: sin la migración, la base ignoraría el
+ * importe y cobraría el precio de lista, así que la caja no los ofrece.
+ */
+export async function supportsManualLines(client: SupabaseClient): Promise<boolean> {
+  const { error } = await client.from('sale_items').select('price_source').limit(1)
+  return !error
+}
+
+/** Productos activos que se venden por kilo (para elegir el fiambre de una etiqueta). */
+export async function fetchWeighedProducts(client: SupabaseClient): Promise<CartProduct[]> {
+  const { data, error } = await client
+    .from('products')
+    .select(SELLABLE_COLUMNS)
+    .eq('sale_unit', 'kg')
+    .eq('is_active', true)
+    .order('name')
+    .limit(1000)
+  if (error) throw error
+  return ((data ?? []) as SellableRow[]).map(toCartProduct)
 }
