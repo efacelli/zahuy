@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.11.0 (propuesta: §21 PLU de balanza en productos; §20 importe manual para productos de balanza y líneas libres, aprobada para implementar; convención de ruta de imágenes de productos, §5.5; propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
+| Versión | 0.11.0 (§21 PLU de balanza en productos, aprobada para implementar; §20 importe manual para productos de balanza y líneas libres, aprobada para implementar; convención de ruta de imágenes de productos, §5.5; propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16); ranking de productos vendidos (§17); datos del comercio y aumentos de precios (§18 y §19, propuesta) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -349,7 +349,7 @@ futura.
 | `id` | `uuid` | no | `gen_random_uuid()` | PK |
 | `sku` | `text` | no | generado | **Lo genera la base** (v0.4.0): `lpad(nextval('products_sku_seq')::text, 6, '0')` → `000001`, `000002`… Único: `unique index products_sku_key on upper(sku)`; `CHECK (sku = trim(sku) and length(sku) between 1 and 40)`. No se edita desde la app ([P-05](#13-preguntas-abiertas)) |
 | `barcode` | `text` | sí | — | `CHECK (barcode ~ '^[0-9]{8,14}$')`; único parcial `products_barcode_key` `WHERE barcode IS NOT NULL`. Se lee con el lector USB |
-| `scale_plu` | `text` | sí | — | **Propuesta v0.11.0 (§21).** PLU de la balanza (5 dígitos). Solo productos por kilo. Único entre los que lo tienen |
+| `scale_plu` | `text` | sí | — | **v0.11.0 (§21).** PLU de la balanza (5 dígitos). Solo productos por kilo. Único entre los que lo tienen |
 | `legacy_code` | `text` | sí | — | v0.5.0 (P-25): código propio del sistema anterior del cliente (ej. `31884325`, `001`). `CHECK (legacy_code = trim(legacy_code) and length(legacy_code) between 1 and 40)`; único parcial `products_legacy_code_key` sobre `upper(legacy_code)` `WHERE legacy_code IS NOT NULL`. Se busca igual que el SKU. Lo edita encargado o dueño |
 | `name` | `text` | no | — | 1–150 caracteres |
 | `search_name` | `text` | no | generada | v0.5.1: `GENERATED ALWAYS AS (lower(private.unaccent_text(name))) STORED`. Nombre sin tildes y en minúscula para buscar ("lacteos" encuentra "Lácteos"). No se escribe |
@@ -1113,8 +1113,8 @@ volver a registrar la concordancia.
 | 0.9.0 | 2026-11-16 | **Propuesta** del backend (issue #68): §18 datos del comercio (`store_name`, `store_address`, `store_tax_id`, nulables, en `sales_settings`) y §19 historial de precios (`price_history`, solo-agregado, escrita por trigger) y aumentos masivos (`price_bulk_changes`, `preview_price_increase`, `apply_price_increase`, `revert_price_change`); errores nuevos y preguntas P-49 a P-54 (P-49, P-52 y P-53 dependen del cliente). P-50, P-51 y P-54 decididas por `efacelli` y ajustes de su revisión incorporados (filtro por producto, productos sin cambio, origen validado en el trigger, bloqueo ordenado, deshacer con inactivos). Quedan abiertas P-49, P-52 y P-53 (cliente). No se implementa hasta aprobarla |
 | 0.9.1 | 2026-11-16 | Cierre de las preguntas abiertas de la v0.9.0: P-49 (CUIT del ticket: opcional y por ahora sin cargar, a confirmar con el contador), P-52 (el aumento toca solo el precio de góndola, no costos) y P-53 (múltiplo del redondeo elegido en cada aumento, $10 por defecto en pantalla), decididas por `ChinoNader18` por delegación de `efacelli`. Sin cambios de esquema respecto de la v0.9.0 |
 | 0.9.2 | 2026-11-17 | Aclaración sin cambios de esquema: convención de ruta de las imágenes de productos en el bucket `product-images` (§5.5), que el contrato dejaba para cuando el frontend implementara la carga |
-| 0.11.0 | 2026-11-17 | **Propuesta** del frontend (§21): `products.scale_plu` para que la etiqueta de la balanza identifique el producto. El comercio va a armar la lista de PLU de fiambrería. Columna aditiva, `create_product` con `p_scale_plu`, `v_product_list` la expone al final. P-61 a P-63 decididas por `efacelli` |
 | 0.10.0 | 2026-11-17 | **Propuesta** del frontend (§20): importe manual para productos pesados con etiqueta de balanza. Campo opcional `manual_line_total` en los ítems de `register_sale`, columnas aditivas `price_source` y `catalog_line_total` en `sale_items` y código `INVALID_MANUAL_PRICE`; líneas libres sin producto ni stock (§20.8, `INVALID_FREE_ITEM`). P-55 a P-60 decididas. Revisada y aprobada por `ChinoNader18` con sus precisiones: excepción explícita a §15.1, hash sin cambios cuando no hay campos nuevos, margen solo sobre líneas con costo y `free_net_total` en `v_sales_daily`, consistencia diferida sin las líneas libres |
+| 0.11.0 | 2026-11-17 | **Propuesta** del frontend (§21): `products.scale_plu` para que la etiqueta de la balanza identifique el producto. El comercio va a armar la lista de PLU de fiambrería. Columna aditiva, `create_product` con `p_scale_plu`, `v_product_list` la expone al final. P-61 a P-63 decididas por `efacelli`. Aprobada por `ChinoNader18` con sus precisiones: firma nueva de `create_product`, errores `23514`/`23505`, `grant update (scale_plu)` |
 
 ---
 
@@ -2190,10 +2190,10 @@ diferida con una venta que tiene líneas libres; ranking sin líneas libres; has
 líneas libres (mismo orden → misma venta; otro orden o campo → `IDEMPOTENCY_CONFLICT`); hash de
 una venta sin campos nuevos idéntico al de antes de la migración.
 
-## 21. PLU de balanza en productos (PROPUESTA v0.11.0)
+## 21. PLU de balanza en productos (v0.11.0, aprobada)
 
-**Estado:** propuesta del frontend (`efacelli`), pendiente de revisión del backend
-(`ChinoNader18`). No se implementa hasta aprobarla.
+**Estado:** propuesta del frontend (`efacelli`), **aprobada por el backend (`ChinoNader18`,
+2026-11-17)** con las precisiones de §21.2 y §21.3.
 
 ### 21.1 Para qué
 
@@ -2215,21 +2215,30 @@ solo sirve para **preseleccionar el producto** en el diálogo de la caja.
 - Las filas existentes quedan con `NULL`: nada cambia para ellas.
 - El PLU se guarda **con los ceros a la izquierda** (`00005`), tal como viene en el código.
   La pantalla acepta `5` y lo completa a `00005`.
-- Lo cargan y editan **encargado y dueño**, igual que `legacy_code`. El empleado no:
-  agregar `scale_plu` a las columnas que bloquea `products_restrict_staff_update`.
+- Lo cargan y editan **encargado, dueño y programador**, igual que `legacy_code`.
+  `authenticated` tiene `UPDATE` por columna sobre `products`, así que la migración agrega
+  `grant update (scale_plu)`; sin eso nadie podría editarlo. El empleado queda frenado por
+  `products_restrict_staff_update`, que ya compara el registro completo (no hay que
+  cambiarlo). El cambio queda en `audit_log` como cualquier cambio de producto.
 - Un producto inactivo **conserva** su PLU (la unicidad lo sigue reservando). Para
   reusarlo hay que borrárselo primero. La caja solo busca entre los activos.
 - Si un producto con PLU pasa a otra unidad de venta, el `CHECK` lo rechaza: primero se
   le quita el PLU.
-- PLU repetido: violación de `products_scale_plu_key` → la UI muestra «Ese PLU ya es de
-  otro producto» (como los demás únicos, §8.6).
+- **Errores** (para que la UI los distinga, como en §8.6):
+  - PLU mal formado, PLU en un producto que no es por kilo, o cambio de unidad con PLU
+    puesto: `23514` (violación de `CHECK`).
+  - PLU repetido: `23505` sobre `products_scale_plu_key` → «Ese PLU ya es de otro producto».
 
 ### 21.3 Escritura y lectura
 
-- `create_product` recibe `p_scale_plu text default null` (mismas validaciones). La
-  edición de un producto existente es la misma actualización de hoy, con la columna nueva.
-- `v_product_list` agrega `scale_plu` **al final** (después de `search_name`), y la
-  búsqueda por texto también lo compara (escribir `00005` encuentra el producto).
+- `create_product` recibe `p_scale_plu text default null` (mismas validaciones). Para que
+  PostgREST no quede con dos sobrecargas, la migración **reemplaza** la función (borra la
+  firma anterior y crea la nueva con los mismos permisos, sin tocar datos). Los llamadores
+  que no pasan el parámetro siguen funcionando por el `default null`. La edición de un
+  producto existente es la misma actualización de hoy, con la columna nueva.
+- `v_product_list` agrega `scale_plu` **al final** (después de `search_name`), mismas
+  columnas y tipos de antes. La búsqueda del frontend usa `ilike` sobre columnas de la
+  vista, así que alcanza con incluirla ahí (escribir `00005` encuentra el producto).
 - La caja busca directamente en `products` (`scale_plu = :plu`, `is_active`,
   `sale_unit = 'kg'`), con la misma RLS de lectura de productos. No hace falta RPC.
 
@@ -2253,7 +2262,7 @@ dos partes, con backup previo y sin tocar otras columnas.
 | ID | Pregunta | Propuesta | Estado |
 |---|---|---|---|
 | P-61 | Con el producto identificado, ¿el importe se sigue escribiendo o se completa con peso × precio de Zahuy? | **Decidida (`efacelli`, 2026-11-17):** se sigue escribiendo; la balanza tiene sus propios precios cargados a mano y la etiqueta es lo que ve el cliente | Adoptada |
-| P-62 | ¿El PLU es siempre de 5 dígitos? | **Decidida (`efacelli`, 2026-11-17):** sí, 5 dígitos; es lo que trae el código de la etiqueta (§20.1) | Adoptada |
+| P-62 | ¿El PLU es siempre de 5 dígitos? | **Decidida (`efacelli`, 2026-11-17):** sí, 5 dígitos. Confirmado con una etiqueta real impresa por la Kretz del comercio: `2000005002458` → PLU `00005` con ceros a la izquierda (§20.1). Si la balanza se reconfigurara con otro formato, se ajusta el `CHECK` con otra migración | Adoptada |
 | P-63 | ¿Puede un mismo PLU apuntar a dos productos (por ejemplo, el mismo fiambre en dos presentaciones)? | **Decidida (`efacelli`, 2026-11-17):** no, único; si la balanza usa el mismo PLU para dos cosas, la caja no podría distinguirlas | Adoptada |
 
 ### 21.7 Pruebas que se exigirán
