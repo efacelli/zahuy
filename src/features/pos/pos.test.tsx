@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createFakeSupabase, fakeSession } from '../../test/fakeSupabase'
 import { renderApp } from '../../test/renderApp'
 import { DEFAULT_DISCOUNT_RULE } from '../../domain/quantity-discount'
-import { cartReducer, parseScanInput, priceCart, priceLine, type CartProduct } from './cart'
+import { parseScaleLabel } from '../../domain/barcode'
+import { cartReducer, manualDifference, mixError, parseAmount, parseScanInput, priceCart, priceLine, toSaleItem, type CartProduct } from './cart'
 import { planPayments, type PaymentDraft } from './payment'
 import { pageRule, readTicketPaper, resetTicketPaperMemory } from './ticket-paper'
 
@@ -74,23 +75,23 @@ describe('carrito (reglas puras)', () => {
     expect(lines).toHaveLength(1)
     expect(lines[0]!.quantity).toBe(3)
     expect(priceCart(lines, DEFAULT_DISCOUNT_RULE).total).toBe(1236.99)
-    expect(cartReducer(lines, { type: 'set', productId: p.id, quantity: 0 })).toEqual([])
+    expect(cartReducer(lines, { type: 'set', key: lines[0]!.key, quantity: 0 })).toEqual([])
   })
 
   it('descuento por cantidad: sugerido, elegido y cuentas de la base (§16.2)', () => {
-    const six = priceLine({ product: p, quantity: 6, discountPercent: null }, DEFAULT_DISCOUNT_RULE)
+    const six = priceLine({ kind: 'product', key: 'k', product: p, quantity: 6, discountPercent: null }, DEFAULT_DISCOUNT_RULE)
     // 6 × 412,33 = 2473,98; 5 % = 123,70 (redondeado); línea = 2350,28.
     expect(six).toMatchObject({ suggestedPercent: 5, appliedPercent: 5, listTotal: 2473.98, discountAmount: 123.7, total: 2350.28 })
-    const edited = priceLine({ product: p, quantity: 6, discountPercent: 0 }, DEFAULT_DISCOUNT_RULE)
+    const edited = priceLine({ kind: 'product', key: 'k', product: p, quantity: 6, discountPercent: 0 }, DEFAULT_DISCOUNT_RULE)
     expect(edited).toMatchObject({ suggestedPercent: 5, appliedPercent: 0, discountAmount: 0, total: 2473.98 })
     // El elegido se conserva al cambiar la cantidad; el sugerido acompaña a la cantidad.
     let lines = cartReducer([], { type: 'add', product: p, quantity: 6 })
-    lines = cartReducer(lines, { type: 'discount', productId: p.id, percent: 12.5 })
+    lines = cartReducer(lines, { type: 'discount', key: lines[0]!.key, percent: 12.5 })
     lines = cartReducer(lines, { type: 'add', product: p })
     expect(lines[0]).toMatchObject({ quantity: 7, discountPercent: 12.5 })
-    const queso = priceLine({ product: QUESO as unknown as CartProduct, quantity: 6.5, discountPercent: null }, DEFAULT_DISCOUNT_RULE)
+    const queso = priceLine({ kind: 'product', key: 'q', product: QUESO as unknown as CartProduct, quantity: 6.5, discountPercent: null }, DEFAULT_DISCOUNT_RULE)
     expect(queso.suggestedPercent).toBe(0)
-    const cart = priceCart([...lines, { product: p, quantity: 12, discountPercent: null }], DEFAULT_DISCOUNT_RULE)
+    const cart = priceCart([...lines, { kind: 'product', key: 'x', product: p, quantity: 12, discountPercent: null }], DEFAULT_DISCOUNT_RULE)
     expect(cart.discountTotal).toBe(Math.round((360.79 + 494.8) * 100) / 100)
   })
 
@@ -131,6 +132,58 @@ describe('carrito (reglas puras)', () => {
     // No puede alejarse del total en $100 o más.
     expect(planPayments(1237, [debit], '1400').errors[0]).toMatch(/no puede diferir/)
     expect(planPayments(1237, [debit], 'abc').errors[0]).toMatch(/no es válido/)
+  })
+})
+
+describe('importe manual y líneas libres (§20, reglas puras)', () => {
+  const queso = QUESO as unknown as CartProduct
+  const yogur = YOGUR as unknown as CartProduct
+
+  it('lee la etiqueta de la balanza: 20 + PLU + gramos + verificador', () => {
+    expect(parseScaleLabel('2000005002458')).toEqual({ code: '2000005002458', plu: '00005', weightKg: 0.245 })
+    expect(parseScaleLabel('2000005002457')).toBeNull() // verificador mal
+    expect(parseScaleLabel('7790000000017')).toBeNull() // otro prefijo
+    expect(parseScaleLabel('200000500245')).toBeNull() // largo
+  })
+
+  it('líneas manuales y libres: importe fijo, sin descuento, cada una aparte', () => {
+    let lines = cartReducer([], { type: 'addManual', product: queso, quantity: 0.245, total: 2327.5, barcode: '2000005002458' })
+    lines = cartReducer(lines, { type: 'addManual', product: queso, quantity: 0.3, total: 2700, barcode: null })
+    lines = cartReducer(lines, { type: 'addFree', description: '  Pan casero ', vatRate: 10.5, quantity: 2, total: 1500 })
+    lines = cartReducer(lines, { type: 'add', product: yogur, quantity: 6 })
+    expect(lines.map((l) => l.kind)).toEqual(['product', 'free', 'manual', 'manual'])
+    // set/discount no tocan las líneas con importe fijo.
+    const manualKey = lines[2]!.key
+    expect(cartReducer(lines, { type: 'set', key: manualKey, quantity: 5 })[2]).toEqual(lines[2])
+    const cart = priceCart(lines, DEFAULT_DISCOUNT_RULE)
+    expect(cart.lines[1]).toMatchObject({ listTotal: 1500, discountAmount: 0, total: 1500 })
+    expect(cart.total).toBe(Math.round((2350.28 + 1500 + 2700 + 2327.5) * 100) / 100)
+    expect(cart.lines.map(toSaleItem)).toEqual([
+      { product_id: YOGUR.id, quantity: 6, discount_percent: 5 },
+      { product_id: null, description: 'Pan casero', vat_rate: 10.5, quantity: 2, discount_percent: 0, manual_line_total: 1500 },
+      { product_id: QUESO.id, quantity: 0.3, discount_percent: 0, manual_line_total: 2700 },
+      { product_id: QUESO.id, quantity: 0.245, discount_percent: 0, manual_line_total: 2327.5 },
+    ])
+    expect(cartReducer(lines, { type: 'remove', key: manualKey })).toHaveLength(3)
+  })
+
+  it('un producto no puede ir a precio de lista y con importe manual a la vez', () => {
+    const withList = cartReducer([], { type: 'add', product: queso, quantity: 1 })
+    expect(mixError(withList, QUESO.id, 'manual')).toMatch(/precio de Zahuy/)
+    expect(mixError(withList, QUESO.id, 'product')).toBeNull()
+    const withManual = cartReducer([], { type: 'addManual', product: queso, quantity: 1, total: 9000, barcode: null })
+    expect(mixError(withManual, QUESO.id, 'product')).toMatch(/importe de etiqueta/)
+    expect(mixError(withManual, YOGUR.id, 'product')).toBeNull()
+  })
+
+  it('importe escrito y aviso de diferencia mayor al 20 %', () => {
+    expect(parseAmount('2327,50')).toEqual({ value: 2327.5, error: null })
+    expect(parseAmount('').error).toMatch(/Escribí el importe/)
+    expect(parseAmount('0').error).toMatch(/mayor que cero/)
+    expect(parseAmount('10,123').error).toMatch(/2 decimales/)
+    expect(manualDifference(2327.5, 2205).warn).toBe(false)
+    expect(manualDifference(24500, 2205).warn).toBe(true)
+    expect(manualDifference(1000, 2205).warn).toBe(true)
   })
 })
 
@@ -310,6 +363,93 @@ describe('pantalla de caja', () => {
     await user.type(scanField(), '7799999999999{Enter}')
     expect(await screen.findByRole('alert')).toHaveTextContent('No hay ningún producto activo con el código 7799999999999')
     expect(screen.getByText('El carrito está vacío.')).toBeInTheDocument()
+  })
+})
+
+describe('caja: balanza y productos sin cargar (§20)', () => {
+  it('sin la migración en la base: botones deshabilitados y la etiqueta no se cobra', async () => {
+    const { fake, user } = setup()
+    fake.setTable('sale_items', null, { code: '42703', message: 'column sale_items.price_source does not exist' })
+    await enterSale(user)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Producto de balanza' })).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Producto sin cargar' })).toBeDisabled()
+    await user.type(scanField(), '2000005002458{Enter}')
+    expect(await screen.findByRole('alert')).toHaveTextContent('todavía no están habilitadas')
+    expect(screen.getByText('El carrito está vacío.')).toBeInTheDocument()
+  })
+
+  it('etiqueta de balanza: elige el producto, escribe el importe y la base lo recibe', async () => {
+    const { fake, user } = setup()
+    fake.setRpcResult('register_sale', { id: 'sale-5', sale_number: 30, total_amount: 3827.5, created_at: '2026-11-17T15:00:00Z' })
+    await enterSale(user)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Producto de balanza' })).toBeEnabled())
+
+    await user.type(scanField(), '2000005002458{Enter}')
+    const dialog = await screen.findByRole('dialog', { name: 'Producto de balanza' })
+    expect(dialog).toHaveTextContent('0,245')
+    // Sin elegir producto no agrega.
+    await user.click(within(dialog).getByRole('button', { name: 'Agregar al carrito' }))
+    expect(within(dialog).getByText('Elegí qué producto es.')).toBeInTheDocument()
+    await user.click(await within(dialog).findByRole('button', { name: /Queso cremoso/ }))
+    // 0,245 kg × 9000 = 2205; 24.500 difiere más de 20 %: avisa pero deja seguir.
+    await user.type(within(dialog).getByLabelText(/^Importe de la etiqueta/), '24500')
+    expect(dialog).toHaveTextContent('2.205,00')
+    expect(dialog).toHaveTextContent(/difiere 1.011 %.*Se puede cobrar igual/)
+    await user.clear(within(dialog).getByLabelText(/^Importe de la etiqueta/))
+    await user.type(within(dialog).getByLabelText(/^Importe de la etiqueta/), '2327,50')
+    await user.click(within(dialog).getByRole('button', { name: 'Agregar al carrito' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    const cart = screen.getByRole('table', { name: 'Productos del carrito' })
+    expect(within(cart).getByText(/Importe de etiqueta/)).toBeInTheDocument()
+
+    // La misma etiqueta otra vez: avisa que se repite.
+    await user.type(scanField(), '2000005002458{Enter}')
+    const again = await screen.findByRole('dialog', { name: 'Producto de balanza' })
+    expect(within(again).getByRole('alert')).toHaveTextContent('ya está en el carrito')
+    await user.click(within(again).getByRole('button', { name: 'Cancelar' }))
+
+    // Línea libre.
+    await user.click(screen.getByRole('button', { name: 'Producto sin cargar' }))
+    const free = await screen.findByRole('dialog', { name: 'Producto sin cargar' })
+    await user.click(within(free).getByRole('button', { name: 'Agregar al carrito' }))
+    expect(free).toHaveTextContent(/descripción/i)
+    await user.type(within(free).getByLabelText(/^Descripción/), 'Pan casero')
+    await user.selectOptions(within(free).getByLabelText(/^IVA/), '10.5')
+    await user.type(within(free).getByLabelText(/^Importe total/), '1500')
+    await user.click(within(free).getByRole('button', { name: 'Agregar al carrito' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByLabelText('Total')).toHaveTextContent('3.827,50')
+
+    await user.click(screen.getByRole('button', { name: 'Cobrar (F12)' }))
+    const pay = await screen.findByRole('dialog', { name: 'Cobrar' })
+    await user.click(within(pay).getByRole('button', { name: 'Confirmar venta' }))
+    await waitFor(() => expect(fake.rpc).toHaveBeenCalledOnce())
+    const [, params] = fake.rpc.mock.calls[0] as [string, Record<string, unknown>]
+    expect(params).toMatchObject({
+      p_items: [
+        { product_id: null, description: 'Pan casero', vat_rate: 10.5, quantity: 1, discount_percent: 0, manual_line_total: 1500 },
+        { product_id: QUESO.id, quantity: 0.245, discount_percent: 0, manual_line_total: 2327.5 },
+      ],
+    })
+    expect(await screen.findByRole('dialog', { name: 'Venta n.º 30 registrada' })).toHaveTextContent('Pan casero')
+  })
+
+  it('balanza a mano: peso escrito; no mezcla con el mismo producto a precio de lista', async () => {
+    const { user } = setup()
+    await enterSale(user)
+    await user.type(scanField(), '0,5*queso')
+    await user.click(await screen.findByRole('button', { name: /Queso cremoso/ }))
+    await screen.findByRole('table', { name: 'Productos del carrito' })
+
+    await user.click(screen.getByRole('button', { name: 'Producto de balanza' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Producto de balanza' })
+    await user.type(within(dialog).getByLabelText(/^Peso \(kg\)/), '0,3')
+    await user.click(await within(dialog).findByRole('button', { name: /Queso cremoso/ }))
+    await user.type(within(dialog).getByLabelText(/^Importe de la etiqueta/), '2700')
+    await user.click(within(dialog).getByRole('button', { name: 'Agregar al carrito' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('ya está en el carrito con el precio de Zahuy')
+    expect(screen.queryByText(/Importe de etiqueta/)).not.toBeInTheDocument()
   })
 })
 

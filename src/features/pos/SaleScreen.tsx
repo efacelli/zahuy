@@ -4,20 +4,22 @@ import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Icon } from '../../components/ui/Icon'
 import { PageHeader } from '../../components/ui/PageHeader'
-import { isBarcodeLike, normalizeBarcode } from '../../domain/barcode'
+import { isBarcodeLike, normalizeBarcode, parseScaleLabel, type ScaleLabel } from '../../domain/barcode'
 import { DEFAULT_DISCOUNT_RULE, discountError, type DiscountRule } from '../../domain/quantity-discount'
 import { SALE_UNIT_LABEL, isIntegerUnit } from '../../domain/units'
-import { formatMoney } from '../../lib/format'
+import { formatMoney, formatNumber } from '../../lib/format'
 import { toAppError } from '../../lib/errors'
 import { newIdempotencyKey } from '../../lib/idempotency'
 import { parseDecimalInput } from '../../lib/numbers'
 import { useSupabase } from '../../lib/supabase-context'
 import { useBarcodeScanner } from '../barcode/useBarcodeScanner'
 import { searchProducts } from '../movements/movements-api'
-import { cartReducer, parseScanInput, priceCart, quantityError, type CartProduct } from './cart'
+import { cartReducer, lineName, mixError, parseScanInput, priceCart, quantityError, type CartProduct } from './cart'
 import { CloseSessionDialog } from './CloseSessionDialog'
 import { PaymentDialog, type CompletedSale } from './PaymentDialog'
-import { fetchDiscountRule, fetchSellable, findSellableByBarcode, type OpenSession } from './pos-api'
+import { FreeItemDialog } from './FreeItemDialog'
+import { fetchDiscountRule, fetchSellable, findSellableByBarcode, supportsManualLines, type OpenSession } from './pos-api'
+import { ScaleItemDialog } from './ScaleItemDialog'
 import { SaleTicket } from './SaleTicket'
 import styles from './Pos.module.css'
 
@@ -38,6 +40,11 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
   const rule = useQuery({ queryKey: ['discount-rule'], queryFn: () => fetchDiscountRule(client), staleTime: 300_000 })
   const discountRule = rule.data ?? DEFAULT_DISCOUNT_RULE
   const cart = priceCart(lines, discountRule)
+  /** §20: sin la migración la base cobraría el precio de lista, así que no se ofrece. */
+  const manual = useQuery({ queryKey: ['pos-manual-support'], queryFn: () => supportsManualLines(client), staleTime: 300_000 })
+  const manualEnabled = manual.data === true
+  const [scale, setScale] = useState<{ label: ScaleLabel | null; repeated: boolean } | null>(null)
+  const [freeOpen, setFreeOpen] = useState(false)
   const total = cart.total
 
   const { quantity: multiplier, text: searchText } = parseScanInput(text)
@@ -62,7 +69,7 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
 
   function add(product: CartProduct) {
     const quantity = multiplier ?? 1
-    const problem = quantityError(quantity, product.sale_unit)
+    const problem = mixError(lines, product.id, 'product') ?? quantityError(quantity, product.sale_unit)
     if (problem) {
       setMessage({ tone: 'error', text: `${product.name}: ${problem}` })
       return
@@ -73,14 +80,28 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
     focusScan()
   }
 
+  /** Primero se busca el código entre los productos; si no está, puede ser una etiqueta de balanza (§20.1). */
+  async function handleCode(code: string) {
+    const product = await findSellableByBarcode(client, code)
+    if (product) return add(product)
+    setText('')
+    const label = parseScaleLabel(code)
+    if (!label) {
+      setMessage({ tone: 'error', text: `No hay ningún producto activo con el código ${code}. Buscalo por nombre.` })
+      return
+    }
+    if (!manualEnabled) {
+      setMessage({ tone: 'error', text: 'Las etiquetas de balanza todavía no están habilitadas en la base.' })
+      return
+    }
+    setMessage(null)
+    setScale({ label, repeated: lines.some((l) => l.kind === 'manual' && l.barcode === label.code) })
+  }
+
   // Si el foco quedó en un botón, el lector igual suma al carrito.
   useBarcodeScanner((code) => {
-    findSellableByBarcode(client, code)
-      .then((product) => {
-        if (product) add(product)
-        else setMessage({ tone: 'error', text: `No hay ningún producto activo con el código ${code}. Buscalo por nombre.` })
-      })
-      .catch((e: unknown) => setMessage({ tone: 'error', text: toAppError(e).message }))
+    if (scale || freeOpen) return
+    handleCode(code).catch((e: unknown) => setMessage({ tone: 'error', text: toAppError(e).message }))
   })
 
   async function onEnter() {
@@ -90,13 +111,7 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
     }
     try {
       if (isCode) {
-        const code = normalizeBarcode(searchText)
-        const product = await findSellableByBarcode(client, code)
-        if (product) add(product)
-        else {
-          setMessage({ tone: 'error', text: `No hay ningún producto activo con el código ${code}. Buscalo por nombre.` })
-          setText('')
-        }
+        await handleCode(normalizeBarcode(searchText))
         return
       }
       const only = results.data?.length === 1 ? results.data[0] : undefined
@@ -168,6 +183,24 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
                 {message.text}
               </p>
             )}
+            <div className={styles.cartActions}>
+              <Button
+                size="sm"
+                disabled={!manualEnabled}
+                title={manualEnabled ? undefined : 'Todavía no está habilitado en la base.'}
+                onClick={() => setScale({ label: null, repeated: false })}
+              >
+                Producto de balanza
+              </Button>
+              <Button
+                size="sm"
+                disabled={!manualEnabled}
+                title={manualEnabled ? undefined : 'Todavía no está habilitado en la base.'}
+                onClick={() => setFreeOpen(true)}
+              >
+                Producto sin cargar
+              </Button>
+            </div>
             {!isCode && searchText.length >= 2 && (
               <ul className={styles.results} aria-label="Productos encontrados">
                 {results.isPending && <li className={styles.muted}>Buscando…</li>}
@@ -190,6 +223,7 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
               El carrito está vacío.
             </p>
           ) : (
+            <div className={styles.cartScroll}>
             <table className={styles.cart} aria-label="Productos del carrito">
               <thead>
                 <tr>
@@ -212,54 +246,72 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
                 </tr>
               </thead>
               <tbody>
-                {cart.lines.map((l) => (
-                  <tr key={l.product.id}>
-                    <td>
-                      {l.product.name}
-                      <span className={styles.muted}> · SKU {l.product.sku}</span>
-                    </td>
-                    <td className={styles.num}>
-                      <QuantityInput
-                        label={`Cantidad de ${l.product.name}`}
-                        value={l.quantity}
-                        integer={isIntegerUnit(l.product.sale_unit)}
-                        unit={SALE_UNIT_LABEL[l.product.sale_unit].toLowerCase()}
-                        onChange={(quantity) => dispatch({ type: 'set', productId: l.product.id, quantity })}
-                      />
-                    </td>
-                    <td className={styles.num}>{formatMoney(l.product.sale_price_with_vat)}</td>
-                    <td className={styles.num}>
-                      <DiscountInput
-                        label={`Descuento de ${l.product.name}`}
-                        applied={l.appliedPercent}
-                        suggested={l.suggestedPercent}
-                        isCustom={l.discountPercent !== null}
-                        rule={discountRule}
-                        onChange={(percent) => dispatch({ type: 'discount', productId: l.product.id, percent })}
-                        onError={(text) => setMessage({ tone: 'error', text: `${l.product.name}: ${text}` })}
-                      />
-                    </td>
-                    <td className={styles.num}>
-                      {l.discountAmount > 0 && <s className={styles.muted}>{formatMoney(l.listTotal)}</s>}{' '}
-                      <strong>{formatMoney(l.total)}</strong>
-                    </td>
-                    <td>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Quitar ${l.product.name}`}
-                        onClick={() => {
-                          dispatch({ type: 'remove', productId: l.product.id })
-                          focusScan()
-                        }}
-                      >
-                        <Icon name="close" size={16} />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                {cart.lines.map((l) => {
+                  const name = lineName(l)
+                  return (
+                    <tr key={l.key}>
+                      <td>
+                        {name}
+                        {l.kind === 'product' && <span className={styles.muted}> · SKU {l.product.sku}</span>}
+                        {l.kind === 'manual' && <span className={styles.lineTag}>Importe de etiqueta · SKU {l.product.sku}</span>}
+                        {l.kind === 'free' && (
+                          <span className={styles.lineTag}>Sin cargar · IVA {formatNumber(l.vatRate)} %</span>
+                        )}
+                      </td>
+                      <td className={styles.num}>
+                        {l.kind === 'product' ? (
+                          <QuantityInput
+                            label={`Cantidad de ${name}`}
+                            value={l.quantity}
+                            integer={isIntegerUnit(l.product.sale_unit)}
+                            unit={SALE_UNIT_LABEL[l.product.sale_unit].toLowerCase()}
+                            onChange={(quantity) => dispatch({ type: 'set', key: l.key, quantity })}
+                          />
+                        ) : (
+                          `${formatNumber(l.quantity)}${l.kind === 'manual' ? ' kg' : ''}`
+                        )}
+                      </td>
+                      <td className={styles.num}>
+                        {l.kind === 'product' ? formatMoney(l.product.sale_price_with_vat) : <span className={styles.muted}>—</span>}
+                      </td>
+                      <td className={styles.num}>
+                        {l.kind === 'product' ? (
+                          <DiscountInput
+                            label={`Descuento de ${name}`}
+                            applied={l.appliedPercent}
+                            suggested={l.suggestedPercent}
+                            isCustom={l.discountPercent !== null}
+                            rule={discountRule}
+                            onChange={(percent) => dispatch({ type: 'discount', key: l.key, percent })}
+                            onError={(text) => setMessage({ tone: 'error', text: `${name}: ${text}` })}
+                          />
+                        ) : (
+                          <span className={styles.muted}>—</span>
+                        )}
+                      </td>
+                      <td className={styles.num}>
+                        {l.discountAmount > 0 && <s className={styles.muted}>{formatMoney(l.listTotal)}</s>}{' '}
+                        <strong>{formatMoney(l.total)}</strong>
+                      </td>
+                      <td>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Quitar ${name}`}
+                          onClick={() => {
+                            dispatch({ type: 'remove', key: l.key })
+                            focusScan()
+                          }}
+                        >
+                          <Icon name="close" size={16} />
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
+            </div>
           )}
         </section>
 
@@ -296,6 +348,43 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
           onDone={(sale) => {
             setPaying(false)
             setTicket(sale)
+          }}
+        />
+      )}
+
+      {scale && (
+        <ScaleItemDialog
+          label={scale.label}
+          repeated={scale.repeated}
+          onCancel={() => {
+            setScale(null)
+            focusScan()
+          }}
+          onAdd={(item) => {
+            const problem = mixError(lines, item.product.id, 'manual')
+            if (problem) {
+              setMessage({ tone: 'error', text: problem })
+            } else {
+              dispatch({ type: 'addManual', ...item })
+              setMessage(null)
+            }
+            setScale(null)
+            focusScan()
+          }}
+        />
+      )}
+
+      {freeOpen && (
+        <FreeItemDialog
+          onCancel={() => {
+            setFreeOpen(false)
+            focusScan()
+          }}
+          onAdd={(item) => {
+            dispatch({ type: 'addFree', ...item })
+            setFreeOpen(false)
+            setMessage(null)
+            focusScan()
           }}
         />
       )}
