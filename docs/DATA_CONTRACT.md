@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.9.2 (convención de ruta de imágenes de productos, §5.5; propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
+| Versión | 0.10.0 (propuesta: §20 importe manual para productos pesados en balanza; convención de ruta de imágenes de productos, §5.5; propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16); ranking de productos vendidos (§17); datos del comercio y aumentos de precios (§18 y §19, propuesta) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -1112,6 +1112,7 @@ volver a registrar la concordancia.
 | 0.9.0 | 2026-11-16 | **Propuesta** del backend (issue #68): §18 datos del comercio (`store_name`, `store_address`, `store_tax_id`, nulables, en `sales_settings`) y §19 historial de precios (`price_history`, solo-agregado, escrita por trigger) y aumentos masivos (`price_bulk_changes`, `preview_price_increase`, `apply_price_increase`, `revert_price_change`); errores nuevos y preguntas P-49 a P-54 (P-49, P-52 y P-53 dependen del cliente). P-50, P-51 y P-54 decididas por `efacelli` y ajustes de su revisión incorporados (filtro por producto, productos sin cambio, origen validado en el trigger, bloqueo ordenado, deshacer con inactivos). Quedan abiertas P-49, P-52 y P-53 (cliente). No se implementa hasta aprobarla |
 | 0.9.1 | 2026-11-16 | Cierre de las preguntas abiertas de la v0.9.0: P-49 (CUIT del ticket: opcional y por ahora sin cargar, a confirmar con el contador), P-52 (el aumento toca solo el precio de góndola, no costos) y P-53 (múltiplo del redondeo elegido en cada aumento, $10 por defecto en pantalla), decididas por `ChinoNader18` por delegación de `efacelli`. Sin cambios de esquema respecto de la v0.9.0 |
 | 0.9.2 | 2026-11-17 | Aclaración sin cambios de esquema: convención de ruta de las imágenes de productos en el bucket `product-images` (§5.5), que el contrato dejaba para cuando el frontend implementara la carga |
+| 0.10.0 | 2026-11-17 | **Propuesta** del frontend (§20): importe manual para productos pesados con etiqueta de balanza. Campo opcional `manual_line_total` en los ítems de `register_sale`, columnas aditivas `price_source` y `catalog_line_total` en `sale_items` y código `INVALID_MANUAL_PRICE`. P-55 a P-57 decididas por `efacelli`; P-58 abierta. No se implementa hasta que la revise el backend |
 
 ---
 
@@ -2012,3 +2013,98 @@ correctos; la edición manual de precio o costo también deja fila; solo-agregad
 restaura solo lo que sigue igual (también productos desactivados después), informa los saltados, `ALREADY_REVERTED`, motivo obligatorio.
 Permisos: encargado, dueño y programador sí; empleado, inactivo y `anon` no. Migración sobre
 una base con productos y ventas previas: precios, ventas y huella de datos intactos.
+
+---
+
+## 20. Importe manual para productos pesados en balanza (PROPUESTA v0.10.0)
+
+**Estado:** propuesta del frontend (`efacelli`), pendiente de revisión del backend
+(`ChinoNader18`). No se implementa hasta aprobarla.
+
+### 20.1 Para qué
+
+La balanza del comercio (Kretz Report NX) imprime etiquetas con código EAN-13 de peso
+variable: `20` + PLU (5 dígitos) + **peso en gramos** (5 dígitos) + dígito verificador.
+Ejemplo real: `2000005002458` → PLU 5, 0,245 kg. El comercio **no lleva una tabla de qué
+PLU es cada producto** y carga la balanza a mano, así que la etiqueta no sirve para saber
+qué producto es ni el precio por kilo que usó la balanza.
+
+Decisión de `efacelli` (2026-11-17): al cobrar, la caja toma el peso del código, el
+cajero **elige el producto** (solo los que se venden por kilo) y **escribe el importe**
+impreso en la etiqueta. Hoy `register_sale` no lo permite: el precio lo calcula siempre
+la base (§15.6, paso 4).
+
+Decisiones (`efacelli`, 2026-11-17): P-55 **cualquier usuario activo** puede hacerlo
+(queda quién vendió, como toda venta); P-56 la base **no limita** la diferencia con el
+precio de Zahuy (la caja **avisa** si difiere más de 20 %, sin bloquear); P-57 se permite
+**al escanear la etiqueta y también a mano** (peso e importe escritos) por si la etiqueta
+no se lee.
+
+### 20.2 `register_sale` (cambio compatible)
+
+Cada elemento de `p_items` admite un campo opcional nuevo:
+
+```
+{ "product_id": uuid, "quantity": number, "discount_percent": number|null,
+  "manual_line_total": number|null }
+```
+
+- Sin `manual_line_total` (o `null`) → todo igual que hoy. Las llamadas actuales siguen
+  funcionando.
+- Con valor → es el **importe con IVA de la línea**, tal como figura en la etiqueta:
+  - Solo para productos con `sale_unit = 'kg'`; si no → `INVALID_MANUAL_PRICE` (nuevo).
+  - Mayor que 0 y con hasta 2 decimales (mismo criterio de ruido de coma flotante que
+    los importes de §15.6); si no → `INVALID_AMOUNT`.
+  - No admite descuento por cantidad: `discount_percent` tiene que ser `null` o `0`; si no
+    → `INVALID_DISCOUNT`. (Con P-43 el sugerido de un producto por kilo ya es 0.)
+  - Líneas repetidas del mismo producto (dos etiquetas del mismo fiambre): se suman
+    cantidades **e importes**. Si unas traen `manual_line_total` y otras no →
+    `INVALID_MANUAL_PRICE` (la caja nunca lo arma así).
+- El `manual_line_total` entra en el `request_hash` **tal como lo envía el cliente**
+  (`null` si no lo manda), igual que `discount_percent` (§16.3).
+- Stock, FEFO, pagos, redondeo e idempotencia: sin cambios.
+
+### 20.3 Cambios de esquema en `sale_items` (aditivos)
+
+| Columna | Tipo | Null | Default | Notas |
+|---|---|---|---|---|
+| `price_source` | `text` | no | `'list'` | `CHECK (price_source IN ('list','manual'))`. Las filas existentes quedan en `'list'` |
+| `catalog_line_total` | `numeric(12,2)` | sí | — | Solo con `manual`: `round(quantity * products.sale_price_with_vat, 2)` en ese instante, para auditar la diferencia. `CHECK ((price_source = 'manual') = (catalog_line_total IS NOT NULL))` |
+
+Con `price_source = 'manual'`:
+- `list_line_total = line_total = manual_line_total` y `discount_amount = 0` (siguen
+  valiendo los `CHECK` de §16.2).
+- `unit_price_with_vat = round(line_total / quantity, 2)` (informativo; por el redondeo,
+  `quantity * unit_price_with_vat` puede diferir de `line_total` en centavos).
+- `net_amount` y `vat_amount` se calculan sobre `line_total`, igual que hoy.
+
+### 20.4 Lectura
+
+Las vistas y consultas de ventas no cambian. El frontend lee `price_source` y
+`catalog_line_total` con el `select` embebido de ítems para marcar en la venta y en el
+ticket las líneas con importe de etiqueta.
+
+### 20.5 Códigos de error nuevos
+
+`INVALID_MANUAL_PRICE`.
+
+### 20.6 Preguntas
+
+| # | Pregunta | Estado |
+|---|---|---|
+| P-55 | ¿Quién puede cobrar con importe manual? | **Decidida (`efacelli`, 2026-11-17):** cualquier usuario activo | Adoptada |
+| P-56 | ¿La base limita la diferencia con el precio de Zahuy? | **Decidida (`efacelli`, 2026-11-17):** no; la caja avisa si difiere más de 20 % y deja cobrar. Queda `catalog_line_total` para auditar | Adoptada |
+| P-57 | ¿Solo al escanear la etiqueta o también a mano? | **Decidida (`efacelli`, 2026-11-17):** las dos; la base no distingue el origen | Adoptada |
+| P-58 | ¿Hace falta guardar el código escaneado (para detectar una etiqueta cobrada dos veces)? | Abierta; propuesta: no por ahora, la caja avisa si se escanea el mismo código dos veces en la misma venta | Abierta |
+
+### 20.7 Pruebas que se exigirán
+
+Venta con un ítem manual (importe exacto en `line_total`, `catalog_line_total` con el precio
+del momento, IVA discriminado sobre el importe manual), mezclada con ítems normales; dos
+líneas manuales del mismo producto se suman; mezcla manual y no manual del mismo producto →
+`INVALID_MANUAL_PRICE`; producto por unidad con importe manual → `INVALID_MANUAL_PRICE`;
+importe 0, negativo o con 3 decimales → `INVALID_AMOUNT`; con `discount_percent` > 0 →
+`INVALID_DISCOUNT`; idempotencia (mismo importe → misma venta; otro importe con la misma
+clave → `IDEMPOTENCY_CONFLICT`); anulación de una venta con ítem manual (stock compensado,
+importes intactos); ventas anteriores a la migración con `price_source = 'list'`;
+empleado activo sí, inactivo y `anon` no.
