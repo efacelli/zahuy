@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { isMissingColumn } from '../../lib/errors'
 import { normalizeShift, type ShiftRow } from '../shifts/shifts-api'
 
 /*
@@ -44,6 +45,8 @@ export interface SalesDailyRow {
   gross_margin: number
   discount_total: number
   rounding_total: number
+  /** Neto de los productos sin cargar (§20.8); no entra en el margen. Falta antes de la migración. */
+  free_net_total?: number
 }
 
 /** Fila de `v_sales_daily_payments` (§16.4). */
@@ -70,6 +73,8 @@ export interface FinanceData {
   /** Neto sin IVA de lo vendido. */
   netTotal: number
   costTotal: number
+  /** Neto sin IVA de los productos sin cargar: sin costo conocido, fuera del margen (§20.8). */
+  freeNetTotal: number
   marginTotal: number
   discountTotal: number
   roundingTotal: number
@@ -90,6 +95,7 @@ export function summarize(
   const byDay = new Map(days.map((d) => [d.day, d]))
   let netTotal = 0
   let costTotal = 0
+  let freeNetTotal = 0
   let discountTotal = 0
   let roundingTotal = 0
   for (const row of daily) {
@@ -100,6 +106,7 @@ export function summarize(
     d.margin += Number(row.gross_margin ?? 0)
     netTotal += Number(row.net_amount ?? 0)
     costTotal += Number(row.cost_total ?? 0)
+    freeNetTotal += Number(row.free_net_total ?? 0)
     discountTotal += Number(row.discount_total ?? 0)
     roundingTotal += Number(row.rounding_total ?? 0)
   }
@@ -124,6 +131,7 @@ export function summarize(
     salesCount: days.reduce((a, d) => a + d.count, 0),
     netTotal: round2(netTotal),
     costTotal: round2(costTotal),
+    freeNetTotal: round2(freeNetTotal),
     marginTotal: round2(days.reduce((a, d) => a + d.margin, 0)),
     discountTotal: round2(discountTotal),
     roundingTotal: round2(roundingTotal),
@@ -138,12 +146,19 @@ const SHIFT_COLUMNS =
 
 const DAILY_COLUMNS = 'sale_date, sales_count, total_amount, net_amount, cost_total, gross_margin, discount_total, rounding_total'
 
+/** Con `free_net_total` (§20.8); si la base todavía no lo tiene, sin él. */
+async function fetchDaily(client: SupabaseClient, firstDay: string) {
+  const query = (columns: string) => client.from('v_sales_daily').select(columns).gte('sale_date', firstDay).order('sale_date')
+  const res = await query(`${DAILY_COLUMNS}, free_net_total`)
+  return res.error && isMissingColumn(res.error) ? query(DAILY_COLUMNS) : res
+}
+
 export async function fetchFinance(client: SupabaseClient, range: FinanceRange, today = new Date()): Promise<FinanceData> {
   const firstDay = lastDays(range, today)[0]!
   // Los turnos se piden desde un día antes: un turno abierto la noche anterior cierra dentro del período.
   const since = new Date(`${firstDay}T00:00:00-03:00`)
   const [daily, payments, shifts] = await Promise.all([
-    client.from('v_sales_daily').select(DAILY_COLUMNS).gte('sale_date', firstDay).order('sale_date'),
+    fetchDaily(client, firstDay),
     client
       .from('v_sales_daily_payments')
       .select('sale_date, payment_method_name, amount_total, payments_count')

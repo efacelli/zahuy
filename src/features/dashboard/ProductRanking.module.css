@@ -77,3 +77,13 @@
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* Productos sin cargar: como los ítems del ranking, sin número de puesto. */
+.freeItem {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--color-border);
+}

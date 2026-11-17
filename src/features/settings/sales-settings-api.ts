@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { isMissingColumn } from '../../lib/errors'
 import { parseDecimalInput } from '../../lib/numbers'
 
 /*
@@ -32,12 +33,6 @@ export const STORE_INFO_KEY = ['store-info'] as const
 
 const BASE_COLUMNS = 'id, rounding_multiple, quantity_discount_step, quantity_discount_percent, quantity_discount_max_percent'
 const STORE_COLUMNS = 'store_name, store_address, store_tax_id'
-
-/** Columna inexistente: la migración todavía no se aplicó. */
-function isMissingColumn(error: unknown): boolean {
-  const code = (error as { code?: string } | null)?.code
-  return code === '42703' || code === 'PGRST204'
-}
 
 type Row = Record<string, unknown>
 

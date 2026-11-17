@@ -128,6 +128,51 @@ describe('dashboard: ventas y caja', () => {
   })
 })
 
+describe('dashboard: productos sin cargar (§20.8)', () => {
+  it('el margen se calcula sobre lo que tiene costo y las líneas libres se listan aparte', async () => {
+    const fake = createFakeSupabase(fakeSession(), { role: 'manager' })
+    fake.setTable('v_inventory_summary', [])
+    fake.setTable('v_cash_session_summary', [])
+    const today = localDay(new Date())
+    // Neto 4950,62 de los que 1357,47 son productos sin cargar: margen 1000 sobre 3593,15 = 27,8 %.
+    fake.setTable('v_sales_daily', [
+      daily({ sale_date: today, sales_count: 1, total_amount: 5990.25, net_amount: 4950.62, cost_total: 2593.15, gross_margin: 1000, free_net_total: 1357.47 }),
+    ] as unknown as Record<string, unknown>[])
+    fake.setTable('v_sales_daily_payments', [])
+    fake.setTable('sales', [
+      {
+        id: 's-1',
+        sale_number: 48,
+        created_at: new Date().toISOString(),
+        status: 'completed',
+        'sale_items.price_source': 'free',
+        seller: { full_name: 'Ana Cajera' },
+        sale_items: [{ id: 'i-1', product_name: 'Pan casero', quantity: '2', vat_rate: '10.50', line_total: '1500.00' }],
+      },
+    ])
+    renderApp('/', fake.client)
+    const section = await screen.findByRole('region', { name: 'Ventas y caja' })
+    expect(await within(section).findByText(/27,8 % de lo vendido sin IVA \(\$\s3\.593,15\)/)).toBeInTheDocument()
+    expect(within(section).getByText(/No incluye \$\s1\.357,47 sin IVA de productos sin cargar/)).toBeInTheDocument()
+    const list = await within(section).findByRole('list', { name: 'Productos sin cargar cobrados' })
+    expect(list).toHaveTextContent('Pan casero')
+    expect(list).toHaveTextContent(/2 u\. · IVA 10,5 % · venta n\.º 48/)
+    expect(list).toHaveTextContent('Ana Cajera')
+    expect(list).toHaveTextContent(/1\.500,00/)
+  })
+
+  it('sin la migración, la lista no aparece', async () => {
+    const fake = createFakeSupabase(fakeSession(), { role: 'manager' })
+    fake.setTable('v_inventory_summary', [])
+    fake.setTable('sales', null, { code: '42703', message: 'column sale_items_1.price_source does not exist' })
+    renderApp('/', fake.client)
+    const section = await screen.findByRole('region', { name: 'Ventas y caja' })
+    await within(section).findByText('Margen bruto')
+    await waitFor(() => expect(fake.from).toHaveBeenCalledWith('sales'))
+    expect(screen.queryByRole('heading', { name: 'Productos sin cargar' })).not.toBeInTheDocument()
+  })
+})
+
 describe('dashboard: más y menos vendidos (§17)', () => {
   const row = (o: Record<string, unknown>) => ({
     product_id: crypto.randomUUID(),
