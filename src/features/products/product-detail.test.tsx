@@ -268,3 +268,59 @@ describe('historial de precios en la ficha', () => {
     expect(fake.from.mock.calls.some((c) => c[0] === 'price_history')).toBe(false)
   })
 })
+
+describe('imagen del producto', () => {
+  it('el encargado sube una foto: va al bucket con la convención de ruta y se guarda la ruta', async () => {
+    const { fake, user } = setup('manager')
+    await user.upload(await screen.findByLabelText('Subir imagen'), new File(['png'], 'foto.png', { type: 'image/png' }))
+    expect(await screen.findByText('Imagen guardada.')).toBeInTheDocument()
+    const [path] = fake.filesIn('product-images')
+    expect(path).toMatch(new RegExp(`^${ID}/[0-9a-f-]{36}\\.png$`))
+    expect(fake.writes).toContainEqual({ table: 'products', op: 'update', payload: { image_path: path }, filters: { id: ID } })
+  })
+
+  it('rechaza archivos que no son JPG, PNG o WebP sin subir nada', async () => {
+    const { fake } = setup('manager')
+    const input = await screen.findByLabelText('Subir imagen')
+    // `upload` respeta `accept`; se simula un archivo que el navegador dejó pasar igual.
+    const user = userEvent.setup({ applyAccept: false })
+    await user.upload(input, new File(['gif'], 'foto.gif', { type: 'image/gif' }))
+    expect(await screen.findByText('Elegí una foto JPG, PNG o WebP.')).toBeInTheDocument()
+    expect(fake.filesIn('product-images')).toEqual([])
+  })
+
+  it('muestra la foto con URL firmada; quitarla pide confirmación y borra el archivo', async () => {
+    const path = `${ID}/11111111-2222-4333-8444-555555555555.webp`
+    const fake = createFakeSupabase(fakeSession(), { role: 'manager' })
+    fake.setTable('v_product_list', [{ ...SUMMARY, image_path: path }])
+    fake.setTable('v_batch_status', [])
+    fake.setTable('stock_movements', [])
+    fake.setTable('products', [{ ...EDITABLE, image_path: path }])
+    fake.putFile('product-images', path)
+    renderApp(`/productos/${ID}`, fake.client)
+    const user = userEvent.setup()
+
+    const img = await screen.findByRole('img', { name: 'Yogur frutilla 190 g' })
+    expect(img.getAttribute('src')).toContain(`product-images/${path}`)
+    await user.click(screen.getByRole('button', { name: 'Quitar' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Quitar imagen' })
+    await user.click(within(dialog).getByRole('button', { name: 'Quitar imagen' }))
+    expect(await screen.findByText('Imagen quitada.')).toBeInTheDocument()
+    expect(fake.writes).toContainEqual({ table: 'products', op: 'update', payload: { image_path: null }, filters: { id: ID } })
+    expect(fake.filesIn('product-images')).toEqual([])
+  })
+
+  it('si la base rechaza el cambio, borra la foto recién subida', async () => {
+    const { fake, user } = setup('manager')
+    fake.failNextWrite('products', { code: '42501', message: 'permission denied' })
+    await user.upload(await screen.findByLabelText('Subir imagen'), new File(['jpg'], 'foto.jpg', { type: 'image/jpeg' }))
+    expect(await screen.findByText(/No tenés permiso/)).toBeInTheDocument()
+    expect(fake.filesIn('product-images')).toEqual([])
+  })
+
+  it('el empleado ve la imagen pero no puede cambiarla', async () => {
+    setup('staff')
+    expect(await screen.findByText('Sin imagen')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Subir imagen')).not.toBeInTheDocument()
+  })
+})

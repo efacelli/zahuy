@@ -234,10 +234,44 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
     return chain
   })
 
+  /** Storage: archivos subidos por bucket; `failNextUpload` simula un rechazo. */
+  const files: Record<string, Map<string, Blob>> = {}
+  let uploadError: unknown = null
+  const bucketFiles = (bucket: string) => (files[bucket] ??= new Map())
+  const storage = {
+    from: vi.fn((bucket: string) => ({
+      upload: vi.fn(async (path: string, body: Blob) => {
+        if (uploadError) {
+          const error = uploadError
+          uploadError = null
+          return { data: null, error }
+        }
+        bucketFiles(bucket).set(path, body)
+        return { data: { path }, error: null }
+      }),
+      remove: vi.fn(async (paths: string[]) => {
+        paths.forEach((p) => bucketFiles(bucket).delete(p))
+        return { data: [], error: null }
+      }),
+      createSignedUrl: vi.fn(async (path: string) => ({ data: { signedUrl: `https://storage.test/${bucket}/${path}?token=x` }, error: null })),
+    })),
+  }
+
   return {
-    client: { auth, from, rpc } as unknown as SupabaseClient,
+    client: { auth, from, rpc, storage } as unknown as SupabaseClient,
     auth,
     from,
+    storage,
+    /** Rutas de los archivos que hay en un bucket. */
+    filesIn(bucket: string) {
+      return [...bucketFiles(bucket).keys()]
+    },
+    putFile(bucket: string, path: string) {
+      bucketFiles(bucket).set(path, new Blob(['x']))
+    },
+    failNextUpload(error: unknown) {
+      uploadError = error
+    },
     rpc,
     rpcFilters,
     writes,
