@@ -2187,3 +2187,123 @@ libre (`gross_margin` solo sobre líneas con costo, `free_net_total` correcto); 
 diferida con una venta que tiene líneas libres; ranking sin líneas libres; hash de una venta con
 líneas libres (mismo orden → misma venta; otro orden o campo → `IDEMPOTENCY_CONFLICT`); hash de
 una venta sin campos nuevos idéntico al de antes de la migración.
+
+## 22. Facturación electrónica ARCA (PROPUESTA v0.12.0)
+
+**Estado:** propuesta del backend (`ChinoNader18`) para revisión de `efacelli` y del contador.
+No se implementa nada fiscal en producción hasta aprobarla. Desarrolla lo que §15.8 dejó
+reservado para la etapa 6. **No contiene datos del titular** (CUIT, razón social, domicilio,
+certificados ni claves): el repositorio es público y esos datos viven solo en secretos de
+Supabase y en la carpeta privada del titular.
+
+### 22.1 Alcance y principios
+
+- **Dónde se emite.** Solo desde una Edge Function (backend) con WSAA + WSFEv1 (RG 4291).
+  React **nunca** ve certificado, clave privada ni token de ARCA.
+- **Ambientes.** `off` (por defecto: la caja sigue emitiendo el ticket interno no fiscal de
+  §15), `homologacion` y `produccion`. Se pasa de uno a otro con una decisión explícita,
+  nunca por código. Producción exige: revisión del contador, backup verificado y confirmación
+  de una persona.
+- **Una venta, a lo sumo un comprobante válido.** Idempotencia y conciliación impiden pedir dos
+  veces un número. Un comprobante no está autorizado sin respuesta afirmativa de ARCA con CAE.
+- **Nada fiscal en `sales`.** El comprobante es una tabla aparte; la venta y el stock no
+  cambian (§15.8).
+- **Emisor.** Responsable inscripto en IVA, punto de venta «RECE para aplicativo y web
+  services». El comprobante usa lo que la venta ya guarda: neto, IVA y total por ítem (§15, §20).
+
+### 22.2 Tablas (aditivas)
+
+**`fiscal_settings`** — una sola fila. `environment` (`off` | `homologacion` | `produccion`,
+por defecto `off`), `pto_vta integer` (punto de venta de web services), `caea_pto_vta integer`
+nulo (punto de venta propio para contingencia, §22.6), `updated_at`, `updated_by`. Escribe
+solo el dueño o el programador. **El CUIT no se guarda en la base**: es un secreto de la
+función.
+
+**`fiscal_documents`** — solo agregado, escrita únicamente por la función con `service_role`
+(los usuarios autenticados solo leen).
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `id` | `uuid` | PK |
+| `sale_id` | `uuid` | FK `sales`; **único parcial** `WHERE status IN ('pending','authorized','unknown')`: una venta tiene a lo sumo un comprobante vivo |
+| `kind` | `text` | `invoice` o `credit_note` |
+| `cbte_tipo` | `smallint` | código ARCA (1 A, 6 B, 3 NC A, 8 NC B, …) |
+| `pto_vta` | `integer` | |
+| `cbte_nro` | `bigint` | nulo hasta obtenerlo; único `(environment, pto_vta, cbte_tipo, cbte_nro)` |
+| `environment` | `text` | `homologacion` o `produccion`: un documento de homologación **nunca** se mezcla con uno de producción |
+| `status` | `text` | `pending`, `authorized`, `rejected` o `unknown` |
+| `authorization_kind` | `text` | `CAE` o `CAEA` |
+| `cae` | `text` | 14 dígitos; obligatorio si `authorized` |
+| `cae_expires_on` | `date` | |
+| `receiver_doc_type`, `receiver_doc_number` | `smallint`, `text` | 99 y 0 = consumidor final |
+| `receiver_vat_condition_id` | `smallint` | condición frente al IVA del receptor (campo exigido por ARCA en la solicitud; confirmar contra el manual vigente) |
+| `imp_total`, `imp_neto`, `imp_iva` | `numeric(12,2)` | deben coincidir con la venta (§22.4) |
+| `iva_breakdown` | `jsonb` | por alícuota (10,5 % y 21 %): base e importe |
+| `request_payload`, `response_payload` | `jsonb` | tal cual; **sin** token, firma ni clave |
+| `observations` | `jsonb` | observaciones y errores de ARCA |
+| `idempotency_key` | `uuid` | único |
+| `created_by`, `created_at`, `authorized_at` | | auditoría |
+
+Reglas: un documento `authorized` **no se modifica ni se borra** (trigger); se corrige con una
+nota de crédito. Con RLS: leen encargado, dueño y programador; el empleado, solo los de las
+ventas que cobró.
+
+### 22.3 Flujo (función `arca-emitir`)
+
+1. La caja registra la venta como hoy (`register_sale`, sin cambios).
+2. Si `fiscal_settings.environment` no es `off`, el frontend llama a la función con `sale_id` y,
+   si corresponde, los datos del receptor.
+3. La función inserta el documento `pending` (idempotente por clave), pide a ARCA el último
+   número autorizado (`FECompUltimoAutorizado`), solicita el CAE (`FECAESolicitar`) y guarda la
+   respuesta completa en una sola transacción: `authorized` o `rejected`.
+4. **Si la respuesta no llega** (corte, tiempo agotado) el documento queda `unknown` y **no se
+   reintenta a ciegas**: primero se consulta (`FECompConsultar`) por ese número. Solo así se
+   evita emitir dos veces.
+5. La venta ya está cobrada y el stock descontado pase lo que pase con ARCA: una falla fiscal
+   nunca deshace una venta. Queda pendiente de facturar y se reintenta.
+
+### 22.4 Importes
+
+El comprobante usa los importes de la venta (`net_amount`, `vat_amount`, `total_amount` y, por
+alícuota, las líneas de §20). El redondeo de efectivo (`rounding_amount`, §15) **no es parte del
+comprobante** hasta que el contador diga otra cosa (P-66). Las líneas libres (§20.8) entran con
+su IVA y sin producto.
+
+### 22.5 Anulación
+
+Una venta con comprobante `authorized` **no se puede anular a secas**: `void_sale` falla con
+`FISCAL_DOCUMENT_EXISTS` y la corrección es una nota de crédito (`kind = credit_note`,
+asociada al comprobante original). Mientras no se decida (P-67) no se cambia `void_sale`.
+
+### 22.6 Contingencia (diseño, sin implementar)
+
+Primera opción ante cortes: **CAEA** (RG 5782) con un **punto de venta específico** distinto del
+de CAE. Un CAEA por contribuyente y por quincena (días 1 a 15 y 16 a fin de mes), que se pide
+desde cinco días antes; lo emitido con CAEA se informa a ARCA hasta el octavo día posterior al
+cierre del período, y también los puntos de venta no usados. La excepcionalidad se vigila: si lo
+emitido por contingencia llega al 5 % del total de la sucursal en dos meses seguidos (o tres
+alternados), ARCA puede obligar a usar controlador fiscal. Tabla futura: `arca_caea` (período,
+código, vigencia, informado).
+
+### 22.7 Preguntas abiertas (dependen del contador salvo aviso)
+
+| ID | Pregunta | Propuesta | Estado |
+|---|---|---|---|
+| P-64 | ¿Factura B a consumidor final en **todas** las ventas, o solo cuando el cliente la pide? ¿Desde qué importe hay que identificarlo? | Emisión opt-in por venta al principio; identificación según el umbral vigente que informa ARCA (a confirmar) | Abierta (contador) |
+| P-65 | ¿Se vende a responsables inscriptos (Factura A)? Los clientes aún no existen en el sistema | Cargar CUIT y condición de IVA en la venta, sin tabla de clientes | Abierta (cliente y contador) |
+| P-66 | El redondeo de efectivo, ¿entra al importe del comprobante? | No: el comprobante lleva `total_amount` | Abierta (contador) |
+| P-67 | Anulación de una venta ya facturada | Nota de crédito (§22.5) | Abierta (contador) |
+| P-68 | ¿Qué hace el comercio si ARCA no responde en el mostrador? | Cobrar, entregar ticket y facturar apenas vuelva; contingencia CAEA como segunda opción | Abierta (cliente) |
+| P-69 | ¿Cuándo se pasa a producción y con qué puesto piloto? | Después de homologación completa y una prueba con el contador | Abierta (dueño y contador) |
+| P-70 | ¿Se imprime el código QR de ARCA en el ticket o PDF fiscal? | Sí (es parte del comprobante); lo arma el frontend con los datos del documento autorizado | Abierta (`efacelli`) |
+
+### 22.8 Pruebas que se exigirán
+
+Con homologación (nunca producción): autenticación WSAA con ticket reutilizado hasta su
+vencimiento; `FEDummy`; último número autorizado; factura B de consumidor final con IVA 21 % y
+10,5 %; rechazo por dato inválido (queda `rejected` con la observación); corte simulado en la
+respuesta → `unknown` → consulta → sin duplicado; reintento con la misma clave → mismo
+documento; dos solicitudes simultáneas sobre la misma venta → un solo comprobante vivo; un
+documento `authorized` no se edita ni se borra; empleado y `anon` no escriben; importes del
+comprobante = importes de la venta; el ticket interno de §15 sigue idéntico con el ambiente en
+`off`; ningún secreto ni token en `request_payload`, `response_payload` ni en los registros.
