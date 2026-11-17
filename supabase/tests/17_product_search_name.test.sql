@@ -13,8 +13,8 @@ select is(
 select is(
   (select array_agg(column_name::text order by ordinal_position) from information_schema.columns
     where table_schema = 'public' and table_name = 'v_product_list' and ordinal_position >= 31),
-  array['has_box_mismatch', 'legacy_code', 'search_name'],
-  'v_product_list suma search_name al final, sin mover columnas'
+  array['has_box_mismatch', 'legacy_code', 'search_name', 'scale_plu'],
+  'v_product_list suma search_name y luego scale_plu al final, sin mover columnas'
 );
 select ok(
   has_table_privilege('authenticated', 'public.v_product_list', 'select')
