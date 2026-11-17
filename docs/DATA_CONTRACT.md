@@ -1113,7 +1113,7 @@ volver a registrar la concordancia.
 | 0.9.0 | 2026-11-16 | **Propuesta** del backend (issue #68): §18 datos del comercio (`store_name`, `store_address`, `store_tax_id`, nulables, en `sales_settings`) y §19 historial de precios (`price_history`, solo-agregado, escrita por trigger) y aumentos masivos (`price_bulk_changes`, `preview_price_increase`, `apply_price_increase`, `revert_price_change`); errores nuevos y preguntas P-49 a P-54 (P-49, P-52 y P-53 dependen del cliente). P-50, P-51 y P-54 decididas por `efacelli` y ajustes de su revisión incorporados (filtro por producto, productos sin cambio, origen validado en el trigger, bloqueo ordenado, deshacer con inactivos). Quedan abiertas P-49, P-52 y P-53 (cliente). No se implementa hasta aprobarla |
 | 0.9.1 | 2026-11-16 | Cierre de las preguntas abiertas de la v0.9.0: P-49 (CUIT del ticket: opcional y por ahora sin cargar, a confirmar con el contador), P-52 (el aumento toca solo el precio de góndola, no costos) y P-53 (múltiplo del redondeo elegido en cada aumento, $10 por defecto en pantalla), decididas por `ChinoNader18` por delegación de `efacelli`. Sin cambios de esquema respecto de la v0.9.0 |
 | 0.9.2 | 2026-11-17 | Aclaración sin cambios de esquema: convención de ruta de las imágenes de productos en el bucket `product-images` (§5.5), que el contrato dejaba para cuando el frontend implementara la carga |
-| 0.11.0 | 2026-11-17 | **Propuesta** del frontend (§21): `products.scale_plu` para que la etiqueta de la balanza identifique el producto. El comercio va a armar la lista de PLU de fiambrería. Columna aditiva, `create_product` con `p_scale_plu`, `v_product_list` la expone al final. P-61 a P-63 abiertas |
+| 0.11.0 | 2026-11-17 | **Propuesta** del frontend (§21): `products.scale_plu` para que la etiqueta de la balanza identifique el producto. El comercio va a armar la lista de PLU de fiambrería. Columna aditiva, `create_product` con `p_scale_plu`, `v_product_list` la expone al final. P-61 a P-63 decididas por `efacelli` |
 | 0.10.0 | 2026-11-17 | **Propuesta** del frontend (§20): importe manual para productos pesados con etiqueta de balanza. Campo opcional `manual_line_total` en los ítems de `register_sale`, columnas aditivas `price_source` y `catalog_line_total` en `sale_items` y código `INVALID_MANUAL_PRICE`; líneas libres sin producto ni stock (§20.8, `INVALID_FREE_ITEM`). P-55 a P-60 decididas. Revisada y aprobada por `ChinoNader18` con sus precisiones: excepción explícita a §15.1, hash sin cambios cuando no hay campos nuevos, margen solo sobre líneas con costo y `free_net_total` en `v_sales_daily`, consistencia diferida sin las líneas libres |
 
 ---
@@ -2239,7 +2239,7 @@ solo sirve para **preseleccionar el producto** en el diálogo de la caja.
    «Producto de balanza» se abre **con ese producto ya elegido** (el cajero lo puede
    cambiar).
 2. Si no hay ninguno, el diálogo se abre como hoy (el cajero elige).
-3. El importe se sigue escribiendo de la etiqueta (P-61), con el aviso de §20 si difiere
+3. El importe se sigue escribiendo de la etiqueta (P-61, decidida), con el aviso de §20 si difiere
    más de 20 % del precio de Zahuy.
 
 ### 21.5 Carga inicial
@@ -2252,9 +2252,9 @@ dos partes, con backup previo y sin tocar otras columnas.
 
 | ID | Pregunta | Propuesta | Estado |
 |---|---|---|---|
-| P-61 | Con el producto identificado, ¿el importe se sigue escribiendo o se completa con peso × precio de Zahuy? | Se sigue escribiendo: la balanza tiene sus propios precios cargados a mano y la etiqueta es lo que ve el cliente | Abierta |
-| P-62 | ¿El PLU es siempre de 5 dígitos? | Sí: es lo que trae el código de la etiqueta (§20.1) | Abierta |
-| P-63 | ¿Puede un mismo PLU apuntar a dos productos (por ejemplo, el mismo fiambre en dos presentaciones)? | No: único. Si la balanza usa el mismo PLU para dos cosas, la caja no podría distinguirlas | Abierta |
+| P-61 | Con el producto identificado, ¿el importe se sigue escribiendo o se completa con peso × precio de Zahuy? | **Decidida (`efacelli`, 2026-11-17):** se sigue escribiendo; la balanza tiene sus propios precios cargados a mano y la etiqueta es lo que ve el cliente | Adoptada |
+| P-62 | ¿El PLU es siempre de 5 dígitos? | **Decidida (`efacelli`, 2026-11-17):** sí, 5 dígitos; es lo que trae el código de la etiqueta (§20.1) | Adoptada |
+| P-63 | ¿Puede un mismo PLU apuntar a dos productos (por ejemplo, el mismo fiambre en dos presentaciones)? | **Decidida (`efacelli`, 2026-11-17):** no, único; si la balanza usa el mismo PLU para dos cosas, la caja no podría distinguirlas | Adoptada |
 
 ### 21.7 Pruebas que se exigirán
 
