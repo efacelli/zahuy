@@ -54,3 +54,30 @@
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
+
+.imageCard {
+  grid-row: span 2;
+}
+
+.imageFrame {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  min-height: 160px;
+  border-radius: var(--radius-md, 6px);
+  background: var(--color-surface-muted, rgba(0, 0, 0, 0.03));
+  overflow: hidden;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+}
+
+.imageActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

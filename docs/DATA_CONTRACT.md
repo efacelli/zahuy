@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.9.1 (propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
+| Versión | 0.9.2 (convención de ruta de imágenes de productos, §5.5; propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16); ranking de productos vendidos (§17); datos del comercio y aumentos de precios (§18 y §19, propuesta) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -394,8 +394,12 @@ futura.
   pasar de `kg` a `unit` con stock fraccionario rompería la regla de cantidades
   enteras. La base lo rechaza con `23514`.
 - `image_path`, si se informa, no puede ser una URL (`CHECK` que rechaza
-  `http://` y `https://`). La convención de ruta dentro del bucket se define
-  cuando el frontend implemente la carga de imágenes.
+  `http://` y `https://`). **Convención de ruta (v0.9.2):** `<product_id>/<uuid>.<ext>`
+  (`ext` = `jpg`, `png` o `webp`). Cada carga usa un nombre nuevo; el frontend
+  sube el archivo, actualiza `image_path` y recién después borra el anterior (si
+  el `UPDATE` falla, borra el recién subido). Antes de subir, la foto se achica a
+  1000 px de lado mayor. Para mostrarla se usa una URL firmada que vence a la hora.
+  Sin cambios de esquema: el bucket y sus políticas (§9) ya lo permiten.
 - No hay `CHECK (sale_price >= cost_price)`: vender por debajo del costo puede ser
   legítimo. La UI solo lo advierte.
 - `vat_rate` se guarda como número y no como enum para poder calcular con él;
@@ -1107,6 +1111,7 @@ volver a registrar la concordancia.
 | 0.8.0 | 2026-11-16 | **Propuesta** (§17): función de lectura `product_sales_ranking(p_from, p_to)` para más vendidos, menos vendidos y sin ventas en X días (solo encargado, dueño y programador); código `INVALID_DATE_RANGE`; preguntas P-46 a P-48 adoptadas. Sin cambios de tablas. Revisada y aprobada por `ChinoNader18`, con sus ajustes: `SECURITY DEFINER`, parámetros nulos → `INVALID_DATE_RANGE` y columna `product_created_at` |
 | 0.9.0 | 2026-11-16 | **Propuesta** del backend (issue #68): §18 datos del comercio (`store_name`, `store_address`, `store_tax_id`, nulables, en `sales_settings`) y §19 historial de precios (`price_history`, solo-agregado, escrita por trigger) y aumentos masivos (`price_bulk_changes`, `preview_price_increase`, `apply_price_increase`, `revert_price_change`); errores nuevos y preguntas P-49 a P-54 (P-49, P-52 y P-53 dependen del cliente). P-50, P-51 y P-54 decididas por `efacelli` y ajustes de su revisión incorporados (filtro por producto, productos sin cambio, origen validado en el trigger, bloqueo ordenado, deshacer con inactivos). Quedan abiertas P-49, P-52 y P-53 (cliente). No se implementa hasta aprobarla |
 | 0.9.1 | 2026-11-16 | Cierre de las preguntas abiertas de la v0.9.0: P-49 (CUIT del ticket: opcional y por ahora sin cargar, a confirmar con el contador), P-52 (el aumento toca solo el precio de góndola, no costos) y P-53 (múltiplo del redondeo elegido en cada aumento, $10 por defecto en pantalla), decididas por `ChinoNader18` por delegación de `efacelli`. Sin cambios de esquema respecto de la v0.9.0 |
+| 0.9.2 | 2026-11-17 | Aclaración sin cambios de esquema: convención de ruta de las imágenes de productos en el bucket `product-images` (§5.5), que el contrato dejaba para cuando el frontend implementara la carga |
 
 ---
 

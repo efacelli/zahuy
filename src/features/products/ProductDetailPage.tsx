@@ -21,6 +21,7 @@ import { fetchMovementHistory, type MovementHistoryRow } from '../movements/move
 import { BoxCountDialog } from './BoxCountDialog'
 import { fetchProductSummary } from './list-api'
 import { PriceHistorySection } from './PriceHistorySection'
+import { ProductImageCard } from './ProductImageCard'
 import styles from './ProductDetail.module.css'
 
 type BatchColumn = 'batch' | 'received' | 'expiry' | 'available'
@@ -115,6 +116,12 @@ export function ProductDetailPage() {
       </div>
 
       <section className={styles.cards} aria-label="Resumen">
+        <ProductImageCard
+          productId={p.id}
+          productName={p.name}
+          imagePath={p.image_path ?? null}
+          canEdit={permissions.manageInventory}
+        />
         <div className={styles.card}>
           <span className={styles.cardLabel}>Stock</span>
           <strong className={styles.cardValue}>{formatQuantity(p.stock_quantity, unit)}</strong>
