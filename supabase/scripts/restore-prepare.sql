@@ -31,7 +31,7 @@ begin;
 do $$
 declare
   -- Tablas de public donde las migraciones siembran filas (se vacían antes de restaurar).
-  v_seeded text[] := array['audit_log', 'expiry_alert_settings', 'payment_methods', 'cash_registers', 'sales_settings'];
+  v_seeded text[] := array['audit_log', 'expiry_alert_settings', 'payment_methods', 'cash_registers', 'sales_settings', 'fiscal_settings'];
   v_table text;
   v_rows bigint;
   v_found text := '';
@@ -68,6 +68,7 @@ delete from public.expiry_alert_settings;
 delete from public.payment_methods;
 delete from public.cash_registers;
 delete from public.sales_settings;
+delete from public.fiscal_settings;
 -- Los buckets los crean las migraciones; el backup trae los suyos. Storage está
 -- vacío (se comprobó arriba), así que no se pierde ningún archivo.
 delete from storage.buckets;

@@ -35,6 +35,7 @@ select is(
 select is(
   (select count(*)::int from pg_proc p
     where p.pronamespace = 'public'::regnamespace
+      and p.proname not like 'fiscal_%'
       and (has_function_privilege('anon', p.oid, 'execute') or not has_function_privilege('authenticated', p.oid, 'execute'))),
   0, 'EXECUTE de todas las funciones de public: solo authenticated'
 );

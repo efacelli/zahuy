@@ -2393,3 +2393,50 @@ documento; dos solicitudes simultáneas sobre la misma venta → un solo comprob
 documento `authorized` no se edita ni se borra; empleado y `anon` no escriben; importes del
 comprobante = importes de la venta; el ticket interno de §15 sigue idéntico con el ambiente en
 `off`; ningún secreto ni token en `request_payload`, `response_payload` ni en los registros.
+
+### 22.9 Implementación de la capa de base de datos (backend, v0.12.0)
+
+**Estado:** implementada y probada en local (migración `20261121100000_fiscal_documents.sql`, prueba
+`26_fiscal_documents`). **Solo la base**: la Edge Function que habla con ARCA y todo lo que dependa de
+las respuestas del contador (P-64 a P-70) siguen pendientes. Con `fiscal_settings.environment = 'off'`
+(valor por defecto) nada cambia para la caja. Diferencias con lo propuesto arriba:
+
+- **`fiscal_documents.cbte_nro` es `NOT NULL`**: el número se **reserva al empezar** (`fiscal_begin`)
+  bajo un bloqueo por ambiente, punto de venta y tipo, y vale `greatest(último autorizado por ARCA,
+  mayor número ya reservado aquí) + 1`. Un documento **rechazado no consumió el número** en ARCA: no
+  cuenta para esa cuenta y su número se reusa (el único `(environment, pto_vta, cbte_tipo, cbte_nro)`
+  excluye los rechazados). Probado con 12 conexiones simultáneas: números 1 a 12, sin repetir.
+- **Columna nueva `original_document_id`** (la nota de crédito apunta a su factura). Una nota de
+  crédito solo se crea sobre una factura autorizada de la misma venta, ambiente y punto de venta, y su
+  código es el de la factura + 2 (A: 1 → 3, B: 6 → 8).
+- **El ticket de acceso de ARCA** vive en `private.fiscal_tickets` (fuera del esquema expuesto), una
+  fila por ambiente y servicio, y se usa solo con `fiscal_ticket_get` / `fiscal_ticket_save`
+  (`service_role`). `fiscal_ticket_get` no devuelve un ticket que venza en menos de 2 minutos.
+  Motivo: ARCA **no entrega otro ticket mientras el anterior siga vigente** (`coe.alreadyAuthenticated`,
+  verificado en homologación) y la memoria de una función se pierde al reiniciarla.
+- **Funciones (solo `service_role`, `SECURITY DEFINER`, `search_path` vacío):**
+  - `fiscal_begin(p_idempotency_key, p_sale_id, p_kind, p_cbte_tipo, p_arca_last, p_created_by,
+    p_receiver_doc_type = 99, p_receiver_doc_number = '0', p_receiver_vat_condition_id = 5,
+    p_original_document_id = null) → fiscal_documents`: idempotente por clave, devuelve el comprobante
+    vivo si la venta ya lo tiene (se retoma, no se duplica) y arma `iva_breakdown` desde los ítems de la
+    venta (alícuota 10,5 % = id 4, 21 % = id 5; otra alícuota → `FISCAL_UNSUPPORTED_VAT`).
+  - `fiscal_finish(p_document_id, p_status, p_cae, p_cae_expires_on, p_request, p_response,
+    p_observations) → fiscal_documents`: `authorized`, `rejected` o `unknown`.
+- **Protecciones de la tabla** (valen para cualquier escritor): un documento nace `pending`; sus
+  importes deben ser iguales a los de la venta; `authorized` y `rejected` no se modifican ni se
+  borran; `pending → authorized | rejected | unknown` y `unknown → authorized | rejected | unknown`;
+  `request_payload` y `response_payload` nunca llevan `token` ni `sign`.
+- **Pasar a `produccion`** exige haber autorizado antes al menos un comprobante en `homologacion`
+  (`PRODUCTION_NOT_READY`). Solo lo hacen el dueño o el programador.
+- **Anulación (§22.5):** un trigger en `sales` impide anular una venta con factura autorizada que no
+  tenga una nota de crédito autorizada (`FISCAL_DOCUMENT_EXISTS`). Una venta sin comprobante se anula
+  como siempre. No se tocó `void_sale`.
+- **Permisos de lectura:** `fiscal_settings` la lee todo usuario activo (la caja necesita saber si
+  factura) y solo la edita el dueño o el programador; `fiscal_documents` la lee el encargado, el
+  dueño y el programador, y el empleado solo la de las ventas que cobró.
+- **Códigos de error nuevos:** `FISCAL_DISABLED`, `FISCAL_AMOUNT_MISMATCH`, `FISCAL_UNSUPPORTED_VAT`,
+  `FISCAL_DOCUMENT_IMMUTABLE`, `FISCAL_DOCUMENT_EXISTS`, `INVALID_FISCAL_TRANSITION`,
+  `INVALID_FISCAL_DOCUMENT`, `PRODUCTION_NOT_READY`; se reusan `SALE_NOT_FOUND`, `SALE_VOIDED` e
+  `IDEMPOTENCY_CONFLICT`.
+- **Sin implementar:** la función `arca-emitir`, la consulta `FECompConsultar` ante un `unknown`, el
+  CAEA (`arca_caea`) y la pantalla de facturación.
