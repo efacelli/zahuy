@@ -1,5 +1,6 @@
 import { PageHeader } from '../../components/ui/PageHeader'
 import { usePermissions } from '../auth/useProfile'
+import { FiscalSettingsPanel } from '../billing/FiscalSettingsPanel'
 import { AlertSettingsPanel } from './AlertSettingsPanel'
 import { SalesSettingsPanel } from './SalesSettingsPanel'
 import { UsersPanel } from './UsersPanel'
@@ -21,6 +22,7 @@ export function SettingsPage() {
       <div className={styles.sections}>
         <AlertSettingsPanel />
         <SalesSettingsPanel />
+        {permissions.manageUsers && <FiscalSettingsPanel />}
         {permissions.manageUsers && <UsersPanel />}
       </div>
     </>
