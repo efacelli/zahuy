@@ -237,3 +237,66 @@ Fuentes de precios y condiciones (consultadas en noviembre de 2026; confirmar en
 [Supabase — guía de precios](https://uibakery.io/blog/supabase-pricing),
 [Vercel Hobby y uso comercial](https://devtoolpick.com/guides/vercel-hobby-plan-commercial-use/),
 [Render — precios](https://render-web.onrender.com/pricing).
+
+---
+
+## 9. Facturación electrónica ARCA (contrato §22)
+
+**Estado (2026-11-18):** implementada y probada en **homologación** (sin validez fiscal). **Producción no
+está implementada**: el módulo `arca.ts` solo tiene las direcciones de homologación y `arca-emitir`
+responde `501` con el ambiente en `produccion`. Pasar a producción es un cambio de código y una decisión
+aparte (§9.3). Sin datos del titular en este documento: viven en secretos de Supabase, en la base y en la
+carpeta privada del titular.
+
+### 9.1 Procedimiento en un proyecto (hecho en staging el 2026-11-17)
+
+1. **Migraciones**: `npx supabase db push --remote --dry-run` y, si lista solo lo esperado, `--yes`
+   (tablas `fiscal_*`, `private.fiscal_tickets`, `fiscal_begin`/`fiscal_finish`/`fiscal_claim`, datos del
+   emisor). Con el ambiente fiscal en `off` (valor por defecto) la caja no cambia.
+2. 🔒 **Secretos de la función** (certificado y clave **de homologación**; la clave nunca se imprime ni se
+   sube): `npx supabase secrets set --env-file <archivo fuera del repo>` con `ARCA_CUIT`, `ARCA_CERT_PEM` y
+   `ARCA_KEY_PEM` (PEM en una línea con `\n` literales). `SUPABASE_URL`, `SUPABASE_ANON_KEY` y
+   `SUPABASE_SERVICE_ROLE_KEY` las inyecta Supabase.
+3. 🔒 **Desplegar**: `npx supabase functions deploy arca-emitir --use-api` (`verify_jwt = true` en
+   `supabase/config.toml`).
+4. **Configurar desde la app** (usuario dueño o programador): Configuración → Facturación electrónica →
+   ambiente «Prueba (homologación)», punto de venta y datos del emisor (razón social, CUIT, domicilio,
+   Ingresos Brutos, inicio de actividades). Producción no se activa desde la app.
+5. **Verificar con ventas ficticias**: factura de consumidor final, repetirla (mismo comprobante), una venta
+   cobrada con redondeo (la factura sale por lo cobrado), nota de crédito y anulación recién después; que la
+   empleada vea solo sus comprobantes; que ninguna respuesta lleve token ni firma.
+6. Al terminar, dejar el proyecto con la facturación en `off` y sin datos del emisor si es un ambiente de
+   pruebas.
+
+Notas operativas: ARCA **no entrega otro ticket de acceso mientras el anterior siga vigente** (unas 12 h); la
+función lo guarda en la base, y si ARCA ya entregó uno que no está guardado responde `503`
+(`TICKET_UNAVAILABLE`) hasta que venza. Cada proyecto de Supabase tiene su propia función, sus secretos y su
+configuración: un frontend solo factura contra el proyecto al que apunta.
+
+### 9.2 Qué no hacer
+
+- **No desplegar la función de homologación en el proyecto de producción.** Crearía comprobantes de prueba
+  pegados a ventas reales. Mientras no esté implementada la producción, el negocio sigue con el ticket
+  interno (y «Guardar sin ticket») y su sistema actual de facturación.
+- No cargar certificados, claves ni el CUIT del titular en el repositorio, en chats ni en esta carpeta.
+
+### 9.3 Pasar a producción: lista de verificación (todo 🔒)
+
+Hecho: el contador respondió todas las preguntas (§22.7); el certificado de producción está emitido y el
+servicio de facturación de producción está autorizado en ARCA (guardados fuera del repositorio).
+
+Falta, en este orden:
+
+- [ ] **Orden explícita del dueño** de pasar a producción, con fecha.
+- [ ] **Backup verificado** de la base de producción (§7) y migraciones aplicadas primero en staging.
+- [ ] **PR de código** que agregue las direcciones de producción de WSAA y WSFEv1, permita el ambiente
+  `produccion` en la función y use los secretos de producción; revisado por `efacelli` y el contador. Hoy la
+  base ya exige, para pasar a `produccion`, un comprobante autorizado antes en homologación
+  (`PRODUCTION_NOT_READY`).
+- [ ] **Secretos de producción** cargados en el proyecto de producción y la función desplegada ahí.
+- [ ] **Piloto en una caja** (el contador acepta una o las dos) y revisión del primer comprobante: consulta a
+  ARCA y lectura del QR con la app de ARCA, e impresión en el papel real (térmica o A4).
+- [ ] **Punto de venta aparte para contingencia (CAEA)**, si el comercio lo quiere: hoy no está
+  implementada.
+- [ ] **Reversión**: poner el ambiente en `off` (la caja sigue vendiendo) y corregir lo emitido con notas de
+  crédito; los comprobantes no se borran.
