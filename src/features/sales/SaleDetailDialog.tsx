@@ -10,6 +10,7 @@ import { formatMoney, formatNumber } from '../../lib/format'
 import { toAppError } from '../../lib/errors'
 import { newIdempotencyKey } from '../../lib/idempotency'
 import { useSupabase } from '../../lib/supabase-context'
+import { BillingSection } from '../billing/BillingSection'
 import { useRefreshStock } from '../movements/useRefreshStock'
 import { OPEN_SESSIONS_KEY } from '../pos/pos-api'
 import { PrintTicketButton } from '../pos/PrintTicketButton'
@@ -134,6 +135,8 @@ function DetailContent({ sale, canVoid, onClose }: { sale: SaleRow; canVoid: boo
       )}
 
       <PriceNotes sale={sale} />
+
+      <BillingSection saleId={sale.id} saleStatus={sale.status} />
 
       <TicketBody ticket={toTicket(sale)} />
 

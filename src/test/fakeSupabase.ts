@@ -257,11 +257,32 @@ export function createFakeSupabase(initial: Session | null = null, options: Fake
     })),
   }
 
+  /** Edge Functions: `setFunctionResult(nombre, status, cuerpo)`; fuera de 2xx se parece al error de supabase-js. */
+  const functionResults: Record<string, { status: number; body: unknown }> = {}
+  const functions = {
+    invoke: vi.fn(async (name: string, _options?: { body?: unknown }) => {
+      const result = functionResults[name] ?? { status: 404, body: { code: 'NOT_FOUND' } }
+      if (result.status >= 200 && result.status < 300) return { data: result.body, error: null }
+      return {
+        data: null,
+        error: {
+          name: 'FunctionsHttpError',
+          message: 'Edge Function returned a non-2xx status code',
+          context: new Response(JSON.stringify(result.body), { status: result.status }),
+        },
+      }
+    }),
+  }
+
   return {
-    client: { auth, from, rpc, storage } as unknown as SupabaseClient,
+    client: { auth, from, rpc, storage, functions } as unknown as SupabaseClient,
     auth,
     from,
     storage,
+    functions,
+    setFunctionResult(name: string, status: number, body: unknown) {
+      functionResults[name] = { status, body }
+    },
     /** Rutas de los archivos que hay en un bucket. */
     filesIn(bucket: string) {
       return [...bucketFiles(bucket).keys()]
