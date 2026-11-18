@@ -135,3 +135,19 @@ test('una respuesta sin FECAESolicitarResult es WSFE_BAD_RESPONSE', () => {
     (error: unknown) => error instanceof ArcaError && error.code === 'WSFE_BAD_RESPONSE',
   )
 })
+
+test('nota de crédito: el SOAP lleva el comprobante asociado antes del IVA', () => {
+  const xml = buildCaeSolicitarSoap({ ...base, cbteTipo: 8, cbtesAsoc: [{ tipo: 6, ptoVta: 11, nro: 3 }] })
+  assert.match(xml, /<ar:CbtesAsoc><ar:CbteAsoc><ar:Tipo>6<\/ar:Tipo><ar:PtoVta>11<\/ar:PtoVta><ar:Nro>3<\/ar:Nro><\/ar:CbteAsoc><\/ar:CbtesAsoc><ar:Iva>/)
+  // Sin asociados (una factura común) no aparece el bloque.
+  assert.doesNotMatch(buildCaeSolicitarSoap(base), /CbtesAsoc/)
+})
+
+for (const asoc of [{ tipo: 0, ptoVta: 11, nro: 3 }, { tipo: 6, ptoVta: 0, nro: 3 }, { tipo: 6, ptoVta: 11, nro: 0 }, { tipo: 6.5, ptoVta: 11, nro: 3 }]) {
+  test(`rechaza un comprobante asociado inválido: ${JSON.stringify(asoc)}`, () => {
+    assert.throws(
+      () => buildCaeSolicitarSoap({ ...base, cbtesAsoc: [asoc] }),
+      (error: unknown) => error instanceof ArcaError && error.code === 'INVALID_CBTE_ASOC',
+    )
+  })
+}

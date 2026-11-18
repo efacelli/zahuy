@@ -12,6 +12,7 @@ Contrato §22.3. **Solo HOMOLOGACIÓN**: con el ambiente fiscal en `produccion` 
 { "sale_id": "<uuid>", "idempotency_key": "<uuid>", "receiver": { "docType": 99, "docNumber": "0", "vatConditionId": 5 } }
 ```
 
+- `action` es opcional: `invoice` (por defecto) o `credit_note`, que emite la **nota de crédito de la factura autorizada de la venta** (mismo importe y receptor, tipo de la factura + 2, asociada a la factura). Sin factura autorizada responde `409 NO_INVOICE`. Con la nota de crédito autorizada la venta se puede anular (`void_sale`); antes, no.
 - `receiver` es opcional. Por defecto: consumidor final sin identificar (Factura B). Con condición de IVA
   de responsable inscripto o monotributo y CUIT del receptor, emite **Factura A** (la clase la dicta ARCA).
   Desde $10.000.000 hay que identificar al comprador.
@@ -51,7 +52,7 @@ npm install --no-save node-forge@1.3.1
 node --test supabase/functions/arca-emitir/emitir_test.ts supabase/functions/arca-homologacion/arca_test.ts supabase/functions/arca-homologacion/arca_cae_test.ts supabase/functions/arca-homologacion/arca_consult_test.ts
 ```
 
-`emitir_test.ts` (29 pruebas) usa dependencias simuladas: camino feliz, sin secretos, reintentos, reserva de
+`emitir_test.ts` (33 pruebas) usa dependencias simuladas: camino feliz, sin secretos, reintentos, reserva de
 envío, rechazo, corte sin respuesta (`unknown`), conciliación (mismo importe, otro importe, no existe,
 consulta fallida), ambientes, umbral de identificación, ticket y selección de Factura A o B.
 
@@ -61,10 +62,10 @@ Verificado (2026-11-17), con la base local y ARCA de **homologación** reales (c
 cargando `index.ts` en Node: sin sesión `401`, pedido inválido `400`, otra empleada `403`; Factura B de
 $1.210 autorizada y confirmada por consulta a ARCA; repetirla devuelve el mismo comprobante; venta cobrada
 $1.200 de $1.210 → factura por $1.200 (neto 991,74 + IVA 208,26); venta con 21 % y 10,5 % cobrada $2.300 →
-neto 1.987,04 + IVA 312,96; conciliación de un documento colgado que ARCA no tiene → rechazado y número
+neto 1.987,04 + IVA 312,96; **nota de crédito** autorizada por ARCA (con el mismo CAE al consultarla) y anulación de la venta recién después; conciliación de un documento colgado que ARCA no tiene → rechazado y número
 reutilizado; producción `501`; apagada `409`; ningún token en la base ni en las respuestas.
 
 **No verificado:** el `index.ts` dentro del *runtime* de funciones de Supabase (Deno). En esta máquina el
 contenedor no pudo bajar `node-forge` de npm (error de certificado TLS de la red), así que se probó con un
 reemplazo mínimo de `Deno.serve`. Tampoco: corte de red real a mitad de un envío (solo simulado),
-notas de crédito, CAEA ni producción.
+CAEA ni producción.

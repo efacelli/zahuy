@@ -62,6 +62,8 @@ export interface EmitDeps {
   settings(): Promise<{ environment: string; pto_vta: number | null }>
   /** Importe cobrado de la venta (total + redondeo): para exigir identificación desde el umbral. */
   chargedAmount(saleId: string): Promise<number>
+  /** La factura autorizada de la venta (para emitir su nota de crédito), o null si no la tiene. */
+  findInvoice(saleId: string): Promise<FiscalDocument | null>
   rpc<T>(name: string, args: Record<string, unknown>): Promise<T>
   arca: {
     login(): Promise<TicketDeAcceso>
@@ -84,6 +86,7 @@ export type SolicitarArgs = {
   impNeto: number
   impIva: number
   iva: { id: number; baseImp: number; importe: number }[]
+  cbtesAsoc?: { tipo: number; ptoVta: number; nro: number }[]
 }
 
 export type EmitInput = {
@@ -215,8 +218,11 @@ function toResult(doc: FiscalDocument, inProgress: boolean, extra: { reconcile?:
 /** AAAAMMDD -> AAAA-MM-DD */
 const isoDate = (yyyymmdd: string) => `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`
 
-function solicitarArgsFor(doc: FiscalDocument, now: Date): SolicitarArgs {
+type Asoc = { tipo: number; ptoVta: number; nro: number }[]
+
+function solicitarArgsFor(doc: FiscalDocument, now: Date, asoc?: Asoc): SolicitarArgs {
   return {
+    ...(asoc ? { cbtesAsoc: asoc } : {}),
     ptoVta: Number(doc.pto_vta),
     cbteTipo: Number(doc.cbte_tipo),
     cbteNro: Number(doc.cbte_nro),
@@ -252,8 +258,8 @@ function finish(
 // Envío y conciliación
 // ---------------------------------------------------------------------------
 
-async function send(deps: EmitDeps, doc: FiscalDocument, ticket: TicketDeAcceso): Promise<EmitResult> {
-  const args = solicitarArgsFor(doc, deps.now())
+async function send(deps: EmitDeps, doc: FiscalDocument, ticket: TicketDeAcceso, asoc?: Asoc): Promise<EmitResult> {
+  const args = solicitarArgsFor(doc, deps.now(), asoc)
   // Solo estos campos se guardan como "solicitud": sin token, firma ni certificado.
   const request = { ...args }
   let response: CaeSolicitarResult
@@ -325,7 +331,7 @@ async function reconcile(deps: EmitDeps, doc: FiscalDocument, ticket: TicketDeAc
 // Punto de entrada
 // ---------------------------------------------------------------------------
 
-export async function emitInvoice(deps: EmitDeps, input: EmitInput): Promise<EmitResult> {
+async function checkEnvironment(deps: EmitDeps): Promise<{ environment: string; pto_vta: number }> {
   const settings = await deps.settings()
   if (!settings.environment || settings.environment === 'off') throw new ArcaError('FISCAL_DISABLED', 'La facturación electrónica está desactivada')
   if (settings.environment === 'produccion') {
@@ -334,13 +340,48 @@ export async function emitInvoice(deps: EmitDeps, input: EmitInput): Promise<Emi
   if (settings.environment !== 'homologacion' || !settings.pto_vta) {
     throw new ArcaError('NOT_CONFIGURED', 'Falta el punto de venta en la configuración fiscal')
   }
+  return { environment: settings.environment, pto_vta: settings.pto_vta }
+}
 
+/** Nota de crédito de la factura autorizada de una venta (mismos importes que la factura; contrato §22.5). */
+export async function emitCreditNote(deps: EmitDeps, input: Omit<EmitInput, 'receiver'>): Promise<EmitResult> {
+  const settings = await checkEnvironment(deps)
+  const original = await deps.findInvoice(input.saleId)
+  if (!original || original.status !== 'authorized') {
+    throw new ArcaError('NO_INVOICE', 'La venta no tiene una factura autorizada para anular')
+  }
+  const receiver: Receiver = {
+    docType: Number(original.receiver_doc_type),
+    docNumber: original.receiver_doc_number,
+    vatConditionId: Number(original.receiver_vat_condition_id),
+  }
+  const asoc = [{ tipo: Number(original.cbte_tipo), ptoVta: Number(original.pto_vta), nro: Number(original.cbte_nro) }]
+  return await run(deps, settings, input, {
+    kind: 'credit_note',
+    cbteTipo: Number(original.cbte_tipo) + 2,
+    receiver,
+    originalId: original.id,
+    asoc,
+  })
+}
+
+export async function emitInvoice(deps: EmitDeps, input: EmitInput): Promise<EmitResult> {
+  const settings = await checkEnvironment(deps)
   const { receiver, cbteTipo } = resolveReceiver(input.receiver)
   const charged = await deps.chargedAmount(input.saleId)
   if (charged >= UMBRAL_IDENTIFICACION && receiver.docType === DOC_TIPO.SIN_IDENTIFICAR) {
     throw new ArcaError('IDENTIFICATION_REQUIRED', 'Desde $10.000.000 hay que identificar al comprador')
   }
+  return await run(deps, settings, input, { kind: 'invoice', cbteTipo, receiver, originalId: null })
+}
 
+async function run(
+  deps: EmitDeps,
+  settings: { environment: string; pto_vta: number },
+  input: Omit<EmitInput, 'receiver'>,
+  plan: { kind: 'invoice' | 'credit_note'; cbteTipo: number; receiver: Receiver; originalId: string | null; asoc?: Asoc },
+): Promise<EmitResult> {
+  const { receiver, cbteTipo } = plan
   const ticket = await getTicket(deps, settings.environment)
   const last = await deps.arca.ultimo(ticket, settings.pto_vta, cbteTipo)
   if (last.errors.length > 0) throw new ArcaError('ARCA_ERROR', `ARCA: ${last.errors[0].code} ${last.errors[0].msg}`.slice(0, 300))
@@ -348,21 +389,21 @@ export async function emitInvoice(deps: EmitDeps, input: EmitInput): Promise<Emi
   const doc = await deps.rpc<FiscalDocument>('fiscal_begin', {
     p_idempotency_key: input.idempotencyKey,
     p_sale_id: input.saleId,
-    p_kind: 'invoice',
+    p_kind: plan.kind,
     p_cbte_tipo: cbteTipo,
     p_arca_last: last.cbteNro ?? 0,
     p_created_by: input.createdBy,
     p_receiver_doc_type: receiver.docType,
     p_receiver_doc_number: receiver.docNumber,
     p_receiver_vat_condition_id: receiver.vatConditionId,
-    p_original_document_id: null,
+    p_original_document_id: plan.originalId,
   })
 
   if (doc.status === 'authorized' || doc.status === 'rejected') return toResult(doc, false)
 
   if (doc.status === 'pending' && doc.sent_at === null) {
     const claimed = await deps.rpc<boolean>('fiscal_claim', { p_document_id: doc.id })
-    if (claimed === true) return await send(deps, doc, ticket)
+    if (claimed === true) return await send(deps, doc, ticket, plan.asoc)
     return toResult(doc, true) // otra llamada ya lo está enviando
   }
   return await reconcile(deps, doc, ticket)

@@ -2467,5 +2467,8 @@ ver la venta. Respuestas: 200 autorizada, 202 en curso (repetir con la misma cla
   función responde 503 (`TICKET_UNAVAILABLE`) hasta que venza.
 - **Códigos nuevos de la función:** `NOT_AUTHENTICATED` (401), `INVALID_RECEIVER`, `IDENTIFICATION_REQUIRED`,
   `PRODUCTION_NOT_IMPLEMENTED`, `TICKET_UNAVAILABLE`, `ARCA_ERROR`.
-- **Sin implementar:** notas de crédito desde la función, CAEA, el despliegue en staging y la pantalla de
-  facturación.
+- **Nota de crédito (§22.5):** `action: "credit_note"` emite la nota de crédito de la factura autorizada de la
+  venta (tipo de la factura + 2, mismos importes y receptor, con el comprobante asociado `CbtesAsoc`);
+  `409 NO_INVOICE` si no hay factura autorizada. Verificada en homologación: ARCA la tiene con el mismo CAE y,
+  recién después, la venta se anula.
+- **Sin implementar:** CAEA, el despliegue en staging y la pantalla de facturación.

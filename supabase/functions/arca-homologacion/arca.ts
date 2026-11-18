@@ -269,6 +269,8 @@ export type CaeSolicitarArgs = {
   impNeto: number
   impIva: number
   iva: { id: number; baseImp: number; importe: number }[]
+  /** Comprobantes asociados: una nota de crédito indica la factura que anula (tipo, punto de venta y número). */
+  cbtesAsoc?: { tipo: number; ptoVta: number; nro: number }[]
 }
 
 const cents = (n: number) => Math.round(n * 100)
@@ -304,6 +306,17 @@ export function buildCaeSolicitarSoap(args: CaeSolicitarArgs): string {
   const alicuotas = args.iva
     .map((a) => `<ar:AlicIva><ar:Id>${a.id}</ar:Id><ar:BaseImp>${money(a.baseImp)}</ar:BaseImp><ar:Importe>${money(a.importe)}</ar:Importe></ar:AlicIva>`)
     .join('')
+  for (const asoc of args.cbtesAsoc ?? []) {
+    if (!Number.isInteger(asoc.tipo) || asoc.tipo < 1 || !Number.isInteger(asoc.ptoVta) || asoc.ptoVta < 1 || !Number.isInteger(asoc.nro) || asoc.nro < 1) {
+      throw new ArcaError('INVALID_CBTE_ASOC', 'Comprobante asociado inválido')
+    }
+  }
+  const asociados =
+    args.cbtesAsoc && args.cbtesAsoc.length > 0
+      ? `<ar:CbtesAsoc>${args.cbtesAsoc
+          .map((a) => `<ar:CbteAsoc><ar:Tipo>${a.tipo}</ar:Tipo><ar:PtoVta>${a.ptoVta}</ar:PtoVta><ar:Nro>${a.nro}</ar:Nro></ar:CbteAsoc>`)
+          .join('')}</ar:CbtesAsoc>`
+      : ''
   return (
     '<?xml version="1.0" encoding="UTF-8"?>' +
     '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" ' +
@@ -319,7 +332,7 @@ export function buildCaeSolicitarSoap(args: CaeSolicitarArgs): string {
     `<ar:ImpOpEx>0.00</ar:ImpOpEx><ar:ImpTrib>0.00</ar:ImpTrib><ar:ImpIVA>${money(args.impIva)}</ar:ImpIVA>` +
     '<ar:MonId>PES</ar:MonId><ar:MonCotiz>1</ar:MonCotiz>' +
     `<ar:CondicionIVAReceptorId>${args.receiverVatConditionId}</ar:CondicionIVAReceptorId>` +
-    `<ar:Iva>${alicuotas}</ar:Iva></ar:FECAEDetRequest></ar:FeDetReq></ar:FeCAEReq></ar:FECAESolicitar>` +
+    `${asociados}<ar:Iva>${alicuotas}</ar:Iva></ar:FECAEDetRequest></ar:FeDetReq></ar:FeCAEReq></ar:FECAESolicitar>` +
     '</soapenv:Body></soapenv:Envelope>'
   )
 }

@@ -17,7 +17,7 @@ import {
   callUltimoAutorizado,
   requestAccessTicket,
 } from '../arca-homologacion/arca.ts'
-import { emitInvoice, type EmitDeps } from './emitir.ts'
+import { emitCreditNote, emitInvoice, type EmitDeps, type FiscalDocument } from './emitir.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -93,6 +93,14 @@ function makeDeps(): EmitDeps {
       if (!rows[0]) throw new RpcError('SALE_NOT_FOUND')
       return Number(rows[0].total_amount) + Number(rows[0].rounding_amount)
     },
+    findInvoice: async (saleId) => {
+      const response = await fetch(
+        `${url}/rest/v1/fiscal_documents?select=*&sale_id=eq.${saleId}&kind=eq.invoice&status=eq.authorized&limit=1`,
+        { headers: service },
+      )
+      const rows = response.ok ? ((await response.json()) as FiscalDocument[]) : []
+      return rows[0] ?? null
+    },
     rpc: (async (name: string, args: Record<string, unknown>) => {
       const response = await fetch(`${url}/rest/v1/rpc/${name}`, { method: 'POST', headers: service, body: JSON.stringify(args) })
       const text = await response.text()
@@ -125,6 +133,7 @@ const ARCA_STATUS: Record<string, number> = {
   INVALID_RECEIVER: 400,
   IDENTIFICATION_REQUIRED: 400,
   INVALID_REQUEST: 400,
+  NO_INVOICE: 409,
   TICKET_UNAVAILABLE: 503,
 }
 const RPC_STATUS: Record<string, number> = {
@@ -141,6 +150,8 @@ Deno.serve(async (request: Request) => {
 
   try {
     const body = (await request.json().catch(() => null)) as {
+      /** `invoice` (por defecto) o `credit_note` (anula la factura autorizada de la venta). */
+      action?: string
       sale_id?: string
       idempotency_key?: string
       receiver?: { docType?: number; docNumber?: string; vatConditionId?: number }
@@ -148,13 +159,14 @@ Deno.serve(async (request: Request) => {
     if (!body || !UUID.test(body.sale_id ?? '') || !UUID.test(body.idempotency_key ?? '')) {
       throw new ArcaError('INVALID_REQUEST', 'Faltan sale_id e idempotency_key (uuid)')
     }
+    const action = body.action ?? 'invoice'
+    if (action !== 'invoice' && action !== 'credit_note') throw new ArcaError('INVALID_REQUEST', 'action debe ser invoice o credit_note')
     const userId = await authenticate(request, body.sale_id!)
-    const result = await emitInvoice(makeDeps(), {
-      saleId: body.sale_id!,
-      idempotencyKey: body.idempotency_key!,
-      createdBy: userId,
-      receiver: body.receiver,
-    })
+    const input = { saleId: body.sale_id!, idempotencyKey: body.idempotency_key!, createdBy: userId }
+    const result =
+      action === 'credit_note'
+        ? await emitCreditNote(makeDeps(), input)
+        : await emitInvoice(makeDeps(), { ...input, receiver: body.receiver })
     const status = result.status === 'authorized' ? 200 : result.inProgress ? 202 : 422
     return json(status, { ok: result.status === 'authorized', environment: 'homologacion', ...result })
   } catch (error) {

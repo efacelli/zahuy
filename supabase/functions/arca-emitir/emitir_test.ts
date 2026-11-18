@@ -3,7 +3,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ArcaError, type CaeSolicitarResult, type CompConsultarResult } from '../arca-homologacion/arca.ts'
-import { emitInvoice, resolveReceiver, SEGUNDOS_EN_VUELO, type EmitDeps, type FiscalDocument } from './emitir.ts'
+import { emitCreditNote, emitInvoice, resolveReceiver, SEGUNDOS_EN_VUELO, type EmitDeps, type FiscalDocument } from './emitir.ts'
 
 const NOW = new Date('2026-11-17T15:00:00Z')
 const iso = (secondsAgo: number) => new Date(NOW.getTime() - secondsAgo * 1000).toISOString()
@@ -50,12 +50,14 @@ function build(opts: {
   ticketStored?: boolean
   login?: () => Promise<{ token: string; sign: string; generationTime: string; expirationTime: string }>
   charged?: number
+  invoice?: FiscalDocument | null
 } = {}) {
   const calls: Calls = []
   const rpcCalls: { name: string; args: Record<string, unknown> }[] = []
   const deps: EmitDeps = {
     settings: async () => ({ environment: opts.environment ?? 'homologacion', pto_vta: 11 }),
     chargedAmount: async () => opts.charged ?? 1210,
+    findInvoice: async () => opts.invoice ?? null,
     rpc: (async (name: string, args: Record<string, unknown>) => {
       rpcCalls.push({ name, args })
       if (name === 'fiscal_ticket_get') {
@@ -297,4 +299,47 @@ test('emite Factura A cuando el receptor es responsable inscripto con CUIT', asy
   await emitInvoice(deps, { ...INPUT, receiver: { vatConditionId: 1, docType: 80, docNumber: '20000000001' } })
   assert.equal(rpcCalls.find((c) => c.name === 'fiscal_begin')!.args.p_cbte_tipo, 1)
   assert.deepEqual(calls.find((c) => c.name === 'ultimo')!.args, { ptoVta: 11, cbteTipo: 1 })
+})
+
+// ---------------------------------------------------------------------------
+// Notas de crédito (contrato §22.5)
+// ---------------------------------------------------------------------------
+const FACTURA_B = doc({ id: 'inv-1', status: 'authorized', cbte_nro: 3, cae: '86461234567890', cae_expires_on: '2026-11-27', authorized_at: iso(60) })
+
+test('nota de crédito: tipo de la factura + 2, asociada a la factura, mismos importes y receptor', async () => {
+  const nota = doc({ id: 'nc-1', kind: 'credit_note', cbte_tipo: 8, cbte_nro: 1 })
+  const { deps, calls, rpcCalls } = build({ invoice: FACTURA_B, begin: nota })
+  const result = await emitCreditNote(deps, INPUT)
+  assert.equal(result.status, 'authorized')
+  const begin = rpcCalls.find((c) => c.name === 'fiscal_begin')!.args
+  assert.equal(begin.p_kind, 'credit_note')
+  assert.equal(begin.p_cbte_tipo, 8)
+  assert.equal(begin.p_original_document_id, 'inv-1')
+  assert.equal(begin.p_receiver_vat_condition_id, 5)
+  assert.deepEqual(calls.find((c) => c.name === 'ultimo')!.args, { ptoVta: 11, cbteTipo: 8 })
+  const solicitar = calls.find((c) => c.name === 'solicitar')!.args as Record<string, unknown>
+  assert.deepEqual(solicitar.cbtesAsoc, [{ tipo: 6, ptoVta: 11, nro: 3 }])
+  assert.equal(solicitar.impTotal, 1210)
+})
+
+test('nota de crédito de una Factura A lleva el tipo 3', async () => {
+  const facturaA = doc({ id: 'inv-2', status: 'authorized', cbte_tipo: 1, cbte_nro: 9, receiver_doc_type: 80, receiver_doc_number: '20000000001', receiver_vat_condition_id: 1, cae: '86461234567890', cae_expires_on: '2026-11-27', authorized_at: iso(60) })
+  const { deps, rpcCalls } = build({ invoice: facturaA, begin: doc({ kind: 'credit_note', cbte_tipo: 3, cbte_nro: 1 }) })
+  await emitCreditNote(deps, INPUT)
+  assert.equal(rpcCalls.find((c) => c.name === 'fiscal_begin')!.args.p_cbte_tipo, 3)
+})
+
+test('sin factura autorizada no hay nota de crédito (NO_INVOICE) y no se llama a ARCA', async () => {
+  const sin = build({ invoice: null })
+  await assert.rejects(() => emitCreditNote(sin.deps, INPUT), (e: unknown) => e instanceof ArcaError && e.code === 'NO_INVOICE')
+  assert.equal(sin.calls.length, 0)
+  const pendiente = build({ invoice: doc({ status: 'pending' }) })
+  await assert.rejects(() => emitCreditNote(pendiente.deps, INPUT), (e: unknown) => e instanceof ArcaError && e.code === 'NO_INVOICE')
+})
+
+test('la nota de crédito también respeta los ambientes (off y producción)', async () => {
+  for (const [environment, code] of [['off', 'FISCAL_DISABLED'], ['produccion', 'PRODUCTION_NOT_IMPLEMENTED']] as const) {
+    const { deps } = build({ environment, invoice: FACTURA_B })
+    await assert.rejects(() => emitCreditNote(deps, INPUT), (e: unknown) => e instanceof ArcaError && e.code === code)
+  }
 })
