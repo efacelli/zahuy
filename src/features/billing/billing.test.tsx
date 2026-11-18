@@ -402,3 +402,23 @@ describe('configuración fiscal', () => {
     expect(screen.queryByRole('region', { name: 'Facturación electrónica' })).not.toBeInTheDocument()
   })
 })
+
+describe('configuración fiscal: punto de venta', () => {
+  it('con la facturación activada el punto de venta es obligatorio y no deja guardar sin cargarlo', async () => {
+    const fake = createFakeSupabase(fakeSession(), { role: 'admin' })
+    fake.setTable('fiscal_settings', [{ id: 'fs-1', environment: 'off', pto_vta: null, caea_pto_vta: null, issuer_name: null, issuer_tax_id: null, issuer_address: null, gross_income_number: null, activity_start_date: null }])
+    renderApp('/configuracion', fake.client)
+    const user = userEvent.setup()
+    const panel = await screen.findByRole('region', { name: 'Facturación electrónica' })
+    // Apagada: es opcional.
+    expect(await within(panel).findByLabelText(/^Punto de venta(?! de CAEA)/)).not.toBeRequired()
+    const label = () => panel.querySelector('label[for="fiscal-pto_vta"]') as HTMLElement
+    expect(label()).toHaveTextContent(/opcional/)
+    await user.selectOptions(await within(panel).findByLabelText(/^Facturación/), 'homologacion')
+    // Activada: deja de decir «opcional» y avisa al guardar.
+    expect(label()).not.toHaveTextContent(/opcional/)
+    await user.click(within(panel).getByRole('button', { name: 'Guardar' }))
+    expect(await within(panel).findByText('Falta el punto de venta para activar la facturación.')).toBeInTheDocument()
+    expect(fake.writes.some((w) => w.table === 'fiscal_settings')).toBe(false)
+  })
+})

@@ -118,7 +118,11 @@ function FiscalSettingsFormView({ settings }: { settings: FiscalSettings }) {
           </select>
         </FormField>
         <div className={styles.fieldRow}>
-          {field('pto_vta', 'Punto de venta', { hint: 'El de «RECE para aplicativo y web services».' })}
+          {field('pto_vta', 'Punto de venta', {
+            // Obligatorio apenas se activa la facturación: antes decía «opcional» y el error aparecía sin aviso.
+            required: values.environment !== 'off',
+            hint: 'El de «RECE para aplicativo y web services».',
+          })}
           {field('caea_pto_vta', 'Punto de venta de CAEA', { hint: 'Opcional: solo para la contingencia.' })}
         </div>
       </fieldset>
