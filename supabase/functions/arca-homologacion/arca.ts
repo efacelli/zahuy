@@ -244,6 +244,118 @@ export function parseUltimoAutorizadoResponse(xml: string): UltimoAutorizado {
 }
 
 // ---------------------------------------------------------------------------
+// WSFEv1: solicitud de CAE (FECAESolicitar), un comprobante por llamada
+// ---------------------------------------------------------------------------
+
+/** Ids de alícuota de IVA del manual WSFEv1 para las tasas que usa el comercio. */
+export const IVA_ALICUOTA_IDS = { '10.5': 4, '21': 5 } as const
+
+export type CaeSolicitarArgs = {
+  token: string
+  sign: string
+  cuit: string
+  ptoVta: number
+  cbteTipo: number
+  /** Número que se pide: último autorizado + 1. */
+  cbteNro: number
+  /** AAAAMMDD, fecha del comprobante (hora de Argentina). */
+  cbteFecha: string
+  /** 99 = consumidor final sin identificar. */
+  docTipo: number
+  docNro: number
+  /** Condición frente al IVA del receptor (5 = consumidor final). Campo exigido por ARCA. */
+  receiverVatConditionId: number
+  impTotal: number
+  impNeto: number
+  impIva: number
+  iva: { id: number; baseImp: number; importe: number }[]
+}
+
+const cents = (n: number) => Math.round(n * 100)
+const money = (n: number) => (cents(n) / 100).toFixed(2)
+
+export function buildCaeSolicitarSoap(args: CaeSolicitarArgs): string {
+  if (!/^\d{11}$/.test(args.cuit)) throw new ArcaError('INVALID_CUIT', 'El CUIT debe tener 11 dígitos')
+  if (!Number.isInteger(args.ptoVta) || args.ptoVta < 1 || args.ptoVta > 99998) {
+    throw new ArcaError('INVALID_PTO_VTA', 'El punto de venta debe estar entre 1 y 99998')
+  }
+  if (!Number.isInteger(args.cbteTipo) || args.cbteTipo < 1 || args.cbteTipo > 999) {
+    throw new ArcaError('INVALID_CBTE_TIPO', 'Tipo de comprobante inválido')
+  }
+  if (!Number.isInteger(args.cbteNro) || args.cbteNro < 1) throw new ArcaError('INVALID_CBTE_NRO', 'Número de comprobante inválido')
+  if (!/^\d{8}$/.test(args.cbteFecha)) throw new ArcaError('INVALID_DATE', 'La fecha debe ser AAAAMMDD')
+  if (!Number.isInteger(args.docTipo) || args.docTipo < 0 || !Number.isInteger(args.docNro) || args.docNro < 0) {
+    throw new ArcaError('INVALID_DOC', 'Documento del receptor inválido')
+  }
+  if (!Number.isInteger(args.receiverVatConditionId) || args.receiverVatConditionId < 1) {
+    throw new ArcaError('INVALID_VAT_CONDITION', 'Falta la condición frente al IVA del receptor')
+  }
+  const amounts = [args.impTotal, args.impNeto, args.impIva, ...args.iva.flatMap((a) => [a.baseImp, a.importe])]
+  if (amounts.some((n) => !Number.isFinite(n) || n < 0 || Math.abs(n * 100 - Math.round(n * 100)) > 1e-6)) {
+    throw new ArcaError('INVALID_AMOUNTS', 'Los importes deben ser positivos y de hasta 2 decimales')
+  }
+  if (args.iva.length === 0) throw new ArcaError('INVALID_AMOUNTS', 'Falta el detalle de IVA por alícuota')
+  // Se verifican las sumas antes de molestar a ARCA: neto + IVA = total y Σ alícuotas = IVA, base = neto.
+  const sumIva = args.iva.reduce((t, a) => t + cents(a.importe), 0)
+  const sumBase = args.iva.reduce((t, a) => t + cents(a.baseImp), 0)
+  if (cents(args.impNeto) + cents(args.impIva) !== cents(args.impTotal) || sumIva !== cents(args.impIva) || sumBase !== cents(args.impNeto)) {
+    throw new ArcaError('INVALID_AMOUNTS', 'Los importes no cierran: neto + IVA = total y las alícuotas deben sumar el neto y el IVA')
+  }
+  const alicuotas = args.iva
+    .map((a) => `<ar:AlicIva><ar:Id>${a.id}</ar:Id><ar:BaseImp>${money(a.baseImp)}</ar:BaseImp><ar:Importe>${money(a.importe)}</ar:Importe></ar:AlicIva>`)
+    .join('')
+  return (
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" ' +
+    `xmlns:ar="${WSFE_NS}"><soapenv:Header/><soapenv:Body><ar:FECAESolicitar>` +
+    `<ar:Auth><ar:Token>${escapeXml(args.token)}</ar:Token><ar:Sign>${escapeXml(args.sign)}</ar:Sign>` +
+    `<ar:Cuit>${args.cuit}</ar:Cuit></ar:Auth><ar:FeCAEReq><ar:FeCabReq><ar:CantReg>1</ar:CantReg>` +
+    `<ar:PtoVta>${args.ptoVta}</ar:PtoVta><ar:CbteTipo>${args.cbteTipo}</ar:CbteTipo></ar:FeCabReq>` +
+    '<ar:FeDetReq><ar:FECAEDetRequest><ar:Concepto>1</ar:Concepto>' +
+    `<ar:DocTipo>${args.docTipo}</ar:DocTipo><ar:DocNro>${args.docNro}</ar:DocNro>` +
+    `<ar:CbteDesde>${args.cbteNro}</ar:CbteDesde><ar:CbteHasta>${args.cbteNro}</ar:CbteHasta>` +
+    `<ar:CbteFch>${args.cbteFecha}</ar:CbteFch><ar:ImpTotal>${money(args.impTotal)}</ar:ImpTotal>` +
+    `<ar:ImpTotConc>0.00</ar:ImpTotConc><ar:ImpNeto>${money(args.impNeto)}</ar:ImpNeto>` +
+    `<ar:ImpOpEx>0.00</ar:ImpOpEx><ar:ImpTrib>0.00</ar:ImpTrib><ar:ImpIVA>${money(args.impIva)}</ar:ImpIVA>` +
+    '<ar:MonId>PES</ar:MonId><ar:MonCotiz>1</ar:MonCotiz>' +
+    `<ar:CondicionIVAReceptorId>${args.receiverVatConditionId}</ar:CondicionIVAReceptorId>` +
+    `<ar:Iva>${alicuotas}</ar:Iva></ar:FECAEDetRequest></ar:FeDetReq></ar:FeCAEReq></ar:FECAESolicitar>` +
+    '</soapenv:Body></soapenv:Envelope>'
+  )
+}
+
+export type CaeSolicitarResult = {
+  /** `A` aprobado, `R` rechazado, `P` parcial. */
+  resultado: string
+  cae: string | null
+  /** AAAAMMDD */
+  caeVencimiento: string | null
+  cbteNro: number | null
+  observations: { code: string; msg: string }[]
+  errors: { code: string; msg: string }[]
+  events: { code: string; msg: string }[]
+}
+
+export function parseCaeSolicitarResponse(xml: string): CaeSolicitarResult {
+  const fault = parseSoapFault(xml)
+  if (fault) throw fault
+  const result = xmlTag(xml, 'FECAESolicitarResult')
+  if (result === null) throw new ArcaError('WSFE_BAD_RESPONSE', 'Respuesta sin FECAESolicitarResult')
+  const detail = xmlTag(result, 'FECAEDetResponse') ?? ''
+  const clean = (value: string | null) => (value === null || value.trim() === '' ? null : value.trim())
+  const nro = clean(xmlTag(detail, 'CbteDesde'))
+  return {
+    resultado: (xmlTag(detail, 'Resultado') ?? xmlTag(result, 'Resultado') ?? '').trim(),
+    cae: clean(xmlTag(detail, 'CAE')),
+    caeVencimiento: clean(xmlTag(detail, 'CAEFchVto')),
+    cbteNro: nro === null ? null : Number(nro),
+    observations: parseCodeMsgList(xmlTag(detail, 'Observaciones'), 'Obs'),
+    errors: parseCodeMsgList(xmlTag(result, 'Errors'), 'Err'),
+    events: parseCodeMsgList(xmlTag(result, 'Events'), 'Evt'),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Transporte
 // ---------------------------------------------------------------------------
 
@@ -288,4 +400,10 @@ export async function callUltimoAutorizado(
 ): Promise<UltimoAutorizado> {
   const xml = await soapPost(WSFE_HOMO_URL, `${WSFE_NS}FECompUltimoAutorizado`, buildUltimoAutorizadoSoap(args), fetchImpl)
   return parseUltimoAutorizadoResponse(xml)
+}
+
+/** Pide el CAE de UN comprobante en HOMOLOGACIÓN. No reintenta: ante un corte se consulta antes de volver a pedir. */
+export async function callCaeSolicitar(args: CaeSolicitarArgs, fetchImpl: typeof fetch = fetch): Promise<CaeSolicitarResult> {
+  const xml = await soapPost(WSFE_HOMO_URL, `${WSFE_NS}FECAESolicitar`, buildCaeSolicitarSoap(args), fetchImpl)
+  return parseCaeSolicitarResponse(xml)
 }

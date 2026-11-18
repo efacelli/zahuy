@@ -97,17 +97,31 @@ Verificado (2026-11-15):
   no emitió. Corrió también dentro del *runtime* de funciones de Supabase (Deno).
 - Control de acceso: sin sesión y con rol encargado → `403`; dueño → `200`.
 
-**No verificado** (necesita un certificado de homologación emitido por ARCA, que
-hoy no tenemos):
+**Verificado con un certificado real de homologación emitido por ARCA (2026-11-17)**,
+corriendo este mismo módulo desde Node (sin tocar producción):
 
-- El ticket de acceso real y `FECompUltimoAutorizado` con credenciales válidas.
-- Si el WSAA acepta la firma `sha256` o exige `sha1` (la especificación nombra
-  SHA1+RSA; la función permite elegir con `ARCA_DIGEST`).
-- Que el ticket (12 h) no se pueda pedir de nuevo mientras esté vigente
-  (`coe.alreadyAuthenticated`): hoy se guarda solo en la memoria de la instancia;
-  si la instancia se recicla, se informa el error. Una implementación de verdad
-  necesita guardar el ticket de forma segura (tabla con acceso solo para el
-  servidor) y está fuera de esta prueba.
+- El WSAA acepta la firma **`sha256`** y entrega el ticket de acceso (vigencia ~12 h).
+- Sin la *autorización a servicio* (`wsfe`) el WSAA responde `coe.notAuthorized`.
+- `FECompUltimoAutorizado` con credenciales válidas para el punto de venta de
+  prueba y comprobante B: responde sin errores.
+- **`FECAESolicitar`** (`callCaeSolicitar`): una Factura B de consumidor final con IVA
+  21 % y otra con **21 % y 10,5 % juntos** volvieron con resultado `A`, CAE y
+  vencimiento (10 días), con número consecutivo (el último autorizado subió de a uno).
+  El campo `CondicionIVAReceptorId` (5 = consumidor final) va en la solicitud.
+- Importes que no cierran (neto + IVA ≠ total, o alícuotas que no suman) se rechazan
+  **antes** de llamar a ARCA (`INVALID_AMOUNTS`).
+- **El ticket no se puede pedir de nuevo mientras esté vigente**: ARCA responde
+  `coe.alreadyAuthenticated` ("El CEE ya posee un TA valido") y no hay forma de
+  forzarlo antes del vencimiento (en la prueba hubo que usar otro certificado y otro
+  alias). Hoy la función lo guarda solo en la memoria de la instancia; una
+  implementación de verdad **debe guardar el ticket en una tabla con acceso solo
+  para el servidor** (ver §22 del contrato).
+
+**No verificado:**
+
+- Comprobantes de **producción** (esta función solo habla con homologación).
+- Rechazos reales de ARCA por observaciones (el parser se probó con XML fabricado).
+- Notas de crédito, Factura A con CUIT receptor, `FECompConsultar` y CAEA.
 
 ## Pruebas
 
@@ -116,8 +130,11 @@ posterior, sin tocar `package.json`:
 
 ```bash
 npm install --no-save node-forge@1.3.1
-node --test supabase/functions/arca-homologacion/arca_test.ts
+node --test supabase/functions/arca-homologacion/arca_test.ts supabase/functions/arca-homologacion/arca_cae_test.ts
 ```
+
+`arca_cae_test.ts` cubre `FECAESolicitar` (SOAP, validación de importes, aprobado,
+rechazado, errores y *SOAP Fault*). No hace llamadas de red.
 
 ## Fuentes oficiales (leídas el 2026-11-15)
 
