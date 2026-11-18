@@ -2379,13 +2379,18 @@ código, vigencia, informado).
 
 | ID | Pregunta | Propuesta | Estado |
 |---|---|---|---|
-| P-64 | ¿Factura B a consumidor final en **todas** las ventas, o solo cuando el cliente la pide? ¿Desde qué importe hay que identificarlo? | Emisión opt-in por venta al principio; identificación según el umbral vigente que informa ARCA (a confirmar) | Abierta (contador) |
-| P-65 | ¿Se vende a responsables inscriptos (Factura A)? Los clientes aún no existen en el sistema | Cargar CUIT y condición de IVA en la venta, sin tabla de clientes | Abierta (cliente y contador) |
-| P-66 | El redondeo de efectivo, ¿entra al importe del comprobante? | No: el comprobante lleva `total_amount` | Abierta (contador) |
-| P-67 | Anulación de una venta ya facturada | Nota de crédito (§22.5) | Abierta (contador) |
-| P-68 | ¿Qué hace el comercio si ARCA no responde en el mostrador? | Cobrar, entregar ticket y facturar apenas vuelva; contingencia CAEA como segunda opción | Abierta (cliente) |
+| P-64 | ¿Factura B a consumidor final en **todas** las ventas, o solo cuando el cliente la pide? ¿Desde qué importe hay que identificarlo? | Emisión opt-in por venta al principio; identificación según el umbral vigente que informa ARCA (a confirmar) | **Confirmada por el contador (2026-11-17):** facturar **solo a pedido** del cliente es válido y **no hay obligación de emitir un comprobante en todas las ventas**. Las demás ventas se guardan con el botón «Guardar sin ticket» (PR #101, sin cambios en la base) o con el ticket interno |
+| P-65 | ¿Se vende a responsables inscriptos (Factura A)? Los clientes aún no existen en el sistema | Cargar CUIT y condición de IVA en la venta, sin tabla de clientes. **Qué clase corresponde lo dice ARCA** (`FEParamGetCondicionIvaReceptor`, verificado en homologación): **A** para responsable inscripto (1), monotributo (6), monotributista social (13) y monotributo trabajador independiente promovido (16); **B** para IVA exento (4), consumidor final (5), sujeto no categorizado (7), proveedor del exterior (8), cliente del exterior (9), IVA liberado Ley 19.640 (10) e IVA no alcanzado (15). El comercio emite A y B todos los días | **Resuelta** (ARCA y comercio) |
+| P-66 | El redondeo de efectivo, ¿entra al importe del comprobante? | El comprobante lleva el **importe cobrado, ya redondeado** (`total_amount + rounding_amount`), generalmente hacia abajo: el comercio maneja precios sin centavos. Neto e IVA por alícuota se recalculan proporcionalmente (§22.4) | **Confirmada por el contador (2026-11-17):** el comprobante lleva el **importe cobrado y redondeado**, generalmente hacia abajo. Implementado (§22.4, PR #103) |
+| P-67 | Anulación de una venta ya facturada | Nota de crédito (§22.5) **sin plazo impuesto por el sistema** | **Respondida (respuesta recibida el 2026-11-17):** la nota de crédito se emite enseguida (por un error al facturar) o a la brevedad (devolución del cliente); no hay un plazo estipulado |
+| P-68 | ¿Qué hace el comercio si ARCA no responde en el mostrador? | Cobrar, entregar ticket y facturar apenas vuelva; contingencia CAEA como segunda opción. ARCA indica **CAEA como primera opción** con web service y exige un punto de venta propio | **Respondida** (comercio y documentación de ARCA). Queda decidir si se da de alta el punto de venta de CAEA |
 | P-69 | ¿Cuándo se pasa a producción y con qué puesto piloto? | Después de homologación completa y una prueba con el contador | Abierta (dueño y contador) |
 | P-70 | ¿Se imprime el código QR de ARCA en el ticket o PDF fiscal? | Sí (es parte del comprobante); lo arma el frontend con los datos del documento autorizado | Abierta (`efacelli`) |
+| P-71 | ¿Hay percepciones que informar en los comprobantes? | No | **Respondida (respuesta recibida el 2026-11-17):** no hay; «el ticket sale final ya» |
+| P-72 | Umbral desde el cual hay que identificar al consumidor final | $10.000.000 (lo indica ARCA) | **Confirmada (respuesta recibida el 2026-11-17):** sigue vigente |
+| P-73 | ¿El domicilio del punto de venta es el del local? | Sí | **Confirmada (respuesta recibida el 2026-11-17):** es el mismo domicilio |
+| P-74 | ¿Hay productos con IVA distinto de 21 % o 10,5 %? | No | **Confirmada (respuesta recibida el 2026-11-17):** todos tienen 21 % o 10,5 % |
+| P-75 | ¿Hay algo que revisar antes de emitir en producción? | Revisión del contador y un puesto piloto | **Respondida (respuesta recibida el 2026-11-17):** no hay nada pendiente del titular que pueda trabar o limitar la emisión y el punto de venta está bien habilitado. Sobre la caja piloto, **al contador le da lo mismo empezar con una o con las dos cajas**: no hay inconveniente |
 
 ### 22.8 Pruebas que se exigirán
 
