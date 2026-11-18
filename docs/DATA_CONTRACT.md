@@ -2285,10 +2285,9 @@ con la columna al final; productos existentes intactos después de la migración
   tiene ese PLU ya elegido («Producto reconocido por el PLU 00005») y el cajero solo escribe el importe (P-61); puede
   cambiarlo. Sin coincidencia, o sin la columna en la base, se elige a mano como antes. Con el peso escrito a mano no hay PLU.
 
-## 22. Facturación electrónica ARCA (PROPUESTA v0.12.0)
+## 22. Facturación electrónica ARCA (v0.12.0: implementada en homologación; producción pendiente)
 
-**Estado:** propuesta del backend (`ChinoNader18`) para revisión de `efacelli` y del contador.
-No se implementa nada fiscal en producción hasta aprobarla. Desarrolla lo que §15.8 dejó
+**Estado:** aprobada e implementada en **homologación** (§22.9 a §22.11). **Producción no está implementada**: necesita la orden del dueño, backup verificado, un cambio de código aparte y el visto bueno de `efacelli` y del contador (`docs/DEPLOY.md` §9). Desarrolla lo que §15.8 dejó
 reservado para la etapa 6. **No contiene datos del titular** (CUIT, razón social, domicilio,
 certificados ni claves): el repositorio es público y esos datos viven solo en secretos de
 Supabase y en la carpeta privada del titular.
