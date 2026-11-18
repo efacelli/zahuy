@@ -2445,3 +2445,56 @@ las respuestas del contador (P-64 a P-70) siguen pendientes. Con `fiscal_setting
   `IDEMPOTENCY_CONFLICT`.
 - **Sin implementar:** la función `arca-emitir`, la consulta `FECompConsultar` ante un `unknown`, el
   CAEA (`arca_caea`) y la pantalla de facturación.
+
+### 22.10 Función `arca-emitir` (backend, homologación)
+
+**Estado:** implementada en `supabase/functions/arca-emitir` y probada contra ARCA de **homologación** (ver su
+README). Solo emite en homologación; con el ambiente en `produccion` responde 501. Un pedido es
+`POST { sale_id, idempotency_key, receiver? }` con la sesión del usuario; el usuario debe estar activo y poder
+ver la venta. Respuestas: 200 autorizada, 202 en curso (repetir con la misma clave), 422 rechazada.
+
+- **Reserva atómica del envío:** columna `fiscal_documents.sent_at` y función `fiscal_claim(p_document_id)`
+  (`service_role`): solo una llamada envía el comprobante a ARCA; las demás esperan o concilian. Evita que
+  un rechazo por número repetido pise el CAE ya emitido.
+- **Sin respuesta de ARCA:** el documento queda `unknown` y **no se reenvía**. Pasados ~2 minutos desde el
+  envío, la siguiente llamada consulta a ARCA (`FECompConsultar`): lo autoriza con el CAE de ARCA si coincide el
+  importe, lo deja para una persona si no coincide (`MISMATCH_WITH_ARCA`) o lo da por rechazado si ARCA
+  confirma que no existe (código 602).
+- **Factura A o B:** la dicta ARCA (`FEParamGetCondicionIvaReceptor`): A para responsable inscripto,
+  monotributo, monotributista social y monotributo trabajador independiente promovido (con CUIT del
+  receptor); B para el resto. Desde $10.000.000 se exige identificar al comprador (P-72).
+- **Ticket de acceso:** se guarda con `fiscal_ticket_save`; si ARCA ya entregó uno que no está guardado, la
+  función responde 503 (`TICKET_UNAVAILABLE`) hasta que venza.
+- **Códigos nuevos de la función:** `NOT_AUTHENTICATED` (401), `INVALID_RECEIVER`, `IDENTIFICATION_REQUIRED`,
+  `PRODUCTION_NOT_IMPLEMENTED`, `TICKET_UNAVAILABLE`, `ARCA_ERROR`.
+- **Nota de crédito (§22.5):** `action: "credit_note"` emite la nota de crédito de la factura autorizada de la
+  venta (tipo de la factura + 2, mismos importes y receptor, con el comprobante asociado `CbtesAsoc`);
+  `409 NO_INVOICE` si no hay factura autorizada. Verificada en homologación: ARCA la tiene con el mismo CAE y,
+  recién después, la venta se anula.
+- **Desplegada en staging** (2026-11-17) y verificada en el runtime real. **Sin implementar:** CAEA y emitir en producción (§22.1).
+
+### 22.11 Datos del emisor, comprobante impreso con QR y configuración (v0.12.0)
+
+**Estado:** implementado (migración `20261121130000_fiscal_issuer_details.sql`, pantallas de Ventas y de
+Configuración). Cierra lo que P-70 dejaba abierto.
+
+- **Datos del emisor en `fiscal_settings`** (nulables, sin dato cargado: el repositorio es público; se cargan
+  desde la app y viven solo en la base): `issuer_name` (razón social, 1 a 80), `issuer_tax_id` (CUIT, 11
+  dígitos), `issuer_address` (domicilio comercial, 1 a 120), `gross_income_number` (dígitos y guiones, hasta
+  20) y `activity_start_date`. Son **datos fiscales distintos de `sales_settings.store_*`**, para no cambiar el
+  ticket interno (P-49: un comprobante interno con CUIT se parece a una factura). Los edita el dueño o el
+  programador y los lee todo usuario activo, para imprimir.
+- **Comprobante impreso:** con un comprobante autorizado, el detalle de la venta imprime el comprobante fiscal y
+  **no** el ticket interno. Lleva razón social, domicilio, CUIT y condición de IVA del emisor, Ingresos Brutos,
+  inicio de actividades, tipo y número, fecha, cliente, detalle, total, el IVA (Factura B: «IVA contenido»;
+  Factura A: neto gravado e IVA por alícuota), un «Ajuste por redondeo» si el importe cobrado difiere del detalle,
+  CAE, vencimiento del CAE y el **código QR de ARCA**. En homologación dice «PRUEBA · SIN VALIDEZ FISCAL». Si faltan
+  datos del emisor lo avisa. Una nota de crédito indica qué factura anula.
+- **Código QR (RG 4892):** URL `https://www.afip.gob.ar/fe/qr/?p=` + base64 de un JSON con `ver` 1, `fecha`
+  (día en Argentina), `cuit`, `ptoVta`, `tipoCmp`, `nroCmp`, `importe`, `moneda` `PES`, `ctz` 1, `tipoDocRec`,
+  `nroDocRec`, `tipoCodAut` `E` y `codAut` (el CAE). Se dibuja en el navegador con `qrcode-generator` (MIT, sin
+  dependencias).
+- **Configuración fiscal desde la app (solo dueño y programador):** ambiente (apagada o prueba), punto de venta,
+  punto de venta de CAEA y datos del emisor. **Producción no se activa ni se desactiva desde la app** (§22.1).
+- **Comprobante sin confirmar:** la pantalla lo vuelve a consultar sola cada 20 segundos (hasta 12 veces) mientras
+  esté abierta; la función concilia con ARCA pasados ~2 minutos.

@@ -428,3 +428,7 @@ enabled = true
 # Función de prueba de ARCA (solo homologación). Exige sesión; además comprueba rol admin.
 [functions.arca-homologacion]
 verify_jwt = true
+
+# Función que emite facturas en ARCA (solo homologación). Exige sesión; además comprueba que el usuario esté activo y pueda ver la venta.
+[functions.arca-emitir]
+verify_jwt = true

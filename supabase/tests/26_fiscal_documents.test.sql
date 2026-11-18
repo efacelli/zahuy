@@ -90,7 +90,7 @@ select is(
 select is(
   (select count(*)::int from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname like 'fiscal\_%'
      and p.prosecdef and p.proconfig @> array['search_path=""']),
-  4, 'las cuatro funciones fiscales son SECURITY DEFINER con search_path vacío'
+  5, 'las cinco funciones fiscales son SECURITY DEFINER con search_path vacío'
 );
 select is(
   (select count(*)::int from unnest(array['select', 'insert', 'update', 'delete']) as op
@@ -277,6 +277,25 @@ select is(
   'una venta cobrada exacta (sin redondeo) sigue facturándose por su total'
 );
 
+-- Reserva atómica del envío: solo una llamada envía el comprobante a ARCA (contrato §22.3).
+set local role service_role;
+select is(public.fiscal_claim(pg_temp.did('R1')), true, 'fiscal_claim: la primera llamada reserva el envío');
+select is(public.fiscal_claim(pg_temp.did('R1')), false, 'la segunda no: ya se reservó (solo uno envía)');
+reset role;
+select isnt((select sent_at from public.fiscal_documents where id = pg_temp.did('R1')), null, 'sent_at queda registrado');
+select is((select status from public.fiscal_documents where id = pg_temp.did('R1')), 'pending', 'reservar no cambia el estado');
+select throws_ok($$update public.fiscal_documents set sent_at = now() + interval '1 hour' where id = pg_temp.did('R1')$$,
+  'P0001', 'FISCAL_DOCUMENT_IMMUTABLE', 'sent_at no se vuelve a cambiar');
+set local role service_role;
+select is((select status from public.fiscal_finish(pg_temp.did('R1'), 'authorized', '86461234567800', date '2026-11-27')),
+  'authorized', 'tras reservar, el documento se cierra normalmente');
+select is(public.fiscal_claim(pg_temp.did('R1')), false, 'un documento ya autorizado no se reserva');
+select is(public.fiscal_claim(gen_random_uuid()), false, 'documento inexistente: false');
+reset role;
+set local role authenticated;
+select throws_ok($$select public.fiscal_claim(gen_random_uuid())$$, '42501', null, 'authenticated no ejecuta fiscal_claim');
+reset role;
+
 -- ---------------------------------------------------------------------------
 -- Reglas del propio documento (como superusuario: valen para cualquier escritor)
 -- ---------------------------------------------------------------------------
@@ -449,6 +468,54 @@ select is(
 select is(
   (select count(*)::int from public.fiscal_documents where status = 'authorized' and cae !~ '^[0-9]{14}$'),
   0, 'todo comprobante autorizado tiene un CAE de 14 dígitos'
+);
+
+-- ---------------------------------------------------------------------------
+-- Datos del emisor para la factura (contrato §22.11)
+-- ---------------------------------------------------------------------------
+select is(
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'public' and table_name = 'fiscal_settings'
+      and column_name in ('issuer_name', 'issuer_tax_id', 'issuer_address', 'gross_income_number', 'activity_start_date') and is_nullable = 'YES'),
+  5, 'fiscal_settings tiene cinco columnas nuevas del emisor, todas nulables'
+);
+select is(
+  (select count(*)::int from public.fiscal_settings
+    where issuer_name is not null or issuer_tax_id is not null or issuer_address is not null
+       or gross_income_number is not null or activity_start_date is not null),
+  0, 'la migración no carga ningún dato del emisor (el repositorio es público)'
+);
+
+select set_config('request.jwt.claims', '{"sub": "00000000-0000-4000-8000-0000000000f1", "role": "authenticated"}', true);
+set local role authenticated;
+update public.fiscal_settings set issuer_name = 'Razón social de prueba';
+reset role;
+select is((select issuer_name from public.fiscal_settings), null, 'el encargado no cambia los datos del emisor (es del dueño)');
+
+select set_config('request.jwt.claims', '{"sub": "00000000-0000-4000-8000-0000000000f3", "role": "authenticated"}', true);
+set local role authenticated;
+select lives_ok(
+  $$update public.fiscal_settings set issuer_name = 'Razón social de prueba', issuer_tax_id = '20000000001',
+      issuer_address = 'Calle Falsa 123', gross_income_number = '20000000001', activity_start_date = date '2000-03-01'$$,
+  'el dueño carga los datos del emisor'
+);
+select throws_ok($$update public.fiscal_settings set issuer_tax_id = '2000000000A'$$, '23514', null, 'CUIT con letras -> 23514');
+select throws_ok($$update public.fiscal_settings set issuer_tax_id = '2000000001'$$, '23514', null, 'CUIT de 10 dígitos -> 23514');
+select throws_ok($$update public.fiscal_settings set issuer_name = '   '$$, '23514', null, 'razón social vacía -> 23514');
+select throws_ok($$update public.fiscal_settings set issuer_name = repeat('a', 81)$$, '23514', null, 'razón social de 81 caracteres -> 23514');
+select throws_ok($$update public.fiscal_settings set issuer_address = repeat('b', 121)$$, '23514', null, 'domicilio de 121 caracteres -> 23514');
+select throws_ok($$update public.fiscal_settings set gross_income_number = 'abc'$$, '23514', null, 'Ingresos Brutos con letras -> 23514');
+select lives_ok($$update public.fiscal_settings set gross_income_number = '901-123456-7'$$, 'Ingresos Brutos con guiones');
+reset role;
+select set_config('request.jwt.claims', '{"sub": "00000000-0000-4000-8000-0000000000f2", "role": "authenticated"}', true);
+set local role authenticated;
+select is((select issuer_name from public.fiscal_settings), 'Razón social de prueba', 'la empleada lee los datos del emisor para imprimir la factura');
+update public.fiscal_settings set issuer_name = 'Hackeado';
+reset role;
+select is((select issuer_name from public.fiscal_settings), 'Razón social de prueba', 'y no los cambia');
+select ok(
+  (select count(*) from public.audit_log where table_name = 'fiscal_settings' and action = 'update' and new_data ->> 'issuer_tax_id' = '20000000001') >= 1,
+  'el cambio de los datos del emisor quedó en audit_log'
 );
 
 select * from finish();

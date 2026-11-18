@@ -269,6 +269,8 @@ export type CaeSolicitarArgs = {
   impNeto: number
   impIva: number
   iva: { id: number; baseImp: number; importe: number }[]
+  /** Comprobantes asociados: una nota de crédito indica la factura que anula (tipo, punto de venta y número). */
+  cbtesAsoc?: { tipo: number; ptoVta: number; nro: number }[]
 }
 
 const cents = (n: number) => Math.round(n * 100)
@@ -304,6 +306,17 @@ export function buildCaeSolicitarSoap(args: CaeSolicitarArgs): string {
   const alicuotas = args.iva
     .map((a) => `<ar:AlicIva><ar:Id>${a.id}</ar:Id><ar:BaseImp>${money(a.baseImp)}</ar:BaseImp><ar:Importe>${money(a.importe)}</ar:Importe></ar:AlicIva>`)
     .join('')
+  for (const asoc of args.cbtesAsoc ?? []) {
+    if (!Number.isInteger(asoc.tipo) || asoc.tipo < 1 || !Number.isInteger(asoc.ptoVta) || asoc.ptoVta < 1 || !Number.isInteger(asoc.nro) || asoc.nro < 1) {
+      throw new ArcaError('INVALID_CBTE_ASOC', 'Comprobante asociado inválido')
+    }
+  }
+  const asociados =
+    args.cbtesAsoc && args.cbtesAsoc.length > 0
+      ? `<ar:CbtesAsoc>${args.cbtesAsoc
+          .map((a) => `<ar:CbteAsoc><ar:Tipo>${a.tipo}</ar:Tipo><ar:PtoVta>${a.ptoVta}</ar:PtoVta><ar:Nro>${a.nro}</ar:Nro></ar:CbteAsoc>`)
+          .join('')}</ar:CbtesAsoc>`
+      : ''
   return (
     '<?xml version="1.0" encoding="UTF-8"?>' +
     '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" ' +
@@ -319,7 +332,7 @@ export function buildCaeSolicitarSoap(args: CaeSolicitarArgs): string {
     `<ar:ImpOpEx>0.00</ar:ImpOpEx><ar:ImpTrib>0.00</ar:ImpTrib><ar:ImpIVA>${money(args.impIva)}</ar:ImpIVA>` +
     '<ar:MonId>PES</ar:MonId><ar:MonCotiz>1</ar:MonCotiz>' +
     `<ar:CondicionIVAReceptorId>${args.receiverVatConditionId}</ar:CondicionIVAReceptorId>` +
-    `<ar:Iva>${alicuotas}</ar:Iva></ar:FECAEDetRequest></ar:FeDetReq></ar:FeCAEReq></ar:FECAESolicitar>` +
+    `${asociados}<ar:Iva>${alicuotas}</ar:Iva></ar:FECAEDetRequest></ar:FeDetReq></ar:FeCAEReq></ar:FECAESolicitar>` +
     '</soapenv:Body></soapenv:Envelope>'
   )
 }
@@ -406,4 +419,78 @@ export async function callUltimoAutorizado(
 export async function callCaeSolicitar(args: CaeSolicitarArgs, fetchImpl: typeof fetch = fetch): Promise<CaeSolicitarResult> {
   const xml = await soapPost(WSFE_HOMO_URL, `${WSFE_NS}FECAESolicitar`, buildCaeSolicitarSoap(args), fetchImpl)
   return parseCaeSolicitarResponse(xml)
+}
+
+// ---------------------------------------------------------------------------
+// WSFEv1: consulta de un comprobante ya emitido (FECompConsultar)
+// ---------------------------------------------------------------------------
+
+/** Código con el que ARCA responde cuando el comprobante consultado no existe en sus registros. */
+export const ARCA_COMPROBANTE_NO_EXISTE = '602'
+
+export function buildCompConsultarSoap(args: { token: string; sign: string; cuit: string; ptoVta: number; cbteTipo: number; cbteNro: number }): string {
+  if (!/^\d{11}$/.test(args.cuit)) throw new ArcaError('INVALID_CUIT', 'El CUIT debe tener 11 dígitos')
+  if (!Number.isInteger(args.ptoVta) || args.ptoVta < 1 || args.ptoVta > 99998) {
+    throw new ArcaError('INVALID_PTO_VTA', 'El punto de venta debe estar entre 1 y 99998')
+  }
+  if (!Number.isInteger(args.cbteTipo) || args.cbteTipo < 1 || args.cbteTipo > 999) {
+    throw new ArcaError('INVALID_CBTE_TIPO', 'Tipo de comprobante inválido')
+  }
+  if (!Number.isInteger(args.cbteNro) || args.cbteNro < 1) throw new ArcaError('INVALID_CBTE_NRO', 'Número de comprobante inválido')
+  return (
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" ' +
+    `xmlns:ar="${WSFE_NS}"><soapenv:Header/><soapenv:Body><ar:FECompConsultar>` +
+    `<ar:Auth><ar:Token>${escapeXml(args.token)}</ar:Token><ar:Sign>${escapeXml(args.sign)}</ar:Sign>` +
+    `<ar:Cuit>${args.cuit}</ar:Cuit></ar:Auth><ar:FeCompConsReq><ar:CbteTipo>${args.cbteTipo}</ar:CbteTipo>` +
+    `<ar:CbteNro>${args.cbteNro}</ar:CbteNro><ar:PtoVta>${args.ptoVta}</ar:PtoVta></ar:FeCompConsReq>` +
+    '</ar:FECompConsultar></soapenv:Body></soapenv:Envelope>'
+  )
+}
+
+export type CompConsultarResult = {
+  /** `false` si ARCA no tiene ese comprobante (código 602). */
+  found: boolean
+  resultado: string | null
+  cae: string | null
+  /** AAAAMMDD */
+  caeVencimiento: string | null
+  impTotal: number | null
+  cbteNro: number | null
+  observations: { code: string; msg: string }[]
+  errors: { code: string; msg: string }[]
+}
+
+export function parseCompConsultarResponse(xml: string): CompConsultarResult {
+  const fault = parseSoapFault(xml)
+  if (fault) throw fault
+  const result = xmlTag(xml, 'FECompConsultarResult')
+  if (result === null) throw new ArcaError('WSFE_BAD_RESPONSE', 'Respuesta sin FECompConsultarResult')
+  const errors = parseCodeMsgList(xmlTag(result, 'Errors'), 'Err')
+  const detail = xmlTag(result, 'ResultGet')
+  const clean = (value: string | null) => (value === null || value.trim() === '' ? null : value.trim())
+  if (detail === null) {
+    return { found: false, resultado: null, cae: null, caeVencimiento: null, impTotal: null, cbteNro: null, observations: [], errors }
+  }
+  const nro = clean(xmlTag(detail, 'CbteDesde'))
+  const total = clean(xmlTag(detail, 'ImpTotal'))
+  return {
+    found: true,
+    resultado: clean(xmlTag(detail, 'Resultado')),
+    cae: clean(xmlTag(detail, 'CodAutorizacion')),
+    caeVencimiento: clean(xmlTag(detail, 'FchVto')),
+    impTotal: total === null ? null : Number(total),
+    cbteNro: nro === null ? null : Number(nro),
+    observations: parseCodeMsgList(xmlTag(detail, 'Observaciones'), 'Obs'),
+    errors,
+  }
+}
+
+/** Consulta un comprobante en HOMOLOGACIÓN: se usa cuando ARCA no respondió y hay que saber si quedó registrado. */
+export async function callCompConsultar(
+  args: { token: string; sign: string; cuit: string; ptoVta: number; cbteTipo: number; cbteNro: number },
+  fetchImpl: typeof fetch = fetch,
+): Promise<CompConsultarResult> {
+  const xml = await soapPost(WSFE_HOMO_URL, `${WSFE_NS}FECompConsultar`, buildCompConsultarSoap(args), fetchImpl)
+  return parseCompConsultarResponse(xml)
 }
