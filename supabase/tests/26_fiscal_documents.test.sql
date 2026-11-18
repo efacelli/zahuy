@@ -90,7 +90,7 @@ select is(
 select is(
   (select count(*)::int from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname like 'fiscal\_%'
      and p.prosecdef and p.proconfig @> array['search_path=""']),
-  4, 'las cuatro funciones fiscales son SECURITY DEFINER con search_path vacío'
+  5, 'las cinco funciones fiscales son SECURITY DEFINER con search_path vacío'
 );
 select is(
   (select count(*)::int from unnest(array['select', 'insert', 'update', 'delete']) as op
@@ -276,6 +276,25 @@ select is(
   (select imp_total from public.fiscal_documents where id = pg_temp.did('F1')), 1210.00::numeric,
   'una venta cobrada exacta (sin redondeo) sigue facturándose por su total'
 );
+
+-- Reserva atómica del envío: solo una llamada envía el comprobante a ARCA (contrato §22.3).
+set local role service_role;
+select is(public.fiscal_claim(pg_temp.did('R1')), true, 'fiscal_claim: la primera llamada reserva el envío');
+select is(public.fiscal_claim(pg_temp.did('R1')), false, 'la segunda no: ya se reservó (solo uno envía)');
+reset role;
+select isnt((select sent_at from public.fiscal_documents where id = pg_temp.did('R1')), null, 'sent_at queda registrado');
+select is((select status from public.fiscal_documents where id = pg_temp.did('R1')), 'pending', 'reservar no cambia el estado');
+select throws_ok($$update public.fiscal_documents set sent_at = now() + interval '1 hour' where id = pg_temp.did('R1')$$,
+  'P0001', 'FISCAL_DOCUMENT_IMMUTABLE', 'sent_at no se vuelve a cambiar');
+set local role service_role;
+select is((select status from public.fiscal_finish(pg_temp.did('R1'), 'authorized', '86461234567800', date '2026-11-27')),
+  'authorized', 'tras reservar, el documento se cierra normalmente');
+select is(public.fiscal_claim(pg_temp.did('R1')), false, 'un documento ya autorizado no se reserva');
+select is(public.fiscal_claim(gen_random_uuid()), false, 'documento inexistente: false');
+reset role;
+set local role authenticated;
+select throws_ok($$select public.fiscal_claim(gen_random_uuid())$$, '42501', null, 'authenticated no ejecuta fiscal_claim');
+reset role;
 
 -- ---------------------------------------------------------------------------
 -- Reglas del propio documento (como superusuario: valen para cualquier escritor)

@@ -2445,3 +2445,27 @@ las respuestas del contador (P-64 a P-70) siguen pendientes. Con `fiscal_setting
   `IDEMPOTENCY_CONFLICT`.
 - **Sin implementar:** la función `arca-emitir`, la consulta `FECompConsultar` ante un `unknown`, el
   CAEA (`arca_caea`) y la pantalla de facturación.
+
+### 22.10 Función `arca-emitir` (backend, homologación)
+
+**Estado:** implementada en `supabase/functions/arca-emitir` y probada contra ARCA de **homologación** (ver su
+README). Solo emite en homologación; con el ambiente en `produccion` responde 501. Un pedido es
+`POST { sale_id, idempotency_key, receiver? }` con la sesión del usuario; el usuario debe estar activo y poder
+ver la venta. Respuestas: 200 autorizada, 202 en curso (repetir con la misma clave), 422 rechazada.
+
+- **Reserva atómica del envío:** columna `fiscal_documents.sent_at` y función `fiscal_claim(p_document_id)`
+  (`service_role`): solo una llamada envía el comprobante a ARCA; las demás esperan o concilian. Evita que
+  un rechazo por número repetido pise el CAE ya emitido.
+- **Sin respuesta de ARCA:** el documento queda `unknown` y **no se reenvía**. Pasados ~2 minutos desde el
+  envío, la siguiente llamada consulta a ARCA (`FECompConsultar`): lo autoriza con el CAE de ARCA si coincide el
+  importe, lo deja para una persona si no coincide (`MISMATCH_WITH_ARCA`) o lo da por rechazado si ARCA
+  confirma que no existe (código 602).
+- **Factura A o B:** la dicta ARCA (`FEParamGetCondicionIvaReceptor`): A para responsable inscripto,
+  monotributo, monotributista social y monotributo trabajador independiente promovido (con CUIT del
+  receptor); B para el resto. Desde $10.000.000 se exige identificar al comprador (P-72).
+- **Ticket de acceso:** se guarda con `fiscal_ticket_save`; si ARCA ya entregó uno que no está guardado, la
+  función responde 503 (`TICKET_UNAVAILABLE`) hasta que venza.
+- **Códigos nuevos de la función:** `NOT_AUTHENTICATED` (401), `INVALID_RECEIVER`, `IDENTIFICATION_REQUIRED`,
+  `PRODUCTION_NOT_IMPLEMENTED`, `TICKET_UNAVAILABLE`, `ARCA_ERROR`.
+- **Sin implementar:** notas de crédito desde la función, CAEA, el despliegue en staging y la pantalla de
+  facturación.
