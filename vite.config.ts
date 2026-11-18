@@ -23,5 +23,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     css: { modules: { classNameStrategy: 'non-scoped' } },
     restoreMocks: true,
+    // Las pruebas de pantalla encadenan varias esperas de hasta 5 s (src/test/setup.ts):
+    // el límite por prueba tiene que dejarles lugar.
+    testTimeout: 20000,
   },
 })

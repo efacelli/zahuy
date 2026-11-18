@@ -4,9 +4,6 @@ import { describe, expect, it } from 'vitest'
 import { createFakeSupabase, fakeSession } from '../../test/fakeSupabase'
 import { renderApp } from '../../test/renderApp'
 
-/** El foco se mueve después de que el buscador se vuelve a montar; con la suite en paralelo puede tardar más de 1 s. */
-const SLOW = { timeout: 4000 }
-
 const NO_CODE = {
   id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   sku: '000001',
@@ -44,9 +41,9 @@ describe('carga de inventario', () => {
     await user.type(await screen.findByLabelText(/^Producto(?!s)/), '7790000000017{Enter}')
     expect(await screen.findByText(/Stock actual:/)).toHaveTextContent('5 u.')
     // El foco ya está en la cantidad: cantidad, Enter, vencimiento, Enter, Enter (Revisar), Enter (Confirmar).
-    await waitFor(() => expect(screen.getByLabelText(/^Cantidad/)).toHaveFocus(), SLOW)
+    await waitFor(() => expect(screen.getByLabelText(/^Cantidad/)).toHaveFocus())
     await user.keyboard('24{Enter}')
-    await waitFor(() => expect(screen.getByLabelText(/^Vencimiento/)).toHaveFocus(), SLOW)
+    await waitFor(() => expect(screen.getByLabelText(/^Vencimiento/)).toHaveFocus())
     await user.type(screen.getByLabelText(/^Vencimiento/), '100327')
     await user.click(screen.getByRole('button', { name: 'Revisar' }))
     expect(fake.rpc).not.toHaveBeenCalled()
@@ -58,7 +55,7 @@ describe('carga de inventario', () => {
     expect(params).toMatchObject({ p_product_id: WITH_CODE.id, p_quantity: 24, p_expires_on: '2027-03-10', p_notes: 'Carga de inventario' })
     expect(await screen.findByRole('heading', { name: 'Cargados en esta sesión (1)' })).toBeInTheDocument()
     // Vuelve al buscador para el próximo producto.
-    await waitFor(() => expect(screen.getByLabelText(/^Producto(?!s)/)).toHaveFocus(), SLOW)
+    await waitFor(() => expect(screen.getByLabelText(/^Producto(?!s)/)).toHaveFocus())
     expect(screen.getByLabelText(/^Producto(?!s)/)).toHaveValue('')
   })
 
