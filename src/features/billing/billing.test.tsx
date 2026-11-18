@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { createFakeSupabase, fakeSession } from '../../test/fakeSupabase'
 import { renderApp } from '../../test/renderApp'
-import { emitFiscalDocument, fiscalMessage, formatCbteNumber, receiverError } from './billing-api'
+import { arcaQrUrl, emitFiscalDocument, fiscalMessage, formatCbteNumber, receiverError, validateFiscalSettings, type FiscalDocumentRow } from './billing-api'
 
 const SALE: Record<string, unknown> = {
   id: 'sale-14',
@@ -36,6 +36,13 @@ const DOC = {
   cae: '86461234567890',
   cae_expires_on: '2026-11-27',
   imp_total: 1210,
+  imp_neto: 1000,
+  imp_iva: 210,
+  iva_breakdown: [{ id: 5, rate: 21, base: 1000, amount: 210 }],
+  receiver_doc_type: 99,
+  receiver_doc_number: '0',
+  receiver_vat_condition_id: 5,
+  authorized_at: '2026-11-17T22:00:00Z',
   created_at: '2026-11-17T22:00:00Z',
 }
 
@@ -213,5 +220,185 @@ describe('facturación en el detalle de la venta', () => {
     await user.click(within(section).getByRole('button', { name: 'Facturar…' }))
     await user.click(within(section).getByRole('button', { name: 'Emitir factura' }))
     expect(await within(section).findByRole('alert')).toHaveTextContent('solo se puede facturar en el ambiente de prueba')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Comprobante fiscal imprimible, QR de ARCA y configuración fiscal
+// ---------------------------------------------------------------------------
+const ISSUER = {
+  issuer_name: 'Razón social de prueba',
+  issuer_tax_id: '20000000001',
+  issuer_address: 'Calle Falsa 123',
+  gross_income_number: '20000000001',
+  activity_start_date: '2000-03-01',
+}
+
+function setupFiscal({ documents = [DOC] as Record<string, unknown>[], settings = { environment: 'homologacion', pto_vta: 11, caea_pto_vta: null, id: 'fs-1', ...ISSUER } } = {}) {
+  const fake = createFakeSupabase(fakeSession(), { role: 'manager' })
+  fake.setTable('sales', [SALE])
+  fake.setTable('fiscal_settings', [settings])
+  fake.setTable('fiscal_documents', documents)
+  renderApp('/ventas', fake.client)
+  return { fake, user: userEvent.setup() }
+}
+
+describe('comprobante fiscal impreso', () => {
+  it('con una factura autorizada se imprime el comprobante fiscal (no el ticket interno) con emisor, CAE y QR', async () => {
+    const { user } = setupFiscal()
+    const dialog = await openSale(user)
+    const ticket = await within(dialog).findByLabelText('Comprobante fiscal')
+    expect(ticket).toHaveAttribute('data-print', 'ticket')
+    expect(ticket).toHaveTextContent('PRUEBA · SIN VALIDEZ FISCAL')
+    expect(ticket).toHaveTextContent('Razón social de prueba')
+    expect(ticket).toHaveTextContent('Calle Falsa 123')
+    expect(ticket).toHaveTextContent('CUIT 20-00000000-1 · IVA Responsable Inscripto')
+    expect(ticket).toHaveTextContent('Ing. Brutos 20000000001')
+    expect(ticket).toHaveTextContent('Inicio de actividades 01/03/2000')
+    expect(ticket).toHaveTextContent('FACTURA B · Cód. 006')
+    expect(ticket).toHaveTextContent('N.º 00011-00000012')
+    expect(ticket).toHaveTextContent('Cliente: Consumidor final')
+    expect(ticket).toHaveTextContent('1 × Leche entera')
+    expect(ticket).toHaveTextContent('IVA contenido')
+    expect(ticket).toHaveTextContent('CAE n.º 86461234567890')
+    expect(ticket).toHaveTextContent('Vencimiento del CAE 27/11/2026')
+    expect(within(ticket).getByRole('img', { name: 'Código QR de ARCA' })).toBeInTheDocument()
+    expect(within(ticket).queryByRole('alert')).not.toBeInTheDocument()
+    // El ticket interno no se imprime junto con la factura.
+    expect(within(dialog).queryByText('NO VÁLIDO COMO FACTURA')).not.toBeInTheDocument()
+  })
+
+  it('una venta sin comprobante sigue mostrando el ticket interno', async () => {
+    const { user } = setupFiscal({ documents: [] })
+    const dialog = await openSale(user)
+    expect(within(dialog).queryByLabelText('Comprobante fiscal')).not.toBeInTheDocument()
+    expect(await within(dialog).findByText('NO VÁLIDO COMO FACTURA')).toBeInTheDocument()
+  })
+
+  it('si faltan datos del emisor lo avisa en el comprobante', async () => {
+    const { user } = setupFiscal({ settings: { environment: 'homologacion', pto_vta: 11, caea_pto_vta: null, id: 'fs-1', ...ISSUER, issuer_tax_id: null as unknown as string, gross_income_number: null as unknown as string } })
+    const dialog = await openSale(user)
+    const ticket = await within(dialog).findByLabelText('Comprobante fiscal')
+    expect(within(ticket).getByRole('alert')).toHaveTextContent('Faltan datos del emisor en Configuración: CUIT, Ingresos Brutos.')
+    // Sin CUIT no hay QR (la URL de ARCA lo necesita).
+    expect(within(ticket).queryByRole('img', { name: 'Código QR de ARCA' })).not.toBeInTheDocument()
+  })
+
+  it('con factura y nota de crédito se elige cuál ver; la nota dice qué factura anula', async () => {
+    const credit = { ...DOC, id: 'doc-2', kind: 'credit_note', cbte_tipo: 8, cbte_nro: 1, created_at: '2026-11-17T23:00:00Z', authorized_at: '2026-11-17T23:00:00Z' }
+    const { user } = setupFiscal({ documents: [DOC, credit] })
+    const dialog = await openSale(user)
+    const ticket = await within(dialog).findByLabelText('Comprobante fiscal')
+    // Por defecto, el último: la nota de crédito.
+    expect(ticket).toHaveTextContent('NOTA DE CRÉDITO B · Cód. 008')
+    expect(ticket).toHaveTextContent('Anula Factura B 00011-00000012')
+    await user.selectOptions(within(dialog).getByLabelText('Comprobante para ver e imprimir'), 'Factura B 00011-00000012')
+    expect(within(dialog).getByLabelText('Comprobante fiscal')).toHaveTextContent('FACTURA B · Cód. 006')
+  })
+
+  it('la venta con redondeo muestra el ajuste para que el comprobante cierre', async () => {
+    const { user } = setupFiscal({ documents: [{ ...DOC, imp_total: 1200, imp_neto: 991.74, imp_iva: 208.26 }] })
+    const dialog = await openSale(user)
+    const ticket = await within(dialog).findByLabelText('Comprobante fiscal')
+    expect(ticket).toHaveTextContent(/Ajuste por redondeo\s*−\$\s10,00/)
+  })
+
+  it('una Factura A discrimina el neto gravado y el IVA por alícuota', async () => {
+    const facturaA = { ...DOC, cbte_tipo: 1, receiver_doc_type: 80, receiver_doc_number: '20000000001', receiver_vat_condition_id: 1 }
+    const { user } = setupFiscal({ documents: [facturaA] })
+    const dialog = await openSale(user)
+    const ticket = await within(dialog).findByLabelText('Comprobante fiscal')
+    expect(ticket).toHaveTextContent('FACTURA A · Cód. 001')
+    expect(ticket).toHaveTextContent('Cliente: CUIT 20000000001 · Responsable inscripto')
+    expect(ticket).toHaveTextContent('Neto gravado')
+    expect(ticket).toHaveTextContent(/IVA 21 %/)
+    expect(ticket).not.toHaveTextContent('IVA contenido')
+  })
+})
+
+describe('código QR de ARCA', () => {
+  const doc = (over: Partial<FiscalDocumentRow> = {}) => ({ ...(DOC as unknown as FiscalDocumentRow), ...over })
+
+  it('arma la URL con el JSON en base64 de la RG 4892', () => {
+    const url = arcaQrUrl(doc(), '20000000001')!
+    expect(url.startsWith('https://www.afip.gob.ar/fe/qr/?p=')).toBe(true)
+    const json = JSON.parse(atob(decodeURIComponent(url.split('?p=')[1]!)))
+    expect(json).toEqual({
+      ver: 1, fecha: '2026-11-17', cuit: 20000000001, ptoVta: 11, tipoCmp: 6, nroCmp: 12, importe: 1210,
+      moneda: 'PES', ctz: 1, tipoDocRec: 99, nroDocRec: 0, tipoCodAut: 'E', codAut: 86461234567890,
+    })
+  })
+
+  it('usa la fecha de Argentina (a las 23:30 locales ya es el día siguiente en UTC)', () => {
+    const url = arcaQrUrl(doc({ authorized_at: '2026-11-18T02:30:00Z' }), '20000000001')!
+    expect(JSON.parse(atob(decodeURIComponent(url.split('?p=')[1]!))).fecha).toBe('2026-11-17')
+  })
+
+  it('no hay QR sin CAE, sin autorización o sin CUIT del emisor', () => {
+    expect(arcaQrUrl(doc({ status: 'unknown' }), '20000000001')).toBeNull()
+    expect(arcaQrUrl(doc({ cae: null }), '20000000001')).toBeNull()
+    expect(arcaQrUrl(doc(), null)).toBeNull()
+    expect(arcaQrUrl(doc(), '123')).toBeNull()
+  })
+})
+
+describe('configuración fiscal', () => {
+  const form = { environment: 'homologacion', pto_vta: '11', caea_pto_vta: '', ...{ issuer_name: 'Razón social de prueba', issuer_tax_id: '20000000001', issuer_address: 'Calle Falsa 123', gross_income_number: '20000000001', activity_start_date: '2000-03-01' } } as const
+
+  it('valida igual que la base', () => {
+    expect(validateFiscalSettings(form, true).errors).toEqual({})
+    expect(validateFiscalSettings({ ...form, pto_vta: '' }, true).errors.pto_vta).toMatch(/Falta el punto de venta/)
+    expect(validateFiscalSettings({ ...form, environment: 'off', pto_vta: '' }, true).errors).toEqual({})
+    expect(validateFiscalSettings({ ...form, pto_vta: '0' }, true).errors.pto_vta).toMatch(/entre 1 y 99998/)
+    expect(validateFiscalSettings({ ...form, caea_pto_vta: '11' }, true).errors.caea_pto_vta).toMatch(/distinto/)
+    expect(validateFiscalSettings({ ...form, issuer_tax_id: '123' }, true).errors.issuer_tax_id).toMatch(/11 dígitos/)
+    expect(validateFiscalSettings({ ...form, issuer_name: 'a'.repeat(81) }, true).errors.issuer_name).toMatch(/80/)
+    expect(validateFiscalSettings({ ...form, gross_income_number: 'abc' }, true).errors.gross_income_number).toMatch(/números y guiones/)
+    expect(validateFiscalSettings({ ...form, activity_start_date: '2999-01-01' }, true).errors.activity_start_date).toMatch(/futura/)
+    expect(validateFiscalSettings({ ...form, activity_start_date: 'ayer' }, true).errors.activity_start_date).toMatch(/inválida/)
+  })
+
+  it('arma la actualización: vacíos como null y sin tocar producción', () => {
+    const vacio = validateFiscalSettings({ ...form, caea_pto_vta: '', issuer_name: '  ' }, true).update!
+    expect(vacio).toMatchObject({ environment: 'homologacion', pto_vta: 11, caea_pto_vta: null, issuer_name: null, issuer_tax_id: '20000000001' })
+    const prod = validateFiscalSettings({ ...form, environment: 'produccion' }, true).update!
+    expect('environment' in prod).toBe(false)
+    // Base sin las columnas del emisor: solo ambiente y puntos de venta.
+    expect(Object.keys(validateFiscalSettings(form, false).update!).sort()).toEqual(['caea_pto_vta', 'environment', 'pto_vta'])
+  })
+
+  function setupSettings(role: 'admin' | 'manager') {
+    const fake = createFakeSupabase(fakeSession(), { role })
+    fake.setTable('fiscal_settings', [{ id: 'fs-1', environment: 'off', pto_vta: null, caea_pto_vta: null, issuer_name: null, issuer_tax_id: null, issuer_address: null, gross_income_number: null, activity_start_date: null }])
+    renderApp('/configuracion', fake.client)
+    return { fake, user: userEvent.setup() }
+  }
+
+  it('el dueño activa la facturación de prueba y carga los datos del emisor', async () => {
+    const { fake, user } = setupSettings('admin')
+    const panel = await screen.findByRole('region', { name: 'Facturación electrónica' })
+    expect(panel).toHaveTextContent('sin validez fiscal')
+    await user.selectOptions(await within(panel).findByLabelText(/^Facturación/), 'homologacion')
+    await user.type(within(panel).getByLabelText(/^Punto de venta(?! de CAEA)/), '11')
+    await user.type(within(panel).getByLabelText(/Razón social/), 'Razón social de prueba')
+    await user.type(within(panel).getByLabelText(/^CUIT/), '20000000001')
+    await user.click(within(panel).getByRole('button', { name: 'Guardar' }))
+    await waitFor(() => expect(fake.writes.some((w) => w.table === 'fiscal_settings' && w.op === 'update')).toBe(true))
+    const write = fake.writes.find((w) => w.table === 'fiscal_settings')!
+    expect(write.filters).toMatchObject({ id: 'fs-1' })
+    expect(write.payload).toMatchObject({ environment: 'homologacion', pto_vta: 11, issuer_name: 'Razón social de prueba', issuer_tax_id: '20000000001' })
+  })
+
+  it('con la facturación activada avisa qué datos del emisor faltan', async () => {
+    const { user } = setupSettings('admin')
+    const panel = await screen.findByRole('region', { name: 'Facturación electrónica' })
+    await user.selectOptions(await within(panel).findByLabelText(/^Facturación/), 'homologacion')
+    expect(await within(panel).findByRole('status')).toHaveTextContent('falta: razón social, CUIT, domicilio comercial, Ingresos Brutos, inicio de actividades')
+  })
+
+  it('el encargado no ve el panel (la configuración fiscal es del dueño)', async () => {
+    setupSettings('manager')
+    await screen.findByRole('heading', { name: 'Configuración' })
+    expect(screen.queryByRole('region', { name: 'Facturación electrónica' })).not.toBeInTheDocument()
   })
 })

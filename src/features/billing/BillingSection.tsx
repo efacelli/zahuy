@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { FormField } from '../../components/ui/FormField'
 import { Icon } from '../../components/ui/Icon'
@@ -12,8 +12,10 @@ import { useSupabase } from '../../lib/supabase-context'
 import {
   CBTE_LABEL,
   DOC_TYPES,
+  FISCAL_SETTINGS_KEY,
   FISCAL_STATUS_LABEL,
   VAT_CONDITIONS,
+  documentsKey,
   emitFiscalDocument,
   fetchFiscalSettings,
   fetchSaleDocuments,
@@ -26,10 +28,12 @@ import {
   type FiscalDocumentRow,
   type ReceiverForm,
 } from './billing-api'
+import { FiscalTicket, type FiscalTicketItem } from './FiscalTicket'
 import styles from './Billing.module.css'
 
-const SETTINGS_KEY = ['fiscal-settings'] as const
-const documentsKey = (saleId: string) => ['fiscal-documents', saleId] as const
+/** Cada cuántos segundos se vuelve a consultar un comprobante sin confirmar, y cuántas veces como máximo. */
+const POLL_SECONDS = 20
+const POLL_MAX = 12
 
 const LIVE: FiscalDocumentRow['status'][] = ['authorized', 'pending', 'unknown']
 
@@ -37,11 +41,20 @@ const LIVE: FiscalDocumentRow['status'][] = ['authorized', 'pending', 'unknown']
  * Facturación electrónica de una venta, dentro de su detalle (contrato §22). Solo aparece si la base la tiene
  * y está activada (ambiente distinto de «off») o si la venta ya tiene comprobantes.
  */
-export function BillingSection({ saleId, saleStatus }: { saleId: string; saleStatus: 'completed' | 'voided' }) {
+export function BillingSection({
+  saleId,
+  saleStatus,
+  items,
+}: {
+  saleId: string
+  saleStatus: 'completed' | 'voided'
+  /** Detalle de la venta para el comprobante impreso. */
+  items: FiscalTicketItem[]
+}) {
   const client = useSupabase()
   const toast = useToast()
   const queryClient = useQueryClient()
-  const settings = useQuery({ queryKey: SETTINGS_KEY, queryFn: () => fetchFiscalSettings(client), staleTime: 60_000 })
+  const settings = useQuery({ queryKey: FISCAL_SETTINGS_KEY, queryFn: () => fetchFiscalSettings(client), staleTime: 60_000 })
   const documents = useQuery({ queryKey: documentsKey(saleId), queryFn: () => fetchSaleDocuments(client, saleId) })
 
   /** Qué formulario está abierto; la clave se genera al abrirlo para que un reintento no duplique el comprobante. */
@@ -77,15 +90,39 @@ export function BillingSection({ saleId, saleStatus }: { saleId: string; saleSta
     onError: (e) => setMessage({ tone: 'error', text: toAppError(e).message }),
   })
 
-  if (!settings.data) return null
   const rows = documents.data ?? []
-  if (settings.data.environment === 'off' && rows.length === 0) return null
-
   const live = rows.find((d) => d.kind === 'invoice' && LIVE.includes(d.status))
   const credit = rows.find((d) => d.kind === 'credit_note' && LIVE.includes(d.status))
+  const pendingOne = live && live.status !== 'authorized' ? live : credit && credit.status !== 'authorized' ? credit : null
+
+  // Un comprobante sin confirmar se vuelve a consultar solo, cada tanto, mientras esta pantalla esté abierta.
+  const { mutate: emitMutate } = emit
+  const pendingKind = pendingOne?.kind ?? null
+  useEffect(() => {
+    if (!pendingKind) return
+    let tries = 0
+    const timer = window.setInterval(() => {
+      tries += 1
+      if (tries > POLL_MAX) {
+        window.clearInterval(timer)
+        return
+      }
+      emitMutate({ action: pendingKind, sale_id: saleId, idempotency_key: newIdempotencyKey() })
+    }, POLL_SECONDS * 1000)
+    return () => window.clearInterval(timer)
+  }, [pendingKind, saleId, emitMutate])
+
+  /** Qué comprobante autorizado se muestra e imprime (por defecto, el último). */
+  const [viewId, setViewId] = useState<string | null>(null)
+
+  if (!settings.data) return null
+  if (settings.data.environment === 'off' && rows.length === 0) return null
+
   const canInvoice = settings.data.environment !== 'off' && saleStatus === 'completed' && !live
   const canCredit = live?.status === 'authorized' && !credit
-  const pendingOne = live && live.status !== 'authorized' ? live : credit && credit.status !== 'authorized' ? credit : null
+  const authorized = rows.filter((d) => d.status === 'authorized')
+  const shown = authorized.find((d) => d.id === viewId) ?? authorized[authorized.length - 1] ?? null
+  const shownInvoice = shown?.kind === 'credit_note' ? rows.find((d) => d.kind === 'invoice' && d.status === 'authorized') : undefined
 
   function openForm(action: EmitRequest['action']) {
     setMessage(null)
@@ -229,6 +266,24 @@ export function BillingSection({ saleId, saleStatus }: { saleId: string; saleSta
             </Button>
           </div>
         </div>
+      )}
+
+      {shown && (
+        <>
+          {authorized.length > 1 && (
+            <div className={styles.viewer}>
+              <label htmlFor="bill-view">Comprobante para ver e imprimir</label>
+              <select id="bill-view" className="select" value={shown.id} onChange={(e) => setViewId(e.target.value)}>
+                {authorized.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {CBTE_LABEL[d.cbte_tipo] ?? 'Comprobante'} {formatCbteNumber(d.pto_vta, d.cbte_nro)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <FiscalTicket doc={shown} settings={settings.data} items={items} invoice={shownInvoice} />
+        </>
       )}
     </section>
   )

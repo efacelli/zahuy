@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { FormField } from '../../components/ui/FormField'
@@ -10,6 +10,7 @@ import { formatMoney, formatNumber } from '../../lib/format'
 import { toAppError } from '../../lib/errors'
 import { newIdempotencyKey } from '../../lib/idempotency'
 import { useSupabase } from '../../lib/supabase-context'
+import { documentsKey, fetchSaleDocuments } from '../billing/billing-api'
 import { BillingSection } from '../billing/BillingSection'
 import { useRefreshStock } from '../movements/useRefreshStock'
 import { OPEN_SESSIONS_KEY } from '../pos/pos-api'
@@ -68,6 +69,8 @@ function DetailContent({ sale, canVoid, onClose }: { sale: SaleRow; canVoid: boo
   }
 
   const voidable = canVoid && canBeVoided(sale)
+  const fiscalDocuments = useQuery({ queryKey: documentsKey(sale.id), queryFn: () => fetchSaleDocuments(client, sale.id) })
+  const hasFiscalTicket = (fiscalDocuments.data ?? []).some((d) => d.status === 'authorized')
 
   return (
     <Modal
@@ -136,9 +139,14 @@ function DetailContent({ sale, canVoid, onClose }: { sale: SaleRow; canVoid: boo
 
       <PriceNotes sale={sale} />
 
-      <BillingSection saleId={sale.id} saleStatus={sale.status} />
+      <BillingSection
+        saleId={sale.id}
+        saleStatus={sale.status}
+        items={sale.sale_items.map((i) => ({ name: i.product_name, quantity: i.quantity, lineTotal: i.line_total }))}
+      />
 
-      <TicketBody ticket={toTicket(sale)} />
+      {/* Con un comprobante fiscal autorizado, lo que se imprime es ese comprobante y no el ticket interno. */}
+      {!hasFiscalTicket && <TicketBody ticket={toTicket(sale)} />}
 
       {voiding && (
         <div className={styles.voidForm}>

@@ -10,8 +10,19 @@ export type FiscalStatus = 'pending' | 'authorized' | 'rejected' | 'unknown'
 export type FiscalKind = 'invoice' | 'credit_note'
 
 export interface FiscalSettings {
+  id: string
   environment: FiscalEnvironment
   pto_vta: number | null
+  caea_pto_vta: number | null
+  /** Datos del emisor que van impresos en la factura (§22.11); null mientras no se carguen. */
+  issuer_name: string | null
+  issuer_tax_id: string | null
+  issuer_address: string | null
+  gross_income_number: string | null
+  /** AAAA-MM-DD */
+  activity_start_date: string | null
+  /** false si la base todavía no tiene las columnas del emisor. */
+  issuerAvailable: boolean
 }
 
 export interface FiscalDocumentRow {
@@ -26,6 +37,13 @@ export interface FiscalDocumentRow {
   cae: string | null
   cae_expires_on: string | null
   imp_total: number
+  imp_neto: number
+  imp_iva: number
+  iva_breakdown: { id: number; rate: number; base: number; amount: number }[]
+  receiver_doc_type: number
+  receiver_doc_number: string
+  receiver_vat_condition_id: number
+  authorized_at: string | null
   created_at: string
 }
 
@@ -81,14 +99,43 @@ export function receiverError(form: ReceiverForm): string | null {
 }
 
 /** null si la base todavía no tiene la facturación (la sección no se muestra). */
+const SETTINGS_BASE = 'id, environment, pto_vta, caea_pto_vta'
+const SETTINGS_ISSUER = 'issuer_name, issuer_tax_id, issuer_address, gross_income_number, activity_start_date'
+
 export async function fetchFiscalSettings(client: SupabaseClient): Promise<FiscalSettings | null> {
-  const { data, error } = await client.from('fiscal_settings').select('environment, pto_vta').limit(1)
-  if (error) return null
-  const row = ((data ?? []) as FiscalSettings[])[0]
-  return row ? { environment: row.environment, pto_vta: row.pto_vta === null ? null : Number(row.pto_vta) } : null
+  let issuerAvailable = true
+  const full = await client.from('fiscal_settings').select(`${SETTINGS_BASE}, ${SETTINGS_ISSUER}`).limit(1)
+  let rows = full.data as unknown as Partial<FiscalSettings>[] | null
+  let failed = full.error
+  if (failed) {
+    // Base sin las columnas del emisor (§22.11): se pide sin ellas y la factura se imprime sin ese encabezado.
+    issuerAvailable = false
+    const base = await client.from('fiscal_settings').select(SETTINGS_BASE).limit(1)
+    rows = base.data as unknown as Partial<FiscalSettings>[] | null
+    failed = base.error
+  }
+  if (failed) return null
+  const row = (rows ?? [])[0]
+  if (!row) return null
+  return {
+    id: String(row.id),
+    environment: row.environment as FiscalEnvironment,
+    pto_vta: row.pto_vta == null ? null : Number(row.pto_vta),
+    caea_pto_vta: row.caea_pto_vta == null ? null : Number(row.caea_pto_vta),
+    issuer_name: row.issuer_name ?? null,
+    issuer_tax_id: row.issuer_tax_id ?? null,
+    issuer_address: row.issuer_address ?? null,
+    gross_income_number: row.gross_income_number ?? null,
+    activity_start_date: row.activity_start_date ?? null,
+    issuerAvailable,
+  }
 }
 
-const DOCUMENT_COLUMNS = 'id, sale_id, kind, cbte_tipo, pto_vta, cbte_nro, environment, status, cae, cae_expires_on, imp_total, created_at'
+export const documentsKey = (saleId: string) => ['fiscal-documents', saleId] as const
+
+const DOCUMENT_COLUMNS =
+  'id, sale_id, kind, cbte_tipo, pto_vta, cbte_nro, environment, status, cae, cae_expires_on, imp_total, imp_neto, imp_iva, ' +
+  'iva_breakdown, receiver_doc_type, receiver_doc_number, receiver_vat_condition_id, authorized_at, created_at'
 
 /** Comprobantes de una venta, del más viejo al más nuevo. La RLS decide qué se ve (§22.2). */
 export async function fetchSaleDocuments(client: SupabaseClient, saleId: string): Promise<FiscalDocumentRow[]> {
@@ -98,12 +145,17 @@ export async function fetchSaleDocuments(client: SupabaseClient, saleId: string)
     .eq('sale_id', saleId)
     .order('created_at', { ascending: true })
   if (error) return []
-  return ((data ?? []) as FiscalDocumentRow[]).map((d) => ({
+  return ((data ?? []) as unknown as FiscalDocumentRow[]).map((d) => ({
     ...d,
     cbte_tipo: Number(d.cbte_tipo),
     pto_vta: Number(d.pto_vta),
     cbte_nro: Number(d.cbte_nro),
     imp_total: Number(d.imp_total),
+    imp_neto: Number(d.imp_neto),
+    imp_iva: Number(d.imp_iva),
+    receiver_doc_type: Number(d.receiver_doc_type),
+    receiver_vat_condition_id: Number(d.receiver_vat_condition_id),
+    iva_breakdown: (d.iva_breakdown ?? []).map((i) => ({ id: Number(i.id), rate: Number(i.rate), base: Number(i.base), amount: Number(i.amount) })),
   }))
 }
 
@@ -182,3 +234,132 @@ export const FISCAL_MESSAGES: Record<string, string> = {
 
 export const fiscalMessage = (code: string | null) =>
   (code && FISCAL_MESSAGES[code]) || 'No se pudo emitir el comprobante. Si se repite, avisá al administrador.'
+
+// ---------------------------------------------------------------------------
+// Configuración fiscal (Configuración, solo dueño y programador) y datos del emisor (§22.11)
+// ---------------------------------------------------------------------------
+
+export const FISCAL_SETTINGS_KEY = ['fiscal-settings'] as const
+
+export interface FiscalSettingsForm {
+  environment: FiscalEnvironment
+  pto_vta: string
+  caea_pto_vta: string
+  issuer_name: string
+  issuer_tax_id: string
+  issuer_address: string
+  gross_income_number: string
+  activity_start_date: string
+}
+
+export type FiscalSettingsErrors = Partial<Record<keyof FiscalSettingsForm, string>>
+
+export const settingsToForm = (s: FiscalSettings): FiscalSettingsForm => ({
+  environment: s.environment,
+  pto_vta: s.pto_vta === null ? '' : String(s.pto_vta),
+  caea_pto_vta: s.caea_pto_vta === null ? '' : String(s.caea_pto_vta),
+  issuer_name: s.issuer_name ?? '',
+  issuer_tax_id: s.issuer_tax_id ?? '',
+  issuer_address: s.issuer_address ?? '',
+  gross_income_number: s.gross_income_number ?? '',
+  activity_start_date: s.activity_start_date ?? '',
+})
+
+const orNull = (value: string) => (value.trim() === '' ? null : value.trim())
+
+/** Mismas reglas que la base (CHECK de §22.2 y §22.11); el ambiente `produccion` no se cambia desde la app. */
+export function validateFiscalSettings(
+  form: FiscalSettingsForm,
+  issuerAvailable: boolean,
+  today = new Date(),
+): { errors: FiscalSettingsErrors; update: Record<string, unknown> | null } {
+  const errors: FiscalSettingsErrors = {}
+  const port = (value: string, label: string) => {
+    if (value.trim() === '') return null
+    return /^\d{1,5}$/.test(value.trim()) && Number(value) >= 1 && Number(value) <= 99998 ? null : `${label}: un número entre 1 y 99998.`
+  }
+  const pto = port(form.pto_vta, 'Punto de venta')
+  if (pto) errors.pto_vta = pto
+  else if (form.environment !== 'off' && form.pto_vta.trim() === '') errors.pto_vta = 'Falta el punto de venta para activar la facturación.'
+  const caea = port(form.caea_pto_vta, 'Punto de venta de CAEA')
+  if (caea) errors.caea_pto_vta = caea
+  else if (form.caea_pto_vta.trim() !== '' && form.caea_pto_vta.trim() === form.pto_vta.trim()) {
+    errors.caea_pto_vta = 'Tiene que ser distinto del punto de venta principal.'
+  }
+  if (issuerAvailable) {
+    const name = form.issuer_name.trim()
+    if (name !== '' && name.length > 80) errors.issuer_name = 'Hasta 80 caracteres.'
+    if (form.issuer_tax_id.trim() !== '' && !/^\d{11}$/.test(form.issuer_tax_id.trim())) errors.issuer_tax_id = 'El CUIT tiene 11 dígitos, sin guiones.'
+    if (form.issuer_address.trim().length > 120) errors.issuer_address = 'Hasta 120 caracteres.'
+    if (form.gross_income_number.trim() !== '' && !/^[0-9-]{1,20}$/.test(form.gross_income_number.trim())) {
+      errors.gross_income_number = 'Solo números y guiones (hasta 20).'
+    }
+    const date = form.activity_start_date.trim()
+    if (date !== '') {
+      const parsed = Date.parse(`${date}T00:00:00Z`)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed)) errors.activity_start_date = 'Fecha inválida.'
+      else if (parsed > today.getTime()) errors.activity_start_date = 'No puede ser futura.'
+    }
+  }
+  if (Object.keys(errors).length > 0) return { errors, update: null }
+  const update: Record<string, unknown> = {
+    pto_vta: orNull(form.pto_vta) === null ? null : Number(form.pto_vta),
+    caea_pto_vta: orNull(form.caea_pto_vta) === null ? null : Number(form.caea_pto_vta),
+  }
+  // Producción no se activa ni se desactiva desde la app (decisión aparte, §22.1).
+  if (form.environment === 'off' || form.environment === 'homologacion') update.environment = form.environment
+  if (issuerAvailable) {
+    update.issuer_name = orNull(form.issuer_name)
+    update.issuer_tax_id = orNull(form.issuer_tax_id)
+    update.issuer_address = orNull(form.issuer_address)
+    update.gross_income_number = orNull(form.gross_income_number)
+    update.activity_start_date = orNull(form.activity_start_date)
+  }
+  return { errors, update }
+}
+
+export async function saveFiscalSettings(client: SupabaseClient, id: string, update: Record<string, unknown>): Promise<void> {
+  const { error } = await client.from('fiscal_settings').update(update).eq('id', id)
+  if (error) throw error
+}
+
+/** Qué datos del emisor faltan para que la factura salga completa (vacío = está todo). */
+export function issuerMissing(s: FiscalSettings | null): string[] {
+  if (!s) return []
+  const missing: string[] = []
+  if (!s.issuer_name) missing.push('razón social')
+  if (!s.issuer_tax_id) missing.push('CUIT')
+  if (!s.issuer_address) missing.push('domicilio comercial')
+  if (!s.gross_income_number) missing.push('Ingresos Brutos')
+  if (!s.activity_start_date) missing.push('inicio de actividades')
+  return missing
+}
+
+// ---------------------------------------------------------------------------
+// Código QR de ARCA (RG 4892): la URL lleva un JSON en base64 con los datos del comprobante autorizado.
+// ---------------------------------------------------------------------------
+
+/** AAAA-MM-DD en hora de Argentina. */
+export function arDate(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso))
+}
+
+export function arcaQrUrl(doc: FiscalDocumentRow, issuerTaxId: string | null): string | null {
+  if (doc.status !== 'authorized' || !doc.cae || !doc.authorized_at || !issuerTaxId || !/^\d{11}$/.test(issuerTaxId)) return null
+  const payload = {
+    ver: 1,
+    fecha: arDate(doc.authorized_at),
+    cuit: Number(issuerTaxId),
+    ptoVta: doc.pto_vta,
+    tipoCmp: doc.cbte_tipo,
+    nroCmp: doc.cbte_nro,
+    importe: doc.imp_total,
+    moneda: 'PES',
+    ctz: 1,
+    tipoDocRec: doc.receiver_doc_type,
+    nroDocRec: Number(doc.receiver_doc_number),
+    tipoCodAut: 'E',
+    codAut: Number(doc.cae),
+  }
+  return `https://www.afip.gob.ar/fe/qr/?p=${encodeURIComponent(btoa(JSON.stringify(payload)))}`
+}
