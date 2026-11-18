@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { isMissingColumn } from '../../lib/errors'
 import type { SaleUnit } from '../../domain/units'
 import { toAppError } from '../../lib/errors'
 import type { ProductFormOutput } from './product-form-schema'
@@ -36,6 +37,8 @@ export interface CreateProductParams {
   p_sale_price: number
   p_vat_rate: number
   p_barcode: string | null
+  /** Solo se envía si hay PLU: una base sin la migración de §21 no conoce el parámetro. */
+  p_scale_plu?: string
   p_description: string | null
   p_supplier_id: string | null
   p_boxes_quantity: number
@@ -61,6 +64,7 @@ export function toCreateProductParams(values: ProductFormOutput, idempotencyKey:
     p_sale_price: values.sale_price,
     p_vat_rate: values.vat_rate,
     p_barcode: values.barcode,
+    ...(values.scale_plu === null ? {} : { p_scale_plu: values.scale_plu }),
     p_description: values.description,
     p_supplier_id: values.supplier_id,
     p_boxes_quantity: values.boxes_quantity,
@@ -78,6 +82,8 @@ export function toCreateProductParams(values: ProductFormOutput, idempotencyKey:
 /** Columnas que la app puede editar en `products` (permisos por columna, §5.5 y §9). */
 export interface ProductUpdatePayload {
   barcode: string | null
+  /** Solo se envía si hay PLU o si había uno (para quitarlo): sin la migración de §21 la columna no existe. */
+  scale_plu?: string | null
   name: string
   description: string | null
   category_id: string
@@ -93,9 +99,10 @@ export interface ProductUpdatePayload {
   is_active: boolean
 }
 
-export function toUpdateProductPayload(values: ProductFormOutput): ProductUpdatePayload {
+export function toUpdateProductPayload(values: ProductFormOutput, hadScalePlu = false): ProductUpdatePayload {
   return {
     barcode: values.barcode,
+    ...(values.scale_plu !== null || hadScalePlu ? { scale_plu: values.scale_plu } : {}),
     name: values.name,
     description: values.description,
     category_id: values.category_id,
@@ -143,6 +150,8 @@ export interface EditableProductRow {
   id: string
   sku: string
   barcode: string | null
+  /** Ausente si la base todavía no tiene la columna (§21). */
+  scale_plu?: string | null
   name: string
   description: string | null
   category_id: string
@@ -158,16 +167,17 @@ export interface EditableProductRow {
   is_active: boolean
 }
 
+const EDITABLE_COLUMNS =
+  'id, sku, barcode, name, description, category_id, brand_id, supplier_id, sale_unit, cost_price, sale_price, vat_rate, boxes_quantity, units_per_box, min_stock, is_active'
+
 export async function fetchEditableProduct(client: SupabaseClient, id: string): Promise<EditableProductRow> {
-  const { data, error } = await client
-    .from('products')
-    .select(
-      'id, sku, barcode, name, description, category_id, brand_id, supplier_id, sale_unit, cost_price, sale_price, vat_rate, boxes_quantity, units_per_box, min_stock, is_active',
-    )
-    .eq('id', id)
-    .single()
+  // Con el PLU de balanza (§21); si la base todavía no tiene la columna, sin él (el formulario lo oculta).
+  const withPlu = await client.from('products').select(`${EDITABLE_COLUMNS}, scale_plu`).eq('id', id).single()
+  if (!withPlu.error) return withPlu.data as unknown as EditableProductRow
+  if (!isMissingColumn(withPlu.error)) throw withPlu.error
+  const { data, error } = await client.from('products').select(EDITABLE_COLUMNS).eq('id', id).single()
   if (error) throw error
-  return data as EditableProductRow
+  return data as unknown as EditableProductRow
 }
 
 /** Mensaje para errores del alta o la edición de productos. */

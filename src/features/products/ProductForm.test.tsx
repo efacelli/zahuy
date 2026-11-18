@@ -226,3 +226,58 @@ describe('Nuevo producto', () => {
     expect(await screen.findByText('El precio de venta es menor que el costo.')).toBeInTheDocument()
   })
 })
+
+describe('PLU de balanza en el alta (§21)', () => {
+  it('el campo solo aparece para productos por kilo', async () => {
+    const { user } = setup()
+    await screen.findByLabelText(/^Nombre/)
+    expect(screen.queryByLabelText(/PLU de balanza/)).not.toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText(/^Unidad de venta/), 'Kilo')
+    expect(await screen.findByLabelText(/PLU de balanza/)).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText(/^Unidad de venta/), 'Unidad')
+    expect(screen.queryByLabelText(/PLU de balanza/)).not.toBeInTheDocument()
+  })
+
+  it('el PLU se completa con ceros y viaja a create_product', async () => {
+    const { user, fake, router } = setup()
+    fake.setRpcResult('create_product', { id: 'p1', sku: '000001', name: 'Yogur de frutilla' })
+    await fillRequired(user)
+    await user.selectOptions(screen.getByLabelText(/^Unidad de venta/), 'Kilo')
+    await user.type(await screen.findByLabelText(/PLU de balanza/), '5')
+    await user.click(screen.getByRole('button', { name: 'Guardar producto' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/productos'))
+    const params = (fake.rpc.mock.calls[0] as [string, Record<string, unknown>])[1]
+    expect(params).toMatchObject({ p_sale_unit: 'kg', p_scale_plu: '00005' })
+  })
+
+  it('un producto sin PLU no manda p_scale_plu', async () => {
+    const { user, fake, router } = setup()
+    fake.setRpcResult('create_product', { id: 'p1', sku: '000001', name: 'Yogur de frutilla' })
+    await fillRequired(user)
+    await user.click(screen.getByRole('button', { name: 'Guardar producto' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/productos'))
+    expect((fake.rpc.mock.calls[0] as [string, Record<string, unknown>])[1]).not.toHaveProperty('p_scale_plu')
+  })
+
+  it('un PLU en un producto que deja de ser por kilo no deja guardar y lo explica', async () => {
+    const { user, fake } = setup()
+    await fillRequired(user)
+    await user.selectOptions(screen.getByLabelText(/^Unidad de venta/), 'Kilo')
+    await user.type(await screen.findByLabelText(/PLU de balanza/), '5')
+    await user.selectOptions(screen.getByLabelText(/^Unidad de venta/), 'Unidad')
+    await user.click(screen.getByRole('button', { name: 'Guardar producto' }))
+    expect(await screen.findByText('El PLU de balanza solo va en productos por kilo.')).toBeInTheDocument()
+    expect(fake.rpc).not.toHaveBeenCalled()
+  })
+
+  it('un PLU repetido se explica en español y no pierde los datos', async () => {
+    const { user, fake } = setup()
+    fake.setRpcResult('create_product', null, { code: '23505', message: 'duplicate key value violates unique constraint "products_scale_plu_key"' })
+    await fillRequired(user)
+    await user.selectOptions(screen.getByLabelText(/^Unidad de venta/), 'Kilo')
+    await user.type(await screen.findByLabelText(/PLU de balanza/), '00005')
+    await user.click(screen.getByRole('button', { name: 'Guardar producto' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ese PLU ya es de otro producto.')
+    expect(screen.getByLabelText(/^Nombre/)).toHaveValue('Yogur de frutilla')
+  })
+})

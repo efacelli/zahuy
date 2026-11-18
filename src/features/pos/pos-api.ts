@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { DEFAULT_CASH_STEP } from '../../domain/cash-rounding'
 import { DEFAULT_DISCOUNT_RULE, type DiscountRule } from '../../domain/quantity-discount'
+import { isMissingColumn } from '../../lib/errors'
 import type { CartProduct, SaleItemParam } from './cart'
 
 /*
@@ -180,15 +181,21 @@ export async function supportsManualLines(client: SupabaseClient): Promise<boole
   return !error
 }
 
-/** Productos activos que se venden por kilo (para elegir el fiambre de una etiqueta). */
-export async function fetchWeighedProducts(client: SupabaseClient): Promise<CartProduct[]> {
-  const { data, error } = await client
-    .from('products')
-    .select(SELLABLE_COLUMNS)
-    .eq('sale_unit', 'kg')
-    .eq('is_active', true)
-    .order('name')
-    .limit(1000)
-  if (error) throw error
-  return ((data ?? []) as SellableRow[]).map(toCartProduct)
+/** Producto por kilo con su PLU de balanza (§21), o null si no tiene. */
+export type WeighedProduct = CartProduct & { scale_plu: string | null }
+
+/**
+ * Productos activos que se venden por kilo (para elegir el fiambre de una etiqueta), con su PLU de balanza para que la
+ * caja reconozca la etiqueta sola (§21). Si la base todavía no tiene la columna, sin PLU: se elige a mano como antes.
+ */
+export async function fetchWeighedProducts(client: SupabaseClient): Promise<WeighedProduct[]> {
+  const ask = (columns: string) =>
+    client.from('products').select(columns).eq('sale_unit', 'kg').eq('is_active', true).order('name').limit(1000)
+  let result = await ask(`${SELLABLE_COLUMNS}, scale_plu`)
+  if (result.error && isMissingColumn(result.error)) result = await ask(SELLABLE_COLUMNS)
+  if (result.error) throw result.error
+  return ((result.data ?? []) as unknown as (SellableRow & { scale_plu?: string | null })[]).map((row) => ({
+    ...toCartProduct(row),
+    scale_plu: row.scale_plu ?? null,
+  }))
 }

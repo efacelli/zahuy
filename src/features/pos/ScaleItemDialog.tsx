@@ -36,14 +36,18 @@ export function ScaleItemDialog({ label, repeated, onCancel, onAdd }: Props) {
   const client = useSupabase()
   const products = useQuery({ queryKey: ['weighed-products'], queryFn: () => fetchWeighedProducts(client), staleTime: 300_000 })
   const [search, setSearch] = useState('')
-  const [productId, setProductId] = useState<string | null>(null)
+  /** Lo que eligió el cajero; mientras no elija, vale el producto que tiene el PLU de la etiqueta (§21). */
+  const [chosenId, setChosenId] = useState<string | null | undefined>(undefined)
   const [weightText, setWeightText] = useState(label ? String(label.weightKg).replace('.', ',') : '')
   const [amountText, setAmountText] = useState('')
   const [showErrors, setShowErrors] = useState(false)
 
   const term = search.trim().toLowerCase()
   const options = (products.data ?? []).filter((p) => term === '' || p.name.toLowerCase().includes(term) || p.sku.includes(term))
+  const byPlu = label ? (products.data?.find((p) => p.scale_plu === label.plu) ?? null) : null
+  const productId = chosenId !== undefined ? chosenId : (byPlu?.id ?? null)
   const product = products.data?.find((p) => p.id === productId) ?? null
+  const recognized = chosenId === undefined && byPlu !== null
 
   const weight = label ? label.weightKg : parseDecimalInput(weightText.trim())
   const weightError =
@@ -59,7 +63,12 @@ export function ScaleItemDialog({ label, repeated, onCancel, onAdd }: Props) {
   function confirm() {
     setShowErrors(true)
     if (!product || weightError || amount.value === null || weight === null) return
-    onAdd({ product, quantity: weight, total: amount.value, barcode: label?.code ?? null })
+    onAdd({
+      product: { id: product.id, sku: product.sku, name: product.name, sale_unit: product.sale_unit, sale_price_with_vat: product.sale_price_with_vat },
+      quantity: weight,
+      total: amount.value,
+      barcode: label?.code ?? null,
+    })
   }
 
   return (
@@ -94,6 +103,11 @@ export function ScaleItemDialog({ label, repeated, onCancel, onAdd }: Props) {
               onChange={(e) => setWeightText(e.target.value)}
             />
           </FormField>
+        )}
+        {recognized && (
+          <p className={styles.muted} role="status">
+            Producto reconocido por el PLU {label?.plu}: <strong>{byPlu?.name}</strong>. Podés cambiarlo si no es.
+          </p>
         )}
         {repeated && (
           <p className={styles.scanError} role="alert">
@@ -130,7 +144,7 @@ export function ScaleItemDialog({ label, repeated, onCancel, onAdd }: Props) {
                 type="button"
                 className={`${styles.result} ${p.id === productId ? styles.resultSelected : ''}`}
                 aria-pressed={p.id === productId}
-                onClick={() => setProductId(p.id)}
+                onClick={() => setChosenId(p.id)}
               >
                 <span>{p.name}</span>
                 <span className={styles.muted}>{formatMoney(p.sale_price_with_vat)} / kg</span>

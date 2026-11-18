@@ -116,7 +116,10 @@ export function textSearchFilter(raw: string): string | null {
   const term = sanitizeSearch(raw)
   if (!term) return null
   const plain = normalizeSearch(term)
-  return `search_name.ilike.%${plain}%,sku.ilike.%${term}%,barcode.ilike.%${term}%,legacy_code.ilike.%${term}%`
+  // §21.3: escribir el PLU (`5` o `00005`) encuentra el producto de balanza. Solo con 1 a 5 dígitos (un SKU tiene 6 y
+  // un código de barras 8 o más), para no tocar la columna `scale_plu` en el resto de las búsquedas.
+  const plu = /^[0-9]{1,5}$/.test(term) ? `,scale_plu.eq.${term.padStart(5, '0')}` : ''
+  return `search_name.ilike.%${plain}%,sku.ilike.%${term}%,barcode.ilike.%${term}%,legacy_code.ilike.%${term}%${plu}`
 }
 
 /**
