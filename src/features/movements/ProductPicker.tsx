@@ -22,6 +22,19 @@ interface ProductPickerProps {
 
 const SEARCH_DELAY_MS = 250
 
+/**
+ * Enfoca un campo que todavía puede no estar en pantalla: al elegir el producto, React tarda uno o más cuadros en
+ * mostrar el formulario siguiente. Un solo intento podía caer antes y el foco se perdía (a veces, al escanear con
+ * el lector); se reintenta hasta que el campo exista.
+ */
+function focusWhenReady(id: string, tries = 30) {
+  window.requestAnimationFrame(() => {
+    const field = document.getElementById(id)
+    if (field) field.focus()
+    else if (tries > 0) focusWhenReady(id, tries - 1)
+  })
+}
+
 /** Buscador de productos por nombre, SKU o código de barras. */
 export function ProductPicker({ id, value, onChange, error, includeInactive = false, nextFocusId, onUnknownBarcode }: ProductPickerProps) {
   const client = useSupabase()
@@ -45,7 +58,7 @@ export function ProductPicker({ id, value, onChange, error, includeInactive = fa
   function choose(product: ProductOption) {
     setScanMessage(null)
     onChange(product)
-    if (nextFocusId) window.requestAnimationFrame(() => document.getElementById(nextFocusId)?.focus())
+    if (nextFocusId) focusWhenReady(nextFocusId)
   }
 
   /** Enter: un código de barras (lector USB) elige el producto exacto; un texto con un solo resultado, ese. */
