@@ -2386,7 +2386,7 @@ código, vigencia, informado).
 | P-72 | Umbral desde el cual hay que identificar al consumidor final | $10.000.000 (lo indica ARCA) | **Confirmada (respuesta recibida el 2026-11-17):** sigue vigente |
 | P-73 | ¿El domicilio del punto de venta es el del local? | Sí | **Confirmada (respuesta recibida el 2026-11-17):** es el mismo domicilio |
 | P-74 | ¿Hay productos con IVA distinto de 21 % o 10,5 %? | No | **Confirmada (respuesta recibida el 2026-11-17):** todos tienen 21 % o 10,5 % |
-| P-75 | ¿Hay algo que revisar antes de emitir en producción? | Revisión del contador y un puesto piloto | **Respondida (respuesta recibida el 2026-11-17):** no hay nada pendiente del titular que pueda trabar o limitar la emisión y el punto de venta está bien habilitado. Sin respuesta sobre la caja piloto |
+| P-75 | ¿Hay algo que revisar antes de emitir en producción? | Revisión del contador y un puesto piloto | **Respondida (respuesta recibida el 2026-11-17):** no hay nada pendiente del titular que pueda trabar o limitar la emisión y el punto de venta está bien habilitado. Sobre la caja piloto, **al contador le da lo mismo empezar con una o con las dos cajas**: no hay inconveniente |
 
 ### 22.8 Pruebas que se exigirán
 
