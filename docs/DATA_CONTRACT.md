@@ -2350,10 +2350,14 @@ ventas que cobró.
 
 ### 22.4 Importes
 
-El comprobante usa los importes de la venta (`net_amount`, `vat_amount`, `total_amount` y, por
-alícuota, las líneas de §20). El redondeo de efectivo (`rounding_amount`, §15) **no es parte del
-comprobante** hasta que el contador diga otra cosa (P-66). Las líneas libres (§20.8) entran con
-su IVA y sin producto.
+**El comprobante lleva el importe cobrado** (decisión de P-66: el comercio redondea el efectivo,
+generalmente hacia abajo): `imp_total = total_amount + rounding_amount`, que es lo que el cliente
+pagó. Neto e IVA por alícuota salen de los ítems de la venta (incluidas las líneas libres, §20.8, con
+su IVA y sin producto). Si hay redondeo, la diferencia entre lo cobrado y el bruto de los ítems se
+reparte **proporcionalmente al bruto de cada alícuota**, en centavos, y la última alícuota absorbe
+el resto para que la suma dé exactamente lo cobrado; de cada bruto ajustado, `base = round(bruto /
+(1 + tasa), 2)` e IVA = bruto − base. Sin redondeo, los importes son los de los ítems tal cual.
+Ejemplo: 2.315 cobrados 2.300 (21 % y 10,5 %) → neto 1.987,04 + IVA 312,96 = 2.300,00.
 
 ### 22.5 Anulación
 
@@ -2422,8 +2426,9 @@ las respuestas del contador (P-64 a P-70) siguen pendientes. Con `fiscal_setting
     venta (alícuota 10,5 % = id 4, 21 % = id 5; otra alícuota → `FISCAL_UNSUPPORTED_VAT`).
   - `fiscal_finish(p_document_id, p_status, p_cae, p_cae_expires_on, p_request, p_response,
     p_observations) → fiscal_documents`: `authorized`, `rejected` o `unknown`.
-- **Protecciones de la tabla** (valen para cualquier escritor): un documento nace `pending`; sus
-  importes deben ser iguales a los de la venta; `authorized` y `rejected` no se modifican ni se
+- **Protecciones de la tabla** (valen para cualquier escritor): un documento nace `pending`; su
+  total debe ser lo cobrado (`total_amount + rounding_amount`) y su desglose por alícuota debe sumar el
+  neto y el IVA (migración `20261121110000_fiscal_charged_amount.sql`); `authorized` y `rejected` no se modifican ni se
   borran; `pending → authorized | rejected | unknown` y `unknown → authorized | rejected | unknown`;
   `request_payload` y `response_payload` nunca llevan `token` ni `sign`.
 - **Pasar a `produccion`** exige haber autorizado antes al menos un comprobante en `homologacion`

@@ -69,6 +69,10 @@ insert into t_s select 'V2', (public.register_sale(gen_random_uuid(), pg_temp.si
   jsonb_build_array(pg_temp.it('U21', 1), pg_temp.it('U10', 1)), pg_temp.debit(2315))).id;
 insert into t_s select 'V3', (public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('U21', 2)), pg_temp.debit(2420))).id;
 insert into t_s select 'V4', (public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('U10', 1)), pg_temp.debit(1105))).id;
+-- Con redondeo del efectivo (el cliente paga menos que el total exacto): 1.210 se cobra 1.200 y 2.315 se cobra 2.300.
+insert into t_s select 'V5', (public.register_sale(gen_random_uuid(), pg_temp.sid('S1'), jsonb_build_array(pg_temp.it('U21', 1)), pg_temp.debit(1200))).id;
+insert into t_s select 'V6', (public.register_sale(gen_random_uuid(), pg_temp.sid('S1'),
+  jsonb_build_array(pg_temp.it('U21', 1), pg_temp.it('U10', 1)), pg_temp.debit(2300))).id;
 reset role;
 
 -- La caja con el ambiente en off sigue igual: las ventas anteriores se hicieron sin ningún documento fiscal.
@@ -250,6 +254,29 @@ reset role;
 select is((select cbte_nro from public.fiscal_documents where id = pg_temp.did('F3b')), 9::bigint, 'tras un rechazo, el nuevo comprobante reusa el número');
 select is((select count(*)::int from public.fiscal_documents where sale_id = pg_temp.vid('V3')), 2, 'el rechazado se conserva como historial');
 
+-- El comprobante lleva lo COBRADO (total + redondeo), con el IVA recalculado por alícuota (contrato §22.4, P-66).
+select is((select rounding_amount from public.sales where id = pg_temp.vid('V5')), -10.00::numeric, 'V5: se cobró 1.200 de 1.210 (redondeo −10)');
+set local role service_role;
+insert into t_d select 'R1', (public.fiscal_begin(gen_random_uuid(), pg_temp.vid('V5'), 'invoice', 6::smallint, 0, '00000000-0000-4000-8000-0000000000f2')).id;
+insert into t_d select 'R2', (public.fiscal_begin(gen_random_uuid(), pg_temp.vid('V6'), 'invoice', 6::smallint, 0, '00000000-0000-4000-8000-0000000000f2')).id;
+reset role;
+select results_eq(
+  $$select imp_total, imp_neto, imp_iva, iva_breakdown from public.fiscal_documents where id = pg_temp.did('R1')$$,
+  $$values (1200.00::numeric, 991.74::numeric, 208.26::numeric, '[{"id": 5, "rate": 21.00, "base": 991.74, "amount": 208.26}]'::jsonb)$$,
+  'R1: la factura es por 1.200 (lo cobrado), con neto 991,74 e IVA 208,26'
+);
+select results_eq(
+  $$select imp_total, imp_neto, imp_iva, iva_breakdown from public.fiscal_documents where id = pg_temp.did('R2')$$,
+  $$values (2300.00::numeric, 1987.04::numeric, 312.96::numeric,
+    '[{"id": 4, "rate": 10.50, "base": 993.52, "amount": 104.32}, {"id": 5, "rate": 21.00, "base": 993.52, "amount": 208.64}]'::jsonb)$$,
+  'R2: 2.300 cobrados repartidos entre 10,5 % y 21 %, con la suma exacta al centavo'
+);
+select is((select imp_neto + imp_iva from public.fiscal_documents where id = pg_temp.did('R2')), 2300.00::numeric, 'R2: neto + IVA = lo cobrado');
+select is(
+  (select imp_total from public.fiscal_documents where id = pg_temp.did('F1')), 1210.00::numeric,
+  'una venta cobrada exacta (sin redondeo) sigue facturándose por su total'
+);
+
 -- ---------------------------------------------------------------------------
 -- Reglas del propio documento (como superusuario: valen para cualquier escritor)
 -- ---------------------------------------------------------------------------
@@ -260,27 +287,27 @@ select throws_ok(
 );
 select throws_ok(
   $$insert into public.fiscal_documents (sale_id, kind, cbte_tipo, pto_vta, cbte_nro, environment, imp_total, imp_neto, imp_iva, iva_breakdown, idempotency_key, created_by)
-    values (pg_temp.vid('V4'), 'invoice', 6, 11, 50, 'produccion', 1105, 1000, 105, '[]', gen_random_uuid(), '00000000-0000-4000-8000-0000000000f2')$$,
+    values (pg_temp.vid('V4'), 'invoice', 6, 11, 50, 'produccion', 1105, 1000, 105, '[{"id": 4, "rate": 10.5, "base": 1000, "amount": 105}]', gen_random_uuid(), '00000000-0000-4000-8000-0000000000f2')$$,
   'P0001', 'FISCAL_DISABLED', 'un documento de otro ambiente que el vigente se rechaza'
 );
 select throws_ok(
   $$insert into public.fiscal_documents (sale_id, kind, cbte_tipo, pto_vta, cbte_nro, environment, status, cae, cae_expires_on, authorized_at, imp_total, imp_neto, imp_iva, iva_breakdown, idempotency_key, created_by)
-    values (pg_temp.vid('V4'), 'invoice', 6, 11, 51, 'homologacion', 'authorized', '86461234567893', date '2026-11-27', now(), 1105, 1000, 105, '[]', gen_random_uuid(), '00000000-0000-4000-8000-0000000000f2')$$,
+    values (pg_temp.vid('V4'), 'invoice', 6, 11, 51, 'homologacion', 'authorized', '86461234567893', date '2026-11-27', now(), 1105, 1000, 105, '[{"id": 4, "rate": 10.5, "base": 1000, "amount": 105}]', gen_random_uuid(), '00000000-0000-4000-8000-0000000000f2')$$,
   'P0001', 'INVALID_FISCAL_DOCUMENT', 'un documento solo nace pendiente'
 );
 select throws_ok(
   $$insert into public.fiscal_documents (sale_id, kind, cbte_tipo, pto_vta, cbte_nro, environment, imp_total, imp_neto, imp_iva, iva_breakdown, idempotency_key, created_by)
-    values (pg_temp.vid('V4'), 'invoice', 6, 11, 8, 'homologacion', 1105, 1000, 105, '[]', gen_random_uuid(), '00000000-0000-4000-8000-0000000000f2')$$,
+    values (pg_temp.vid('V4'), 'invoice', 6, 11, 8, 'homologacion', 1105, 1000, 105, '[{"id": 4, "rate": 10.5, "base": 1000, "amount": 105}]', gen_random_uuid(), '00000000-0000-4000-8000-0000000000f2')$$,
   '23505', null, 'un número ya usado en el mismo punto de venta y tipo se rechaza'
 );
 select throws_ok(
   $$insert into public.fiscal_documents (sale_id, kind, cbte_tipo, pto_vta, cbte_nro, environment, imp_total, imp_neto, imp_iva, iva_breakdown, idempotency_key, created_by)
-    values (pg_temp.vid('V4'), 'invoice', 3, 11, 60, 'homologacion', 1105, 1000, 105, '[]', gen_random_uuid(), '00000000-0000-4000-8000-0000000000f2')$$,
+    values (pg_temp.vid('V4'), 'invoice', 3, 11, 60, 'homologacion', 1105, 1000, 105, '[{"id": 4, "rate": 10.5, "base": 1000, "amount": 105}]', gen_random_uuid(), '00000000-0000-4000-8000-0000000000f2')$$,
   '23514', null, 'una factura con código de nota de crédito se rechaza'
 );
 select throws_ok(
   $$insert into public.fiscal_documents (sale_id, kind, cbte_tipo, pto_vta, cbte_nro, environment, receiver_doc_type, receiver_doc_number, imp_total, imp_neto, imp_iva, iva_breakdown, idempotency_key, created_by)
-    values (pg_temp.vid('V4'), 'invoice', 6, 11, 61, 'homologacion', 99, '12345678', 1105, 1000, 105, '[]', gen_random_uuid(), '00000000-0000-4000-8000-0000000000f2')$$,
+    values (pg_temp.vid('V4'), 'invoice', 6, 11, 61, 'homologacion', 99, '12345678', 1105, 1000, 105, '[{"id": 4, "rate": 10.5, "base": 1000, "amount": 105}]', gen_random_uuid(), '00000000-0000-4000-8000-0000000000f2')$$,
   '23514', null, 'consumidor final sin identificar lleva documento 0'
 );
 
@@ -415,8 +442,9 @@ reset role;
 -- Conciliación: ningún comprobante de esta prueba con importes distintos de los de su venta.
 select is(
   (select count(*)::int from public.fiscal_documents d join public.sales s on s.id = d.sale_id
-    where d.imp_total <> s.total_amount or d.imp_neto <> s.net_amount or d.imp_iva <> s.vat_amount),
-  0, 'todos los comprobantes coinciden con los importes de su venta'
+    where d.imp_total <> s.total_amount + s.rounding_amount
+       or d.imp_neto + d.imp_iva <> d.imp_total),
+  0, 'todos los comprobantes son por lo cobrado y su neto más su IVA da ese importe'
 );
 select is(
   (select count(*)::int from public.fiscal_documents where status = 'authorized' and cae !~ '^[0-9]{14}$'),
