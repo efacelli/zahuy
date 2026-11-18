@@ -2274,10 +2274,9 @@ repetido → `products_scale_plu_key`; un producto inactivo conserva el PLU; el 
 puede cambiarlo y el encargado sí; `create_product` con y sin `p_scale_plu`; `v_product_list`
 con la columna al final; productos existentes intactos después de la migración.
 
-## 22. Facturación electrónica ARCA (PROPUESTA v0.12.0)
+## 22. Facturación electrónica ARCA (v0.12.0: implementada en homologación; producción pendiente)
 
-**Estado:** propuesta del backend (`ChinoNader18`) para revisión de `efacelli` y del contador.
-No se implementa nada fiscal en producción hasta aprobarla. Desarrolla lo que §15.8 dejó
+**Estado:** aprobada e implementada en **homologación** (§22.9 a §22.11). **Producción no está implementada**: necesita la orden del dueño, backup verificado, un cambio de código aparte y el visto bueno de `efacelli` y del contador (`docs/DEPLOY.md` §9). Desarrolla lo que §15.8 dejó
 reservado para la etapa 6. **No contiene datos del titular** (CUIT, razón social, domicilio,
 certificados ni claves): el repositorio es público y esos datos viven solo en secretos de
 Supabase y en la carpeta privada del titular.
