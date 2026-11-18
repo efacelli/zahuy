@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Icon } from '../../components/ui/Icon'
 import { PageHeader } from '../../components/ui/PageHeader'
+import { useToast } from '../../components/ui/toast-context'
 import { isBarcodeLike, normalizeBarcode, parseScaleLabel, type ScaleLabel } from '../../domain/barcode'
 import { DEFAULT_DISCOUNT_RULE, discountError, type DiscountRule } from '../../domain/quantity-discount'
 import { SALE_UNIT_LABEL, isIntegerUnit } from '../../domain/units'
@@ -20,7 +21,7 @@ import { PaymentDialog, type CompletedSale } from './PaymentDialog'
 import { FreeItemDialog } from './FreeItemDialog'
 import { fetchDiscountRule, fetchSellable, findSellableByBarcode, supportsManualLines, type OpenSession } from './pos-api'
 import { ScaleItemDialog } from './ScaleItemDialog'
-import { SaleTicket } from './SaleTicket'
+import { SaleSavedNotice, SaleTicket } from './SaleTicket'
 import styles from './Pos.module.css'
 
 const SCAN_FIELD = 'pos-scan'
@@ -35,6 +36,9 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
   const [confirmClear, setConfirmClear] = useState(false)
   const [closing, setClosing] = useState(false)
   const [ticket, setTicket] = useState<CompletedSale | null>(null)
+  /** Venta guardada sin ticket que tiene vuelto para entregar. */
+  const [saved, setSaved] = useState<CompletedSale | null>(null)
+  const toast = useToast()
   /** Una clave por carrito: si se corta la conexión al cobrar, reintentar no duplica la venta (§15.6). */
   const [saleKey, setSaleKey] = useState(newIdempotencyKey)
   const rule = useQuery({ queryKey: ['discount-rule'], queryFn: () => fetchDiscountRule(client), staleTime: 300_000 })
@@ -133,6 +137,7 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
     dispatch({ type: 'clear' })
     setSaleKey(newIdempotencyKey())
     setTicket(null)
+    setSaved(null)
     setMessage(null)
     focusScan()
   }
@@ -345,9 +350,16 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
             setPaying(false)
             focusScan()
           }}
-          onDone={(sale) => {
+          onDone={(sale, { withTicket }) => {
             setPaying(false)
-            setTicket(sale)
+            if (withTicket) {
+              setTicket(sale)
+            } else if (sale.change > 0) {
+              setSaved(sale)
+            } else {
+              toast.success(`Venta n.º ${sale.saleNumber} guardada sin ticket. El stock ya se descontó.`)
+              newSale()
+            }
           }}
         />
       )}
@@ -390,6 +402,7 @@ export function SaleScreen({ session, onLeave }: { session: OpenSession; onLeave
       )}
 
       {ticket && <SaleTicket sale={ticket} registerName={session.cash_register_name} onNext={newSale} />}
+      {saved && <SaleSavedNotice sale={saved} onNext={newSale} />}
 
       <ConfirmDialog
         open={confirmClear}

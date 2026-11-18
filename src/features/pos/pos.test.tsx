@@ -267,6 +267,50 @@ describe('pantalla de caja', () => {
     expect(await screen.findByText('El carrito está vacío.')).toBeInTheDocument()
   })
 
+  it('«Guardar sin ticket» sin vuelto: registra la venta igual y vuelve al carrito vacío, sin ticket', async () => {
+    const { fake, user } = setup()
+    fake.setRpcResult('register_sale', { id: 'sale-2', sale_number: 16, total_amount: 400, created_at: '2026-11-15T15:00:00Z' })
+    await enterSale(user)
+    await user.type(scanField(), '7790000000017{Enter}')
+    await screen.findByRole('table', { name: 'Productos del carrito' })
+    await user.type(scanField(), '{Enter}')
+    const dialog = await screen.findByRole('dialog', { name: 'Cobrar' })
+    await user.click(within(dialog).getByRole('button', { name: 'Guardar sin ticket' }))
+
+    // La venta se registra igual (descuenta stock); la base recibe lo mismo que con ticket.
+    await waitFor(() => expect(fake.rpc).toHaveBeenCalledOnce())
+    const [name, params] = fake.rpc.mock.calls[0] as [string, Record<string, unknown>]
+    expect(name).toBe('register_sale')
+    expect(params).toMatchObject({ p_cash_session_id: 'ses-1', p_items: [{ product_id: YOGUR.id, quantity: 1 }] })
+
+    // No aparece el ticket y el carrito queda listo para la próxima venta.
+    expect(await screen.findByText('El carrito está vacío.')).toBeInTheDocument()
+    expect(screen.queryByText('NO VÁLIDO COMO FACTURA')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /registrada/ })).not.toBeInTheDocument()
+    expect(await screen.findByText(/Venta n\.º 16 guardada sin ticket/)).toBeInTheDocument()
+  })
+
+  it('«Guardar sin ticket» con vuelto: muestra solo el vuelto, sin ticket', async () => {
+    const { fake, user } = setup()
+    fake.setRpcResult('register_sale', { id: 'sale-3', sale_number: 17, total_amount: 1236.99, created_at: '2026-11-15T15:00:00Z' })
+    await enterSale(user)
+    await user.type(scanField(), '7790000000017{Enter}')
+    await user.type(scanField(), '2*7790000000017{Enter}')
+    await screen.findByRole('table', { name: 'Productos del carrito' })
+    await user.type(scanField(), '{Enter}')
+    const dialog = await screen.findByRole('dialog', { name: 'Cobrar' })
+    await user.type(within(dialog).getByLabelText('Recibido'), '2000')
+    await user.click(within(dialog).getByRole('button', { name: 'Guardar sin ticket' }))
+
+    await waitFor(() => expect(fake.rpc).toHaveBeenCalledOnce())
+    const notice = await screen.findByRole('dialog', { name: 'Venta n.º 17 guardada sin ticket' })
+    expect(notice).toHaveTextContent(/Vuelto: \$\s800,00/)
+    expect(notice).toHaveTextContent('el stock ya se descontó')
+    expect(screen.queryByText('NO VÁLIDO COMO FACTURA')).not.toBeInTheDocument()
+    await user.click(within(notice).getByRole('button', { name: 'Nueva venta' }))
+    expect(await screen.findByText('El carrito está vacío.')).toBeInTheDocument()
+  })
+
   it('6 unidades: sugiere 5 %, el cajero lo cambia y la base recibe lo que se ve', async () => {
     const { fake, user } = setup()
     fake.setRpcResult('register_sale', { id: 'sale-9', sale_number: 20, total_amount: 2226.58, created_at: '2026-11-15T15:00:00Z' })

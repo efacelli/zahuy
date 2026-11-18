@@ -38,7 +38,8 @@ export function PaymentDialog({
   cart: PricedCart
   idempotencyKey: string
   onCancel: () => void
-  onDone: (sale: CompletedSale) => void
+  /** `withTicket = false`: "Guardar sin ticket" (la venta se registra y descuenta stock igual). */
+  onDone: (sale: CompletedSale, options: { withTicket: boolean }) => void
 }) {
   const client = useSupabase()
   const { lines, total } = cart
@@ -77,7 +78,7 @@ export function PaymentDialog({
   }
 
   const sale = useMutation({
-    mutationFn: () =>
+    mutationFn: (_withTicket: boolean) =>
       registerSale(client, {
         p_idempotency_key: idempotencyKey,
         p_cash_session_id: session.cash_session_id,
@@ -85,41 +86,44 @@ export function PaymentDialog({
         p_payments: plan.payments,
         p_notes: null,
       }),
-    onSuccess: async (row) => {
+    onSuccess: async (row, withTicket) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['cash-sessions'] }),
         queryClient.invalidateQueries({ queryKey: ['products'] }),
       ])
       const cashPayment = plan.payments.find((p) => p.tendered_amount !== null)
-      onDone({
-        saleNumber: row.sale_number,
-        createdAt: row.created_at,
-        lines: lines.map((l) => ({
-          name: lineName(l),
-          manual: l.kind !== 'product',
-          quantity: l.quantity,
-          lineTotal: l.total,
-          discountPercent: l.appliedPercent,
-          discountAmount: l.discountAmount,
-        })),
-        total: row.total_amount,
-        rounding: plan.rounding,
-        toPay: plan.toPay,
-        payments: plan.payments.map((p) => ({
-          name: current.find((d) => d.method.id === p.payment_method_id)?.method.name ?? '',
-          amount: p.amount,
-        })),
-        tendered: cashPayment?.tendered_amount ?? null,
-        change: plan.change,
-      })
+      onDone(
+        {
+          saleNumber: row.sale_number,
+          createdAt: row.created_at,
+          lines: lines.map((l) => ({
+            name: lineName(l),
+            manual: l.kind !== 'product',
+            quantity: l.quantity,
+            lineTotal: l.total,
+            discountPercent: l.appliedPercent,
+            discountAmount: l.discountAmount,
+          })),
+          total: row.total_amount,
+          rounding: plan.rounding,
+          toPay: plan.toPay,
+          payments: plan.payments.map((p) => ({
+            name: current.find((d) => d.method.id === p.payment_method_id)?.method.name ?? '',
+            amount: p.amount,
+          })),
+          tendered: cashPayment?.tendered_amount ?? null,
+          change: plan.change,
+        },
+        { withTicket },
+      )
     },
     onError: (e) => setServerError(toAppError(e).message),
   })
 
-  function confirm() {
+  function confirm(withTicket = true) {
     setServerError(null)
     setShowErrors(true)
-    if (plan.errors.length === 0) sale.mutate()
+    if (plan.errors.length === 0) sale.mutate(withTicket)
   }
 
   const cashDraft = current.find((d) => d.method.is_cash)
@@ -136,7 +140,10 @@ export function PaymentDialog({
           <Button onClick={onCancel} disabled={sale.isPending}>
             Volver al carrito
           </Button>
-          <Button variant="primary" loading={sale.isPending} disabled={methods.isPending} onClick={confirm}>
+          <Button disabled={sale.isPending || methods.isPending} onClick={() => confirm(false)}>
+            Guardar sin ticket
+          </Button>
+          <Button variant="primary" loading={sale.isPending} disabled={methods.isPending} onClick={() => confirm()}>
             Confirmar venta
           </Button>
         </>
