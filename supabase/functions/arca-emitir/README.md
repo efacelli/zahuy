@@ -65,7 +65,11 @@ $1.200 de $1.210 → factura por $1.200 (neto 991,74 + IVA 208,26); venta con 21
 neto 1.987,04 + IVA 312,96; **nota de crédito** autorizada por ARCA (con el mismo CAE al consultarla) y anulación de la venta recién después; conciliación de un documento colgado que ARCA no tiene → rechazado y número
 reutilizado; producción `501`; apagada `409`; ningún token en la base ni en las respuestas.
 
-**No verificado:** el `index.ts` dentro del *runtime* de funciones de Supabase (Deno). En esta máquina el
-contenedor no pudo bajar `node-forge` de npm (error de certificado TLS de la red), así que se probó con un
-reemplazo mínimo de `Deno.serve`. Tampoco: corte de red real a mitad de un envío (solo simulado),
-CAEA ni producción.
+**Verificado también en staging, desplegada en el runtime real de Supabase (Deno)** (2026-11-17), con
+ARCA de homologación: sin sesión 401; factura B de $1.210 autorizada; repetirla devuelve el mismo
+comprobante; cobrada $1.200 → factura por $1.200; nota de crédito B autorizada; la empleada ve los
+comprobantes de sus ventas; con el ambiente apagado 409; ningún token en las respuestas. Staging quedó con
+la facturación apagada (`off`).
+
+**No verificado:** un corte de red real a mitad de un envío (solo simulado), CAEA, producción, y la
+pantalla de Ventas contra la función real en un navegador.
