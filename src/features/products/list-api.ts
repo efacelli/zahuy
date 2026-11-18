@@ -41,6 +41,8 @@ export interface ProductListRow {
   has_box_mismatch: boolean
   /** Código propio del sistema anterior (v0.5.0, P-25). */
   legacy_code: string | null
+  /** PLU de balanza (§21). */
+  scale_plu?: string | null
   /** Ruta en el bucket privado `product-images` (§5.5); null si no tiene foto. */
   image_path: string | null
 }
@@ -54,7 +56,7 @@ const COLUMNS =
   'id, sku, barcode, name, category_id, category_name, brand_id, brand_name, supplier_id, supplier_name, ' +
   'sale_unit, cost_price, sale_price, sale_price_with_vat, vat_rate, boxes_quantity, units_per_box, min_stock, ' +
   'is_active, stock_quantity, next_expires_on, next_expiry_status, active_batches_count, is_low_stock, ' +
-  'units_in_boxes, loose_units, has_box_mismatch, legacy_code, image_path'
+  'units_in_boxes, loose_units, has_box_mismatch, legacy_code, image_path, scale_plu'
 
 const EXPIRY_STATUSES_BY_FILTER: Record<ExpiryFilter, ExpiryStatus[]> = {
   por_vencer: ['expires_urgent', 'expires_soon', 'expires_upcoming'],
