@@ -529,6 +529,7 @@ describe('caja: el PLU de la etiqueta reconoce el producto (§21)', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Producto de balanza' })
     const note = await within(dialog).findByRole('status')
     expect(note).toHaveTextContent('Producto reconocido por el PLU 00005: Queso cremoso')
+    await waitFor(() => expect(within(dialog).getByLabelText(/^Importe de la etiqueta/)).toHaveFocus())
     expect(within(dialog).getByRole('button', { name: /Queso cremoso/ })).toHaveAttribute('aria-pressed', 'true')
     // Solo falta el importe de la etiqueta: se agrega sin elegir el producto.
     await user.type(within(dialog).getByLabelText(/^Importe de la etiqueta/), '2327,50')

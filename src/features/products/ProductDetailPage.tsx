@@ -96,7 +96,7 @@ export function ProductDetailPage() {
       </p>
       <PageHeader
         title={p.name}
-        description={`SKU ${p.sku}${p.barcode ? ` · Código de barras ${p.barcode}` : ''}${p.legacy_code ? ` · Código anterior ${p.legacy_code}` : ''}`}
+        description={`SKU ${p.sku}${p.barcode ? ` · Código de barras ${p.barcode}` : ''}${p.legacy_code ? ` · Código anterior ${p.legacy_code}` : ''}${p.scale_plu ? ` · PLU ${p.scale_plu}` : ''}`}
         actions={
           <>
             {permissions.updateBoxCount && <Button onClick={() => setEditingBoxes(true)}>Actualizar cajas</Button>}

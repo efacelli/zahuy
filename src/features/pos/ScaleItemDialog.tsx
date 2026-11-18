@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { FormField } from '../../components/ui/FormField'
 import { Modal } from '../../components/ui/Modal'
@@ -48,6 +48,10 @@ export function ScaleItemDialog({ label, repeated, onCancel, onAdd }: Props) {
   const productId = chosenId !== undefined ? chosenId : (byPlu?.id ?? null)
   const product = products.data?.find((p) => p.id === productId) ?? null
   const recognized = chosenId === undefined && byPlu !== null
+  // Reconocido por el PLU: solo falta el importe, así que el cursor va ahí.
+  useEffect(() => {
+    if (recognized) document.getElementById('scale-amount')?.focus()
+  }, [recognized])
 
   const weight = label ? label.weightKg : parseDecimalInput(weightText.trim())
   const weightError =
