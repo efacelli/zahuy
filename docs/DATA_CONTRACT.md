@@ -2274,6 +2274,17 @@ repetido → `products_scale_plu_key`; un producto inactivo conserva el PLU; el 
 puede cambiarlo y el encargado sí; `create_product` con y sin `p_scale_plu`; `v_product_list`
 con la columna al final; productos existentes intactos después de la migración.
 
+### 21.8 Pantallas (implementado)
+
+- **Ficha del producto** (alta y edición, encargado y dueño): campo «PLU de balanza», visible solo para productos por
+  kilo. Acepta `5` y guarda `00005`; rechaza más de 5 dígitos, `00000` y cualquier unidad que no sea kilo, y un PLU
+  repetido dice «Ese PLU ya es de otro producto». Al crear, `p_scale_plu` solo viaja si hay PLU y, al editar, `scale_plu`
+  solo viaja si hay PLU o si había uno (para quitarlo): así una base sin la migración de §21 sigue funcionando.
+- **Búsqueda de productos:** escribir el PLU (1 a 5 dígitos, con o sin ceros) encuentra el producto.
+- **Caja:** al escanear una etiqueta de balanza, el diálogo «Producto de balanza» abre con el producto activo por kilo que
+  tiene ese PLU ya elegido («Producto reconocido por el PLU 00005») y el cajero solo escribe el importe (P-61); puede
+  cambiarlo. Sin coincidencia, o sin la columna en la base, se elige a mano como antes. Con el peso escrito a mano no hay PLU.
+
 ## 22. Facturación electrónica ARCA (v0.12.0: implementada en homologación; producción pendiente)
 
 **Estado:** aprobada e implementada en **homologación** (§22.9 a §22.11). **Producción no está implementada**: necesita la orden del dueño, backup verificado, un cambio de código aparte y el visto bueno de `efacelli` y del contador (`docs/DEPLOY.md` §9). Desarrolla lo que §15.8 dejó

@@ -510,3 +510,68 @@ describe('papel del ticket', () => {
     expect(pageRule('comun')).toContain('12mm')
   })
 })
+
+describe('caja: el PLU de la etiqueta reconoce el producto (§21)', () => {
+  const JAMON = { id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', sku: '000009', name: 'Jamón cocido', sale_unit: 'kg', sale_price_with_vat: 12000, is_active: true, scale_plu: '00007', barcode: null }
+
+  function setupPlu(withPlu = true) {
+    const result = setup()
+    // El queso tiene el PLU 00005 (el de la etiqueta 2000005002458); el jamón, el 00007.
+    result.fake.setTable('products', [{ ...YOGUR }, { ...QUESO, scale_plu: withPlu ? '00005' : null }, { ...JAMON }])
+    return result
+  }
+
+  it('al escanear la etiqueta, el producto con ese PLU ya viene elegido', async () => {
+    const { user } = setupPlu()
+    await enterSale(user)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Producto de balanza' })).toBeEnabled())
+    await user.type(scanField(), '2000005002458{Enter}')
+    const dialog = await screen.findByRole('dialog', { name: 'Producto de balanza' })
+    const note = await within(dialog).findByRole('status')
+    expect(note).toHaveTextContent('Producto reconocido por el PLU 00005: Queso cremoso')
+    expect(within(dialog).getByRole('button', { name: /Queso cremoso/ })).toHaveAttribute('aria-pressed', 'true')
+    // Solo falta el importe de la etiqueta: se agrega sin elegir el producto.
+    await user.type(within(dialog).getByLabelText(/^Importe de la etiqueta/), '2327,50')
+    await user.click(within(dialog).getByRole('button', { name: 'Agregar al carrito' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    const cart = screen.getByRole('table', { name: 'Productos del carrito' })
+    expect(within(cart).getByText(/Queso cremoso/)).toBeInTheDocument()
+    expect(within(cart).getByText(/Importe de etiqueta/)).toBeInTheDocument()
+  })
+
+  it('el cajero puede cambiarlo si no es', async () => {
+    const { user } = setupPlu()
+    await enterSale(user)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Producto de balanza' })).toBeEnabled())
+    await user.type(scanField(), '2000005002458{Enter}')
+    const dialog = await screen.findByRole('dialog', { name: 'Producto de balanza' })
+    await within(dialog).findByRole('status')
+    await user.click(within(dialog).getByRole('button', { name: /Jamón cocido/ }))
+    expect(within(dialog).queryByRole('status')).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Jamón cocido/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(dialog).getByRole('button', { name: /Queso cremoso/ })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('si ningún producto tiene ese PLU, se elige a mano como antes', async () => {
+    const { user } = setupPlu(false)
+    await enterSale(user)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Producto de balanza' })).toBeEnabled())
+    await user.type(scanField(), '2000005002458{Enter}')
+    const dialog = await screen.findByRole('dialog', { name: 'Producto de balanza' })
+    expect(await within(dialog).findByRole('button', { name: /Queso cremoso/ })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(dialog).queryByRole('status')).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Agregar al carrito' }))
+    expect(within(dialog).getByText('Elegí qué producto es.')).toBeInTheDocument()
+  })
+
+  it('con el peso escrito a mano no hay PLU: no se reconoce nada', async () => {
+    const { user } = setupPlu()
+    await enterSale(user)
+    await waitFor(() => expect(screen.getByRole('button', { name: 
+'Producto de balanza' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: 'Producto de balanza' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Producto de balanza' })
+    await within(dialog).findByRole('button', { name: /Queso cremoso/ })
+    expect(within(dialog).queryByRole('status')).not.toBeInTheDocument()
+  })
+})

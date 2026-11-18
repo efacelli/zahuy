@@ -15,6 +15,8 @@ const MAX_QUANTITY = 999_999_999.999
 /** Valores tal como están en el formulario (todo texto, como lo escribe el usuario). */
 export interface ProductFormValues {
   barcode: string
+  /** PLU de la balanza (§21): hasta 5 dígitos; se guarda con ceros a la izquierda. Solo productos por kilo. */
+  scale_plu: string
   name: string
   description: string
   category_id: string
@@ -37,6 +39,7 @@ export interface ProductFormValues {
 export function emptyProductForm(today = todayInAppTimeZone()): ProductFormValues {
   return {
     barcode: '',
+    scale_plu: '',
     name: '',
     description: '',
     category_id: '',
@@ -60,6 +63,8 @@ export function emptyProductForm(today = todayInAppTimeZone()): ProductFormValue
 /** Datos validados y normalizados, listos para `create_product`. */
 export interface ProductFormOutput {
   barcode: string | null
+  /** 5 dígitos con ceros (`00005`), o null. */
+  scale_plu: string | null
   name: string
   description: string | null
   category_id: string
@@ -92,6 +97,8 @@ const uuidField = (message: string) => z.string().trim().min(1, message).pipe(z.
 export function productToFormValues(
   p: {
     barcode: string | null
+    /** Ausente si la base todavía no tiene la columna (§21). */
+    scale_plu?: string | null
     name: string
     description: string | null
     category_id: string
@@ -112,6 +119,7 @@ export function productToFormValues(
   return {
     ...emptyProductForm(today),
     barcode: p.barcode ?? '',
+    scale_plu: p.scale_plu ?? '',
     name: p.name,
     description: p.description ?? '',
     category_id: p.category_id,
@@ -135,6 +143,10 @@ export function productFormSchema(today = todayInAppTimeZone()) {
         .string()
         .trim()
         .refine((v) => v === '' || /^[0-9]{8,14}$/.test(v), 'El código de barras debe tener entre 8 y 14 números.'),
+      scale_plu: z
+        .string()
+        .trim()
+        .refine((v) => v === '' || /^[0-9]{1,5}$/.test(v), 'El PLU tiene hasta 5 dígitos (por ejemplo 5 o 00005).'),
       name: z.string().trim().min(1, 'Ingresá el nombre.').max(150, 'El nombre admite hasta 150 caracteres.'),
       description: z.string(),
       category_id: uuidField('Elegí una categoría.'),
@@ -167,6 +179,13 @@ export function productFormSchema(today = todayInAppTimeZone()) {
         else if (n === null) issue(field, 'Ingresá un número (por ejemplo 1250,50).')
         else if (decimalsInInput(raw) > maxDecimals) issue(field, `Se admiten hasta ${maxDecimals} decimales.`)
         else if (n > MAX_MONEY) issue(field, 'El importe es demasiado grande.')
+      }
+
+      // Contrato §21.2: PLU de 5 dígitos distinto de 00000, solo en productos por kilo.
+      const plu = v.scale_plu.trim()
+      if (plu !== '' && /^[0-9]{1,5}$/.test(plu)) {
+        if (Number(plu) === 0) issue('scale_plu', 'El PLU no puede ser 00000.')
+        else if (v.sale_unit !== 'kg') issue('scale_plu', 'El PLU de balanza solo va en productos por kilo.')
       }
 
       const boxes = v.boxes_quantity.trim()
@@ -209,6 +228,7 @@ export function productFormSchema(today = todayInAppTimeZone()) {
     .transform(
       (v): ProductFormOutput => ({
         barcode: optionalText(v.barcode),
+        scale_plu: v.scale_plu.trim() === '' ? null : v.scale_plu.trim().padStart(5, '0'),
         name: v.name,
         description: optionalText(v.description),
         category_id: v.category_id,

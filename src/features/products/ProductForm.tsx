@@ -108,7 +108,7 @@ export function ProductForm({ onCreated, onCancel, editing, onSaved, initialBarc
   const mutation = useMutation({
     mutationFn: (output: ProductFormOutput) =>
       editing
-        ? updateProduct(client, editing.id, toUpdateProductPayload(output))
+        ? updateProduct(client, editing.id, toUpdateProductPayload(output, editing.values.scale_plu !== ''))
         : createProduct(client, toCreateProductParams(output, idempotencyKey)),
     onSuccess: async (product) => {
       setPending(null)
@@ -215,6 +215,23 @@ export function ProductForm({ onCreated, onCancel, editing, onSaved, initialBarc
               ))}
             </select>
           </FormField>
+          {(unit === 'kg' || (values.scale_plu ?? '').trim() !== '') && (
+            <FormField
+              label="PLU de balanza"
+              htmlFor="product-scale_plu"
+              error={err('scale_plu')}
+              hint="Número del producto en la balanza (hasta 5 dígitos). Con él, la caja reconoce la etiqueta sola."
+            >
+              <input
+                className="input"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="Ej. 5"
+                {...field('scale_plu', 'hint')}
+                {...register('scale_plu')}
+              />
+            </FormField>
+          )}
         </div>
         <details className={styles.more} open={Boolean(values.description)}>
           <summary>Descripción (opcional)</summary>

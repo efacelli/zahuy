@@ -72,6 +72,7 @@ export const UNIQUE_CONSTRAINT_MESSAGES: Record<string, string> = {
   products_sku_key: 'Ya existe un producto con ese SKU.',
   products_barcode_key: 'Ya existe un producto con ese código de barras.',
   products_legacy_code_key: 'Ya existe un producto con ese código anterior.',
+  products_scale_plu_key: 'Ese PLU ya es de otro producto.',
   categories_name_key: 'Ya existe una categoría con ese nombre.',
   brands_name_key: 'Ya existe una marca con ese nombre.',
   suppliers_name_key: 'Ya existe un proveedor con ese nombre.',
