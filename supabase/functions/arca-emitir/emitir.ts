@@ -1,10 +1,12 @@
-// Emisión de un comprobante electrónico en ARCA (HOMOLOGACIÓN), contrato §22.3.
+// Emisión de un comprobante electrónico en ARCA (homologación o producción), contrato §22.3.
 //
 // Esta lógica NO usa Deno ni lee variables de entorno: recibe sus dependencias, así se prueba con Node y
 // con simulaciones (emitir_test.ts). index.ts la conecta con la base de datos y con ARCA de verdad.
 //
 // Reglas que garantiza:
-//  - Solo homologación. En 'produccion' se rechaza (PRODUCTION_NOT_IMPLEMENTED) y con 'off' también.
+//  - Cada instancia de la función sirve UN ambiente (deps.environment, fijado por un secreto de la función) y solo emite
+//    si coincide con la configuración fiscal: una función de homologación rechaza 'produccion' (PRODUCTION_NOT_IMPLEMENTED),
+//    una de producción rechaza 'homologacion' (ENVIRONMENT_MISMATCH) y con 'off' ninguna emite.
 //  - Una venta, un comprobante vivo: fiscal_begin es idempotente y fiscal_claim deja pasar a UNA sola
 //    llamada a enviar a ARCA.
 //  - Si ARCA no responde, el documento queda 'unknown' y NO se reenvía: se concilia consultando a ARCA
@@ -15,6 +17,7 @@ import {
   ARCA_COMPROBANTE_NO_EXISTE,
   ArcaError,
   formatArDateTime,
+  type ArcaEnvironment,
   type CaeSolicitarResult,
   type CompConsultarResult,
   type TicketDeAcceso,
@@ -65,6 +68,8 @@ export interface EmitDeps {
   /** La factura autorizada de la venta (para emitir su nota de crédito), o null si no la tiene. */
   findInvoice(saleId: string): Promise<FiscalDocument | null>
   rpc<T>(name: string, args: Record<string, unknown>): Promise<T>
+  /** Ambiente que sirve esta instancia de la función. */
+  environment: ArcaEnvironment
   arca: {
     login(): Promise<TicketDeAcceso>
     ultimo(ticket: TicketDeAcceso, ptoVta: number, cbteTipo: number): Promise<UltimoAutorizado>
@@ -334,10 +339,16 @@ async function reconcile(deps: EmitDeps, doc: FiscalDocument, ticket: TicketDeAc
 async function checkEnvironment(deps: EmitDeps): Promise<{ environment: string; pto_vta: number }> {
   const settings = await deps.settings()
   if (!settings.environment || settings.environment === 'off') throw new ArcaError('FISCAL_DISABLED', 'La facturación electrónica está desactivada')
-  if (settings.environment === 'produccion') {
-    throw new ArcaError('PRODUCTION_NOT_IMPLEMENTED', 'Esta función solo emite en homologación')
+  if (settings.environment !== 'homologacion' && settings.environment !== 'produccion') {
+    throw new ArcaError('NOT_CONFIGURED', 'Ambiente fiscal desconocido')
   }
-  if (settings.environment !== 'homologacion' || !settings.pto_vta) {
+  if (settings.environment !== deps.environment) {
+    if (settings.environment === 'produccion') {
+      throw new ArcaError('PRODUCTION_NOT_IMPLEMENTED', 'Esta función está configurada solo para homologación')
+    }
+    throw new ArcaError('ENVIRONMENT_MISMATCH', 'La función está configurada para producción y la configuración fiscal está en homologación')
+  }
+  if (!settings.pto_vta) {
     throw new ArcaError('NOT_CONFIGURED', 'Falta el punto de venta en la configuración fiscal')
   }
   return { environment: settings.environment, pto_vta: settings.pto_vta }

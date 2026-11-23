@@ -7,9 +7,14 @@ import forge from 'node-forge'
 import {
   ArcaError,
   WSAA_HOMO_URL,
+  WSAA_PROD_URL,
+  WSFE_HOMO_URL,
+  WSFE_PROD_URL,
+  arcaUrls,
   buildLoginSoap,
   buildTra,
   buildUltimoAutorizadoSoap,
+  callDummy,
   formatArDateTime,
   parseDummyResponse,
   parseLoginResponse,
@@ -132,22 +137,37 @@ test('parseDummyResponse', () => {
   assert.throws(() => parseDummyResponse('<x/>'), ArcaError)
 })
 
-test('soapPost rechaza cualquier URL que no sea de homologación', async () => {
+test('soapPost rechaza cualquier URL que no sea una dirección oficial conocida', async () => {
   let called = false
   const fakeFetch = (() => {
     called = true
     return Promise.resolve(new Response('x'))
   }) as unknown as typeof fetch
-  await assert.rejects(
-    () => soapPost('https://wsaa.afip.gov.ar/ws/services/LoginCms', '', '<x/>', fakeFetch),
-    (e: unknown) => e instanceof ArcaError && e.code === 'NOT_HOMOLOGATION',
-  )
-  await assert.rejects(
-    () => soapPost('https://servicios1.afip.gov.ar/wsfev1/service.asmx', '', '<x/>', fakeFetch),
-    (e: unknown) => e instanceof ArcaError && e.code === 'NOT_HOMOLOGATION',
-  )
+  for (const url of ['https://example.com/wsfev1/service.asmx', 'http://wsaa.afip.gov.ar/ws/services/LoginCms', 'https://wsaa.afip.gov.ar.evil.test/x']) {
+    await assert.rejects(() => soapPost(url, '', '<x/>', fakeFetch), (e: unknown) => e instanceof ArcaError && e.code === 'URL_NOT_ALLOWED')
+  }
   assert.equal(called, false)
   assert.match(WSAA_HOMO_URL, /wsaahomo/)
+})
+
+test('arcaUrls: homologación por defecto y producción solo si se pide', () => {
+  assert.deepEqual(arcaUrls(), { wsaa: WSAA_HOMO_URL, wsfe: WSFE_HOMO_URL })
+  assert.deepEqual(arcaUrls('homologacion'), { wsaa: WSAA_HOMO_URL, wsfe: WSFE_HOMO_URL })
+  assert.deepEqual(arcaUrls('produccion'), { wsaa: WSAA_PROD_URL, wsfe: WSFE_PROD_URL })
+  assert.ok(WSAA_PROD_URL.startsWith('https://wsaa.afip.gov.ar/'))
+  assert.ok(WSFE_PROD_URL.startsWith('https://servicios1.afip.gov.ar/'))
+  assert.throws(() => arcaUrls('staging' as never), (e: unknown) => e instanceof ArcaError && e.code === 'INVALID_ENVIRONMENT')
+})
+
+test('sin pedir ambiente, las llamadas van a homologación; con produccion, a producción', async () => {
+  const urls: string[] = []
+  const fakeFetch = ((url: string) => {
+    urls.push(url)
+    return Promise.resolve(new Response('<FEDummyResponse xmlns="http://ar.gov.afip.dif.FEV1/"><FEDummyResult><AppServer>OK</AppServer><DbServer>OK</DbServer><AuthServer>OK</AuthServer></FEDummyResult></FEDummyResponse>'))
+  }) as unknown as typeof fetch
+  await callDummy(fakeFetch)
+  await callDummy(fakeFetch, 'produccion')
+  assert.deepEqual(urls, [WSFE_HOMO_URL, WSFE_PROD_URL])
 })
 
 test('soapPost deja pasar el SOAP Fault (HTTP 500) para que se interprete', async () => {

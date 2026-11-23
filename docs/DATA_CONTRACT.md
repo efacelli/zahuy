@@ -2481,12 +2481,12 @@ ver la venta. Respuestas: 200 autorizada, 202 en curso (repetir con la misma cla
 - **Ticket de acceso:** se guarda con `fiscal_ticket_save`; si ARCA ya entregó uno que no está guardado, la
   función responde 503 (`TICKET_UNAVAILABLE`) hasta que venza.
 - **Códigos nuevos de la función:** `NOT_AUTHENTICATED` (401), `INVALID_RECEIVER`, `IDENTIFICATION_REQUIRED`,
-  `PRODUCTION_NOT_IMPLEMENTED`, `TICKET_UNAVAILABLE`, `ARCA_ERROR`.
+  `PRODUCTION_NOT_IMPLEMENTED`, `ENVIRONMENT_MISMATCH` (409), `TICKET_UNAVAILABLE`, `ARCA_ERROR`.
 - **Nota de crédito (§22.5):** `action: "credit_note"` emite la nota de crédito de la factura autorizada de la
   venta (tipo de la factura + 2, mismos importes y receptor, con el comprobante asociado `CbtesAsoc`);
   `409 NO_INVOICE` si no hay factura autorizada. Verificada en homologación: ARCA la tiene con el mismo CAE y,
   recién después, la venta se anula.
-- **Desplegada en staging** (2026-11-17) y verificada en el runtime real. **Sin implementar:** CAEA y emitir en producción (§22.1).
+- **Desplegada en staging** (2026-11-17) y verificada en el runtime real. **Sin implementar:** CAEA. **Producción:** código escrito (la función sirve un ambiente fijado por el secreto `ARCA_ENVIRONMENT` y solo emite si coincide con `fiscal_settings.environment`), probado con simulaciones; sin probar contra ARCA real ni desplegar (§22.1).
 
 ### 22.11 Datos del emisor, comprobante impreso con QR y configuración (v0.12.0)
 

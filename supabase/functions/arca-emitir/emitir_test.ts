@@ -43,6 +43,8 @@ type Calls = { name: string; args: unknown }[]
 
 function build(opts: {
   environment?: string
+  /** Ambiente que sirve la función simulada (por defecto, homologación). */
+  functionEnvironment?: 'homologacion' | 'produccion'
   begin?: FiscalDocument
   claim?: boolean
   solicitar?: () => Promise<CaeSolicitarResult>
@@ -72,6 +74,7 @@ function build(opts: {
       }
       throw new Error('rpc inesperado ' + name)
     }) as EmitDeps['rpc'],
+    environment: opts.functionEnvironment ?? 'homologacion',
     arca: {
       login: opts.login ?? (async () => ({ token: 'T', sign: 'S', generationTime: '2026-11-17T12:00:00-03:00', expirationTime: '2026-11-18T00:00:00-03:00' })),
       ultimo: async (_t, ptoVta, cbteTipo) => {
@@ -244,11 +247,41 @@ test('ambiente off: FISCAL_DISABLED y no se llama a nadie', async () => {
   assert.equal(rpcCalls.length, 0)
 })
 
-test('ambiente producción: esta función no emite (PRODUCTION_NOT_IMPLEMENTED)', async () => {
+test('ambiente producción con una función de homologación: no emite (PRODUCTION_NOT_IMPLEMENTED)', async () => {
   const { deps, rpcCalls, calls } = build({ environment: 'produccion' })
   await assert.rejects(() => emitInvoice(deps, INPUT), (e: unknown) => e instanceof ArcaError && e.code === 'PRODUCTION_NOT_IMPLEMENTED')
   assert.equal(rpcCalls.length, 0)
   assert.equal(calls.length, 0)
+})
+
+test('función de producción con la configuración en producción: emite y usa el ticket de producción', async () => {
+  const { deps, calls, rpcCalls } = build({ environment: 'produccion', functionEnvironment: 'produccion' })
+  const result = await emitInvoice(deps, INPUT)
+  assert.equal(result.status, 'authorized')
+  assert.ok(calls.some((c) => c.name === 'solicitar'))
+  const ticket = rpcCalls.find((c) => c.name === 'fiscal_ticket_get')!.args
+  assert.equal(ticket.p_environment, 'produccion')
+})
+
+test('función de producción con la configuración en homologación: ENVIRONMENT_MISMATCH y no llama a nadie', async () => {
+  const { deps, rpcCalls, calls } = build({ environment: 'homologacion', functionEnvironment: 'produccion' })
+  await assert.rejects(() => emitInvoice(deps, INPUT), (e: unknown) => e instanceof ArcaError && e.code === 'ENVIRONMENT_MISMATCH')
+  assert.equal(rpcCalls.length, 0)
+  assert.equal(calls.length, 0)
+})
+
+test('la función de producción también apaga con off y exige punto de venta', async () => {
+  const off = build({ environment: 'off', functionEnvironment: 'produccion' })
+  await assert.rejects(() => emitInvoice(off.deps, INPUT), (e: unknown) => e instanceof ArcaError && e.code === 'FISCAL_DISABLED')
+  const sinPunto = build({ environment: 'produccion', functionEnvironment: 'produccion' })
+  sinPunto.deps.settings = async () => ({ environment: 'produccion', pto_vta: null })
+  await assert.rejects(() => emitInvoice(sinPunto.deps, INPUT), (e: unknown) => e instanceof ArcaError && e.code === 'NOT_CONFIGURED')
+})
+
+test('un ambiente fiscal desconocido no emite', async () => {
+  const { deps, rpcCalls } = build({ environment: 'pruebas' })
+  await assert.rejects(() => emitInvoice(deps, INPUT), (e: unknown) => e instanceof ArcaError && e.code === 'NOT_CONFIGURED')
+  assert.equal(rpcCalls.length, 0)
 })
 
 test('desde $10.000.000 hay que identificar al comprador', async () => {

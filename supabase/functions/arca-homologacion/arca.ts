@@ -1,16 +1,29 @@
-// Lógica pura para hablar con ARCA (ex AFIP) en HOMOLOGACIÓN: WSAA y WSFEv1.
+// Lógica pura para hablar con ARCA (ex AFIP): WSAA y WSFEv1, en HOMOLOGACIÓN (por defecto) o en PRODUCCIÓN.
 //
 // Fuentes oficiales (leídas el 2026-11-15):
 //   - Especificación técnica WSAA 1.2.2: https://www.afip.gob.ar/ws/WSAA/Especificacion_Tecnica_WSAA_1.2.2.pdf
 //   - Manual del desarrollador WSFEv1 (RG 4291, v4.7): https://www.afip.gob.ar/ws/documentacion/manuales/manual-desarrollador-ARCA-COMPG.pdf
 //
-// SOLO HOMOLOGACIÓN. Las URL de producción no existen en este archivo a propósito:
-// pasar a producción es una decisión aparte, con revisión del contador (CLAUDE.md).
+// Todas las funciones usan HOMOLOGACIÓN salvo que quien las llama pida 'produccion' de forma explícita
+// (parámetro `environment`). Este módulo no decide el ambiente: lo decide la función que lo usa
+// (arca-emitir exige además que coincida con la configuración fiscal; ver su README).
 // Este módulo no lee variables de entorno, no imprime nada y no guarda secretos.
 import forge from 'node-forge'
 
 export const WSAA_HOMO_URL = 'https://wsaahomo.afip.gov.ar/ws/services/LoginCms'
 export const WSFE_HOMO_URL = 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx'
+export const WSAA_PROD_URL = 'https://wsaa.afip.gov.ar/ws/services/LoginCms'
+export const WSFE_PROD_URL = 'https://servicios1.afip.gov.ar/wsfev1/service.asmx'
+
+export type ArcaEnvironment = 'homologacion' | 'produccion'
+
+/** Direcciones de WSAA y WSFEv1 de un ambiente. */
+export function arcaUrls(environment: ArcaEnvironment = 'homologacion'): { wsaa: string; wsfe: string } {
+  if (environment === 'produccion') return { wsaa: WSAA_PROD_URL, wsfe: WSFE_PROD_URL }
+  if (environment === 'homologacion') return { wsaa: WSAA_HOMO_URL, wsfe: WSFE_HOMO_URL }
+  throw new ArcaError('INVALID_ENVIRONMENT', 'Ambiente de ARCA desconocido')
+}
+
 const WSFE_NS = 'http://ar.gov.afip.dif.FEV1/'
 const WSAA_NS = 'http://wsaa.view.sua.dvadac.desein.afip.gov'
 
@@ -251,6 +264,8 @@ export function parseUltimoAutorizadoResponse(xml: string): UltimoAutorizado {
 export const IVA_ALICUOTA_IDS = { '10.5': 4, '21': 5 } as const
 
 export type CaeSolicitarArgs = {
+  /** Ambiente al que se envía (por defecto homologación). No forma parte del mensaje. */
+  environment?: ArcaEnvironment
   token: string
   sign: string
   cuit: string
@@ -372,10 +387,10 @@ export function parseCaeSolicitarResponse(xml: string): CaeSolicitarResult {
 // Transporte
 // ---------------------------------------------------------------------------
 
-/** POST SOAP 1.1. Rechaza cualquier URL que no sea de homologación. */
+/** POST SOAP 1.1. Rechaza cualquier URL que no sea una de las cuatro direcciones oficiales conocidas. */
 export async function soapPost(url: string, soapAction: string, body: string, fetchImpl: typeof fetch = fetch): Promise<string> {
-  if (url !== WSAA_HOMO_URL && url !== WSFE_HOMO_URL) {
-    throw new ArcaError('NOT_HOMOLOGATION', 'Solo se permite homologación')
+  if (![WSAA_HOMO_URL, WSFE_HOMO_URL, WSAA_PROD_URL, WSFE_PROD_URL].includes(url)) {
+    throw new ArcaError('URL_NOT_ALLOWED', 'Dirección de ARCA no permitida')
   }
   const response = await fetchImpl(url, {
     method: 'POST',
@@ -392,32 +407,32 @@ export async function soapPost(url: string, soapAction: string, body: string, fe
 }
 
 export async function requestAccessTicket(
-  args: { certPem: string; keyPem: string; service?: string; digest?: 'sha256' | 'sha1'; now?: Date },
+  args: { certPem: string; keyPem: string; service?: string; digest?: 'sha256' | 'sha1'; now?: Date; environment?: ArcaEnvironment },
   fetchImpl: typeof fetch = fetch,
 ): Promise<TicketDeAcceso> {
   const now = args.now ?? new Date()
   const tra = buildTra(now, args.service ?? 'wsfe', Math.floor(now.getTime() / 1000) % 4294967296)
   const cms = signTra(tra, args.certPem, args.keyPem, args.digest ?? 'sha256')
-  const xml = await soapPost(WSAA_HOMO_URL, '', buildLoginSoap(cms), fetchImpl)
+  const xml = await soapPost(arcaUrls(args.environment).wsaa, '', buildLoginSoap(cms), fetchImpl)
   return parseLoginResponse(xml)
 }
 
-export async function callDummy(fetchImpl: typeof fetch = fetch): Promise<DummyResult> {
-  const xml = await soapPost(WSFE_HOMO_URL, `${WSFE_NS}FEDummy`, buildDummySoap(), fetchImpl)
+export async function callDummy(fetchImpl: typeof fetch = fetch, environment: ArcaEnvironment = 'homologacion'): Promise<DummyResult> {
+  const xml = await soapPost(arcaUrls(environment).wsfe, `${WSFE_NS}FEDummy`, buildDummySoap(), fetchImpl)
   return parseDummyResponse(xml)
 }
 
 export async function callUltimoAutorizado(
-  args: { token: string; sign: string; cuit: string; ptoVta: number; cbteTipo: number },
+  args: { token: string; sign: string; cuit: string; ptoVta: number; cbteTipo: number; environment?: ArcaEnvironment },
   fetchImpl: typeof fetch = fetch,
 ): Promise<UltimoAutorizado> {
-  const xml = await soapPost(WSFE_HOMO_URL, `${WSFE_NS}FECompUltimoAutorizado`, buildUltimoAutorizadoSoap(args), fetchImpl)
+  const xml = await soapPost(arcaUrls(args.environment).wsfe, `${WSFE_NS}FECompUltimoAutorizado`, buildUltimoAutorizadoSoap(args), fetchImpl)
   return parseUltimoAutorizadoResponse(xml)
 }
 
-/** Pide el CAE de UN comprobante en HOMOLOGACIÓN. No reintenta: ante un corte se consulta antes de volver a pedir. */
+/** Pide el CAE de UN comprobante (homologación salvo `environment`). No reintenta: ante un corte se consulta antes de volver a pedir. */
 export async function callCaeSolicitar(args: CaeSolicitarArgs, fetchImpl: typeof fetch = fetch): Promise<CaeSolicitarResult> {
-  const xml = await soapPost(WSFE_HOMO_URL, `${WSFE_NS}FECAESolicitar`, buildCaeSolicitarSoap(args), fetchImpl)
+  const xml = await soapPost(arcaUrls(args.environment).wsfe, `${WSFE_NS}FECAESolicitar`, buildCaeSolicitarSoap(args), fetchImpl)
   return parseCaeSolicitarResponse(xml)
 }
 
@@ -486,11 +501,11 @@ export function parseCompConsultarResponse(xml: string): CompConsultarResult {
   }
 }
 
-/** Consulta un comprobante en HOMOLOGACIÓN: se usa cuando ARCA no respondió y hay que saber si quedó registrado. */
+/** Consulta un comprobante (homologación salvo `environment`): se usa cuando ARCA no respondió y hay que saber si quedó registrado. */
 export async function callCompConsultar(
-  args: { token: string; sign: string; cuit: string; ptoVta: number; cbteTipo: number; cbteNro: number },
+  args: { token: string; sign: string; cuit: string; ptoVta: number; cbteTipo: number; cbteNro: number; environment?: ArcaEnvironment },
   fetchImpl: typeof fetch = fetch,
 ): Promise<CompConsultarResult> {
-  const xml = await soapPost(WSFE_HOMO_URL, `${WSFE_NS}FECompConsultar`, buildCompConsultarSoap(args), fetchImpl)
+  const xml = await soapPost(arcaUrls(args.environment).wsfe, `${WSFE_NS}FECompConsultar`, buildCompConsultarSoap(args), fetchImpl)
   return parseCompConsultarResponse(xml)
 }
