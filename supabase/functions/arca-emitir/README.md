@@ -5,9 +5,10 @@ Contrato §22.3. Cada instancia de la función sirve **un solo ambiente**, fijad
 ese ambiente **coincide** con el de la configuración fiscal de la base: una función de homologación con la
 configuración en `produccion` responde `501` (`PRODUCTION_NOT_IMPLEMENTED`); una de producción con la
 configuración en `homologacion` responde `409` (`ENVIRONMENT_MISMATCH`); con `off` responde `409`
-(`FISCAL_DISABLED`). **El código de producción está escrito y probado con simulaciones, pero no se probó
-contra ARCA real ni está desplegado en ningún proyecto.** Pasar a producción es una decisión aparte
-(revisión del contador, backup verificado y orden explícita), no un cambio de configuración.
+(`FISCAL_DISABLED`). **En producción desde el 2026-11-23**: la primera Factura B real fue emitida desde la app y
+constatada por ARCA. Pasar un proyecto a producción es una decisión aparte (orden del dueño, backup
+verificado, visto bueno del contador), no un cambio de configuración: el procedimiento está en
+`docs/DEPLOY.md` §9.3.
 
 ## Uso
 
@@ -77,5 +78,8 @@ comprobante; cobrada $1.200 → factura por $1.200; nota de crédito B autorizad
 comprobantes de sus ventas; con el ambiente apagado 409; ningún token en las respuestas. Staging quedó con
 la facturación apagada (`off`).
 
-**No verificado:** un corte de red real a mitad de un envío (solo simulado), CAEA, producción, y la
-pantalla de Ventas contra la función real en un navegador.
+**Verificado en producción (2026-11-23):** una Factura B a consumidor final desde la pantalla de Ventas,
+autorizada con CAE y constatada en la página de ARCA.
+
+**No verificado:** un corte de red real a mitad de un envío (solo simulado), CAEA, notas de crédito y
+Factura A en producción, e impresión en papel real.
