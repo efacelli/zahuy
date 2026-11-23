@@ -2285,9 +2285,9 @@ con la columna al final; productos existentes intactos después de la migración
   tiene ese PLU ya elegido («Producto reconocido por el PLU 00005») y el cajero solo escribe el importe (P-61); puede
   cambiarlo. Sin coincidencia, o sin la columna en la base, se elige a mano como antes. Con el peso escrito a mano no hay PLU.
 
-## 22. Facturación electrónica ARCA (v0.12.0: implementada en homologación; producción pendiente)
+## 22. Facturación electrónica ARCA (v0.12.0: implementada; en producción desde 2026-11-23, en una caja)
 
-**Estado:** aprobada e implementada en **homologación** (§22.9 a §22.11). **Producción no está implementada**: necesita la orden del dueño, backup verificado, un cambio de código aparte y el visto bueno de `efacelli` y del contador (`docs/DEPLOY.md` §9). Desarrolla lo que §15.8 dejó
+**Estado:** aprobada e implementada (§22.9 a §22.11), probada en **homologación** y **en producción desde el 2026-11-23** con la orden del dueño y el visto bueno del contador y de `efacelli`. La primera Factura B real fue constatada por ARCA. El procedimiento seguido y lo que queda pendiente están en `docs/DEPLOY.md` §9.3. Desarrolla lo que §15.8 dejó
 reservado para la etapa 6. **No contiene datos del titular** (CUIT, razón social, domicilio,
 certificados ni claves): el repositorio es público y esos datos viven solo en secretos de
 Supabase y en la carpeta privada del titular.
@@ -2461,10 +2461,13 @@ las respuestas del contador (P-64 a P-70) siguen pendientes. Con `fiscal_setting
 - **Sin implementar:** la función `arca-emitir`, la consulta `FECompConsultar` ante un `unknown`, el
   CAEA (`arca_caea`) y la pantalla de facturación.
 
-### 22.10 Función `arca-emitir` (backend, homologación)
+### 22.10 Función `arca-emitir` (backend)
 
-**Estado:** implementada en `supabase/functions/arca-emitir` y probada contra ARCA de **homologación** (ver su
-README). Solo emite en homologación; con el ambiente en `produccion` responde 501. Un pedido es
+**Estado:** implementada en `supabase/functions/arca-emitir`, probada contra ARCA de **homologación** y en uso
+en **producción** (ver su README). Cada instancia sirve un solo ambiente (secreto `ARCA_ENVIRONMENT`; sin él,
+homologación) y solo emite si coincide con `fiscal_settings.environment`: una función de homologación con la
+configuración en `produccion` responde 501, y una de producción con la configuración en `homologacion` responde
+409 `ENVIRONMENT_MISMATCH`. Un pedido es
 `POST { sale_id, idempotency_key, receiver? }` con la sesión del usuario; el usuario debe estar activo y poder
 ver la venta. Respuestas: 200 autorizada, 202 en curso (repetir con la misma clave), 422 rechazada.
 
@@ -2486,7 +2489,7 @@ ver la venta. Respuestas: 200 autorizada, 202 en curso (repetir con la misma cla
   venta (tipo de la factura + 2, mismos importes y receptor, con el comprobante asociado `CbtesAsoc`);
   `409 NO_INVOICE` si no hay factura autorizada. Verificada en homologación: ARCA la tiene con el mismo CAE y,
   recién después, la venta se anula.
-- **Desplegada en staging** (2026-11-17) y verificada en el runtime real. **Sin implementar:** CAEA. **Producción:** código escrito (la función sirve un ambiente fijado por el secreto `ARCA_ENVIRONMENT` y solo emite si coincide con `fiscal_settings.environment`), probado con simulaciones; sin probar contra ARCA real ni desplegar (§22.1).
+- **Desplegada en staging** (2026-11-17) y verificada en el runtime real; **desplegada en producción** el 2026-11-23, donde emitió la primera Factura B real (constatada por ARCA, a consumidor final, en una caja). **Sin implementar:** CAEA. **Pendiente:** dar de baja los certificados anteriores, probar la impresión en papel real y sumar la segunda caja (`docs/DEPLOY.md` §9.3).
 
 ### 22.11 Datos del emisor, comprobante impreso con QR y configuración (v0.12.0)
 

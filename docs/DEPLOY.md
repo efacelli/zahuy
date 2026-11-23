@@ -242,12 +242,15 @@ Fuentes de precios y condiciones (consultadas en noviembre de 2026; confirmar en
 
 ## 9. Facturación electrónica ARCA (contrato §22)
 
-**Estado (2026-11-23):** implementada y probada en **homologación** (sin validez fiscal). El **código de
-producción está escrito** (direcciones de producción de WSAA y WSFEv1 y ambiente fijado por el secreto
-`ARCA_ENVIRONMENT`), probado solo con simulaciones: **no se probó contra ARCA real ni está desplegado**. Sin
-ese secreto la función trabaja en homologación y responde `501` si la configuración dice `produccion`. Pasar a
-producción sigue siendo una decisión aparte (§9.3). Sin datos del titular en este documento: viven en secretos de Supabase, en la base y en la
-carpeta privada del titular.
+**Estado (2026-11-23):** **en producción, en una caja.** Con la orden del dueño y el visto bueno del contador y
+de `efacelli`, la función `arca-emitir` está desplegada en el proyecto de producción con los secretos de
+producción y `ARCA_ENVIRONMENT=produccion`, y la configuración fiscal está en `produccion`. La primera Factura B
+real (n.º 1 del punto de venta de producción, consumidor final) se emitió desde la app y **ARCA la constató**
+(«Los datos ingresados coinciden con una autorización otorgada por la ARCA»). Antes se había autorizado un
+comprobante de homologación en esa misma base, que es lo que exige `PRODUCTION_NOT_READY`. Cada instancia de
+la función sirve un solo ambiente (el del secreto `ARCA_ENVIRONMENT`; sin él, homologación) y solo emite si
+coincide con la configuración fiscal (`501` o `409 ENVIRONMENT_MISMATCH` si no). Sin datos del titular en este
+documento: viven en secretos de Supabase, en la base y en la carpeta privada del titular.
 
 ### 9.1 Procedimiento en un proyecto (hecho en staging el 2026-11-17)
 
@@ -276,29 +279,53 @@ configuración: un frontend solo factura contra el proyecto al que apunta.
 
 ### 9.2 Qué no hacer
 
-- **No desplegar la función de homologación en el proyecto de producción.** Crearía comprobantes de prueba
-  pegados a ventas reales. Mientras no se dé la orden de producción, el negocio sigue con el ticket
-  interno (y «Guardar sin ticket») y su sistema actual de facturación.
+- **No desplegar la función de homologación en un proyecto de producción con ventas reales**: crearía
+  comprobantes de prueba pegados a ellas. En la salida de 2026-11-23 se hizo con **una sola venta ficticia**
+  porque la base todavía no tenía ventas; si ya las hay, pedir antes una decisión del dueño.
+- **Nunca imprimir, listar ni pegar archivos de secretos** (claves, certificados, el archivo de variables): ni
+  en la terminal, ni en el chat, ni «tapando» parte del contenido. Verificar con comprobaciones que impriman
+  solo textos fijos o conteos (por ejemplo, «las huellas coinciden», «4 líneas»). El 2026-11-23 se imprimieron
+  por error dos claves privadas en una sesión: hubo que generar claves y certificados nuevos y dar de baja los
+  anteriores. Una clave que se vio deja de usarse.
 - No cargar certificados, claves ni el CUIT del titular en el repositorio, en chats ni en esta carpeta.
+- No dejar el vínculo local de la CLI apuntando a producción: después de cada paso, volver a vincular el
+  proyecto de staging.
 
-### 9.3 Pasar a producción: lista de verificación (todo 🔒)
+### 9.3 Pasar un proyecto a producción (hecho el 2026-11-23; todo 🔒)
 
-Hecho: el contador respondió todas las preguntas (§22.7); el certificado de producción está emitido y el
-servicio de facturación de producción está autorizado en ARCA (guardados fuera del repositorio).
+Orden que se siguió, para repetirlo en otro proyecto o si hay que rehacerlo:
 
-Falta, en este orden:
+1. **Orden explícita del dueño**, con fecha, y visto bueno del contador (§22.7) y de `efacelli`.
+2. **Backup verificado** de la base de producción (§7): esquema y datos, fuera del repositorio, con los
+   conteos comprobados (productos, ventas, comprobantes). Las migraciones ya estaban aplicadas (`migration list`
+   sin diferencias).
+3. **Código de producción fusionado** (#113 y #114): direcciones de WSAA y WSFEv1 de producción y ambiente
+   fijado por `ARCA_ENVIRONMENT`.
+4. **Primero homologación en ese proyecto**: función desplegada con secretos de homologación y una venta
+   ficticia facturada en prueba. Sin ese comprobante autorizado la base rechaza el cambio a `produccion`
+   (`PRODUCTION_NOT_READY`).
+5. **Certificado de producción** pedido en ARCA con su propia clave (un alias por clave) y el alias asociado al
+   servicio de Facturación Electrónica en el Administrador de Relaciones de Clave Fiscal.
+6. **Secretos de producción** cargados (`ARCA_CUIT`, certificado, clave y `ARCA_ENVIRONMENT=produccion`) y
+   archivo de variables borrado. Mientras la configuración fiscal siga en homologación, la función responde
+   `409 ENVIRONMENT_MISMATCH`: no emite nada.
+7. **Cambio de ambiente** en la configuración fiscal: se hace por SQL contra la base, con orden expresa
+   (`update public.fiscal_settings set environment = 'produccion'`); la app no lo hace.
+8. **Piloto**: una venta real chica, facturada a consumidor final desde Ventas. Verificar en la base
+   (`fiscal_documents`: ambiente `produccion`, autorizado, con CAE) y **constatar en la página de ARCA**
+   (`servicioscf.afip.gob.ar`, «Constatación de Comprobantes con CAE», leyendo el QR). Un comprobante de
+   homologación **no** se constata ahí: en producción no existe.
 
-- [ ] **Orden explícita del dueño** de pasar a producción, con fecha.
-- [ ] **Backup verificado** de la base de producción (§7) y migraciones aplicadas primero en staging.
-- [ ] **PR de código** con las direcciones de producción de WSAA y WSFEv1 y el ambiente fijado por
-  `ARCA_ENVIRONMENT` (escrito, pendiente de revisión de `efacelli` y del contador; no se fusiona hasta la
-  orden del dueño). La base ya exige, para pasar a `produccion`, un comprobante autorizado antes en homologación
-  (`PRODUCTION_NOT_READY`).
-- [ ] **Secretos de producción** (`ARCA_CUIT`, certificado y clave de producción y
-  `ARCA_ENVIRONMENT=produccion`) cargados en el proyecto de producción y la función desplegada ahí.
-- [ ] **Piloto en una caja** (el contador acepta una o las dos) y revisión del primer comprobante: consulta a
-  ARCA y lectura del QR con la app de ARCA, e impresión en el papel real (térmica o A4).
+Pendiente después de la salida:
+
+- [ ] **Dar de baja los certificados anteriores** (`zahuyprod` y `zahuyprod2`, cuyas claves se vieron en una
+  sesión) quitando su autorización al servicio de Facturación Electrónica. En «Administración de Certificados
+  Digitales» no hay botón de revocar; se hace en el Administrador de Relaciones. Lo hace el contador.
+- [ ] **Impresión en el papel real** (térmica 80 mm o A4) y modelo de la impresora.
+- [ ] **Segunda caja**: el contador acepta una o las dos.
 - [ ] **Punto de venta aparte para contingencia (CAEA)**, si el comercio lo quiere: hoy no está
   implementada.
-- [ ] **Reversión**: poner el ambiente en `off` (la caja sigue vendiendo) y corregir lo emitido con notas de
-  crédito; los comprobantes no se borran.
+
+**Reversión:** poner el ambiente en `off` (`update public.fiscal_settings set environment = 'off'`): la caja
+sigue vendiendo con el ticket interno y lo emitido se corrige con notas de crédito. Los comprobantes no se
+borran.
