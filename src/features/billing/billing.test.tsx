@@ -221,6 +221,16 @@ describe('facturación en el detalle de la venta', () => {
     await user.click(within(section).getByRole('button', { name: 'Emitir factura' }))
     expect(await within(section).findByRole('alert')).toHaveTextContent('solo se puede facturar en el ambiente de prueba')
   })
+
+  it('si el servidor y la configuración fiscal están en ambientes distintos, lo dice', async () => {
+    const { fake, user } = setup()
+    fake.setFunctionResult('arca-emitir', 409, { ok: false, environment: 'produccion', code: 'ENVIRONMENT_MISMATCH' })
+    const dialog = await openSale(user)
+    const section = await within(dialog).findByRole('region', { name: 'Facturación electrónica' })
+    await user.click(within(section).getByRole('button', { name: 'Facturar…' }))
+    await user.click(within(section).getByRole('button', { name: 'Emitir factura' }))
+    expect(await within(section).findByRole('alert')).toHaveTextContent('configurada en otro ambiente que el servidor')
+  })
 })
 
 // ---------------------------------------------------------------------------

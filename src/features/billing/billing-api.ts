@@ -219,6 +219,7 @@ export async function emitFiscalDocument(client: SupabaseClient, request: EmitRe
 export const FISCAL_MESSAGES: Record<string, string> = {
   FISCAL_DISABLED: 'La facturación electrónica está desactivada.',
   PRODUCTION_NOT_IMPLEMENTED: 'Por ahora solo se puede facturar en el ambiente de prueba (homologación).',
+  ENVIRONMENT_MISMATCH: 'La facturación está configurada en otro ambiente que el servidor. Avisá al administrador.',
   NOT_AUTHENTICATED: 'Tu sesión venció. Ingresá de nuevo.',
   NOT_AUTHORIZED: 'No tenés permiso para facturar esta venta.',
   INVALID_RECEIVER: 'Revisá los datos del cliente: el documento no es válido o la Factura A necesita el CUIT.',
