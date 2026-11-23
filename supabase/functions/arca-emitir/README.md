@@ -1,7 +1,12 @@
-# arca-emitir — emite la factura electrónica de una venta (solo homologación)
+# arca-emitir — emite la factura electrónica de una venta (homologación o producción)
 
-Contrato §22.3. **Solo HOMOLOGACIÓN**: con el ambiente fiscal en `produccion` responde `501`
-(`PRODUCTION_NOT_IMPLEMENTED`) y con `off` responde `409`. Pasar a producción es una decisión aparte
+Contrato §22.3. Cada instancia de la función sirve **un solo ambiente**, fijado por el secreto
+`ARCA_ENVIRONMENT` (sin él, o con `homologacion`, es homologación; `produccion` es producción). Solo emite si
+ese ambiente **coincide** con el de la configuración fiscal de la base: una función de homologación con la
+configuración en `produccion` responde `501` (`PRODUCTION_NOT_IMPLEMENTED`); una de producción con la
+configuración en `homologacion` responde `409` (`ENVIRONMENT_MISMATCH`); con `off` responde `409`
+(`FISCAL_DISABLED`). **El código de producción está escrito y probado con simulaciones, pero no se probó
+contra ARCA real ni está desplegado en ningún proyecto.** Pasar a producción es una decisión aparte
 (revisión del contador, backup verificado y orden explícita), no un cambio de configuración.
 
 ## Uso
@@ -38,12 +43,13 @@ Contrato §22.3. **Solo HOMOLOGACIÓN**: con el ambiente fiscal en `produccion` 
 
 ## Secretos (nunca en el repo)
 
-`ARCA_CUIT`, `ARCA_CERT_PEM`, `ARCA_KEY_PEM` (certificado y clave **de homologación**, en una línea con `\n`
-literales) y opcional `ARCA_DIGEST` (`sha256` por defecto). Ver `.env.example` de `arca-homologacion`.
+`ARCA_CUIT`, `ARCA_CERT_PEM`, `ARCA_KEY_PEM` (certificado y clave **del ambiente que sirve la función**, en una línea
+con `\n` literales), `ARCA_ENVIRONMENT` (`homologacion` o `produccion`; cualquier otro valor es un error de
+configuración) y opcional `ARCA_DIGEST` (`sha256` por defecto). Ver `.env.example` de `arca-homologacion`.
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` las inyecta Supabase. El certificado y la
 clave nunca se devuelven ni se registran; tampoco el token ni la firma.
 
-Desplegarla es un paso 🔒 de `docs/DEPLOY.md`: lo hace una persona, y solo en el proyecto de **staging**.
+Desplegarla es un paso 🔒 de `docs/DEPLOY.md`: lo hace una persona, y en el proyecto que corresponda: la función de **homologación** en staging y la de **producción** únicamente en el proyecto de producción, con orden explícita.
 
 ## Pruebas
 

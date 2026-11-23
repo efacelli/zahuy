@@ -1,13 +1,15 @@
-// Edge Function `arca-emitir`: emite una factura electrónica de UNA venta en ARCA, solo HOMOLOGACIÓN.
+// Edge Function `arca-emitir`: emite una factura electrónica de UNA venta en ARCA, homologación o producción (según el secreto ARCA_ENVIRONMENT).
 // Contrato §22.3. La lógica vive en emitir.ts (probada con simulaciones); este archivo solo conecta:
 //   - la sesión del usuario (JWT) con la base,
 //   - las funciones fiscales de la base (service_role, nunca expuestas al navegador),
-//   - ARCA (módulo ../arca-homologacion/arca.ts, fijo a las URL de homologación).
+//   - ARCA (módulo ../arca-homologacion/arca.ts). El ambiente lo fija el secreto ARCA_ENVIRONMENT: sin él, o con
+//     cualquier valor distinto de "produccion", la función trabaja en homologación.
 //
 //   POST { "sale_id": uuid, "idempotency_key": uuid, "receiver"?: { "docType", "docNumber", "vatConditionId" } }
 //   -> 200 autorizado | 202 en curso (volver a llamar con la MISMA clave) | 422 rechazado | 4xx/5xx error
 //
-// Reglas (CLAUDE.md): nada de producción (en ambiente 'produccion' responde 501), ningún secreto en el repo
+// Reglas (CLAUDE.md): solo emite si el ambiente de la función coincide con el de la configuración fiscal (si no,
+// 501 o 409), ningún secreto en el repo
 // (el certificado y la clave están en secretos de la función) y nunca se devuelven ni se registran el
 // token, la firma, el certificado ni la clave.
 import {
@@ -16,6 +18,7 @@ import {
   callCompConsultar,
   callUltimoAutorizado,
   requestAccessTicket,
+  type ArcaEnvironment,
 } from '../arca-homologacion/arca.ts'
 import { emitCreditNote, emitInvoice, type EmitDeps, type FiscalDocument } from './emitir.ts'
 
@@ -70,7 +73,15 @@ async function authenticate(request: Request, saleId: string): Promise<string> {
   return user.id
 }
 
-function makeDeps(): EmitDeps {
+/** Ambiente que sirve esta instancia: homologación salvo que el secreto diga exactamente 'produccion'. */
+function functionEnvironment(): ArcaEnvironment {
+  const value = Deno.env.get('ARCA_ENVIRONMENT')
+  if (value === undefined || value === '' || value === 'homologacion') return 'homologacion'
+  if (value === 'produccion') return 'produccion'
+  throw new ArcaError('NOT_CONFIGURED', 'ARCA_ENVIRONMENT debe ser homologacion o produccion')
+}
+
+function makeDeps(environment: ArcaEnvironment): EmitDeps {
   const url = env('SUPABASE_URL')
   const serviceKey = env('SUPABASE_SERVICE_ROLE_KEY')
   const cuit = env('ARCA_CUIT')
@@ -113,12 +124,14 @@ function makeDeps(): EmitDeps {
       }
       return text === '' ? null : JSON.parse(text)
     }) as EmitDeps['rpc'],
+    environment,
     arca: {
-      login: () => requestAccessTicket({ certPem, keyPem, digest }),
-      ultimo: (ticket, ptoVta, cbteTipo) => callUltimoAutorizado({ token: ticket.token, sign: ticket.sign, cuit, ptoVta, cbteTipo }),
-      solicitar: (ticket, args) => callCaeSolicitar({ token: ticket.token, sign: ticket.sign, cuit, ...args }),
+      login: () => requestAccessTicket({ certPem, keyPem, digest, environment }),
+      ultimo: (ticket, ptoVta, cbteTipo) =>
+        callUltimoAutorizado({ token: ticket.token, sign: ticket.sign, cuit, ptoVta, cbteTipo, environment }),
+      solicitar: (ticket, args) => callCaeSolicitar({ token: ticket.token, sign: ticket.sign, cuit, environment, ...args }),
       consultar: (ticket, ptoVta, cbteTipo, cbteNro) =>
-        callCompConsultar({ token: ticket.token, sign: ticket.sign, cuit, ptoVta, cbteTipo, cbteNro }),
+        callCompConsultar({ token: ticket.token, sign: ticket.sign, cuit, ptoVta, cbteTipo, cbteNro, environment }),
     },
     now: () => new Date(),
   }
@@ -129,6 +142,7 @@ const ARCA_STATUS: Record<string, number> = {
   NOT_AUTHORIZED: 403,
   FISCAL_DISABLED: 409,
   PRODUCTION_NOT_IMPLEMENTED: 501,
+  ENVIRONMENT_MISMATCH: 409,
   NOT_CONFIGURED: 500,
   INVALID_RECEIVER: 400,
   IDENTIFICATION_REQUIRED: 400,
@@ -148,6 +162,7 @@ Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (request.method !== 'POST') return json(405, { ok: false, code: 'METHOD_NOT_ALLOWED' })
 
+  let environment: ArcaEnvironment = 'homologacion'
   try {
     const body = (await request.json().catch(() => null)) as {
       /** `invoice` (por defecto) o `credit_note` (anula la factura autorizada de la venta). */
@@ -161,20 +176,21 @@ Deno.serve(async (request: Request) => {
     }
     const action = body.action ?? 'invoice'
     if (action !== 'invoice' && action !== 'credit_note') throw new ArcaError('INVALID_REQUEST', 'action debe ser invoice o credit_note')
+    environment = functionEnvironment()
     const userId = await authenticate(request, body.sale_id!)
     const input = { saleId: body.sale_id!, idempotencyKey: body.idempotency_key!, createdBy: userId }
     const result =
       action === 'credit_note'
-        ? await emitCreditNote(makeDeps(), input)
-        : await emitInvoice(makeDeps(), { ...input, receiver: body.receiver })
+        ? await emitCreditNote(makeDeps(environment), input)
+        : await emitInvoice(makeDeps(environment), { ...input, receiver: body.receiver })
     const status = result.status === 'authorized' ? 200 : result.inProgress ? 202 : 422
-    return json(status, { ok: result.status === 'authorized', environment: 'homologacion', ...result })
+    return json(status, { ok: result.status === 'authorized', environment, ...result })
   } catch (error) {
     if (error instanceof ArcaError) {
-      return json(ARCA_STATUS[error.code] ?? 502, { ok: false, environment: 'homologacion', code: error.code, message: error.message })
+      return json(ARCA_STATUS[error.code] ?? 502, { ok: false, environment, code: error.code, message: error.message })
     }
     if (error instanceof RpcError) {
-      return json(RPC_STATUS[error.code] ?? 500, { ok: false, environment: 'homologacion', code: error.code })
+      return json(RPC_STATUS[error.code] ?? 500, { ok: false, environment, code: error.code })
     }
     // Nunca se imprime el mensaje (podría traer datos): solo el tipo de error.
     console.error('arca-emitir: error inesperado', error instanceof Error ? error.name : 'desconocido')

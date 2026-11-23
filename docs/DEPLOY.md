@@ -242,10 +242,11 @@ Fuentes de precios y condiciones (consultadas en noviembre de 2026; confirmar en
 
 ## 9. Facturación electrónica ARCA (contrato §22)
 
-**Estado (2026-11-18):** implementada y probada en **homologación** (sin validez fiscal). **Producción no
-está implementada**: el módulo `arca.ts` solo tiene las direcciones de homologación y `arca-emitir`
-responde `501` con el ambiente en `produccion`. Pasar a producción es un cambio de código y una decisión
-aparte (§9.3). Sin datos del titular en este documento: viven en secretos de Supabase, en la base y en la
+**Estado (2026-11-23):** implementada y probada en **homologación** (sin validez fiscal). El **código de
+producción está escrito** (direcciones de producción de WSAA y WSFEv1 y ambiente fijado por el secreto
+`ARCA_ENVIRONMENT`), probado solo con simulaciones: **no se probó contra ARCA real ni está desplegado**. Sin
+ese secreto la función trabaja en homologación y responde `501` si la configuración dice `produccion`. Pasar a
+producción sigue siendo una decisión aparte (§9.3). Sin datos del titular en este documento: viven en secretos de Supabase, en la base y en la
 carpeta privada del titular.
 
 ### 9.1 Procedimiento en un proyecto (hecho en staging el 2026-11-17)
@@ -276,7 +277,7 @@ configuración: un frontend solo factura contra el proyecto al que apunta.
 ### 9.2 Qué no hacer
 
 - **No desplegar la función de homologación en el proyecto de producción.** Crearía comprobantes de prueba
-  pegados a ventas reales. Mientras no esté implementada la producción, el negocio sigue con el ticket
+  pegados a ventas reales. Mientras no se dé la orden de producción, el negocio sigue con el ticket
   interno (y «Guardar sin ticket») y su sistema actual de facturación.
 - No cargar certificados, claves ni el CUIT del titular en el repositorio, en chats ni en esta carpeta.
 
@@ -289,11 +290,12 @@ Falta, en este orden:
 
 - [ ] **Orden explícita del dueño** de pasar a producción, con fecha.
 - [ ] **Backup verificado** de la base de producción (§7) y migraciones aplicadas primero en staging.
-- [ ] **PR de código** que agregue las direcciones de producción de WSAA y WSFEv1, permita el ambiente
-  `produccion` en la función y use los secretos de producción; revisado por `efacelli` y el contador. Hoy la
-  base ya exige, para pasar a `produccion`, un comprobante autorizado antes en homologación
+- [ ] **PR de código** con las direcciones de producción de WSAA y WSFEv1 y el ambiente fijado por
+  `ARCA_ENVIRONMENT` (escrito, pendiente de revisión de `efacelli` y del contador; no se fusiona hasta la
+  orden del dueño). La base ya exige, para pasar a `produccion`, un comprobante autorizado antes en homologación
   (`PRODUCTION_NOT_READY`).
-- [ ] **Secretos de producción** cargados en el proyecto de producción y la función desplegada ahí.
+- [ ] **Secretos de producción** (`ARCA_CUIT`, certificado y clave de producción y
+  `ARCA_ENVIRONMENT=produccion`) cargados en el proyecto de producción y la función desplegada ahí.
 - [ ] **Piloto en una caja** (el contador acepta una o las dos) y revisión del primer comprobante: consulta a
   ARCA y lectura del QR con la app de ARCA, e impresión en el papel real (térmica o A4).
 - [ ] **Punto de venta aparte para contingencia (CAEA)**, si el comercio lo quiere: hoy no está
