@@ -433,9 +433,10 @@
   }
 
   /* Área imprimible habitual: 72 mm en papel de 80 y 48 mm en papel de 58. */
-  /* Letra grande y casi todo el ancho del papel: se lee de lejos en la caja. */
+  /* Letra grande y todo el ancho que imprime la impresora (sin margen sobrante a la derecha). */
   .ticket[data-paper='80mm'] {
-    width: 76mm;
+    inset: 0 0 auto 0;
+    width: auto;
     max-width: none;
     padding: 2mm 1mm;
     font-size: 16px;
