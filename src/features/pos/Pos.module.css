@@ -352,6 +352,12 @@
   font-size: 1rem;
 }
 
+.ticketLogo {
+  display: block;
+  width: 100%;
+  margin: 0 auto var(--space-2);
+}
+
 .ticketHead {
   margin: 0 0 var(--space-2);
   text-align: center;
@@ -427,23 +433,33 @@
   }
 
   /* Área imprimible habitual: 72 mm en papel de 80 y 48 mm en papel de 58. */
+  /* Letra grande y casi todo el ancho del papel: se lee de lejos en la caja. */
   .ticket[data-paper='80mm'] {
-    width: 72mm;
+    width: 76mm;
     max-width: none;
-    padding: 2mm 4mm;
-    font-size: 12px;
+    padding: 2mm 1mm;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .ticket[data-paper='80mm'] tfoot tr:first-child th,
+  .ticket[data-paper='80mm'] tfoot tr:first-child td {
+    font-size: 22px;
+    font-weight: 800;
   }
 
   .ticket[data-paper='58mm'] {
     width: 48mm;
     max-width: none;
-    padding: 2mm 5mm;
-    font-size: 10px;
+    padding: 2mm 2mm;
+    font-size: 12px;
+    font-weight: 600;
   }
 
   .ticket[data-paper='58mm'] tfoot tr:first-child th,
   .ticket[data-paper='58mm'] tfoot tr:first-child td {
-    font-size: 12px;
+    font-size: 16px;
+    font-weight: 800;
   }
 
   .ticket[data-paper='comun'] {

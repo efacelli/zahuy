@@ -248,7 +248,7 @@ describe('pantalla de caja', () => {
     const ticket = await screen.findByRole('dialog', { name: 'Venta n.º 15 registrada' })
     expect(within(ticket).getByText('NO VÁLIDO COMO FACTURA')).toBeInTheDocument()
     // Encabezado con los datos del comercio cargados en Configuración (§18).
-    expect(within(ticket).getByText('Almacén de prueba')).toBeInTheDocument()
+    expect(within(ticket).getByRole('img', { name: 'Almacén de prueba' })).toBeInTheDocument()
     expect(ticket).toHaveTextContent('Calle Falsa 123')
     expect(ticket).toHaveTextContent('CUIT 20-12345678-6')
     // El redondeo no se imprime: el total del ticket es lo cobrado (1.236,99 → 1.200).
