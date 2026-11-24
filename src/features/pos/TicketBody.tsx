@@ -48,9 +48,9 @@ export function TicketBody({ ticket }: { ticket: TicketData }) {
   return (
     <div className={styles.ticket} data-print="ticket" data-paper={paper}>
       <style media="print">{pageRule(paper)}</style>
+      {/* Logo en blanco y negro puro: las impresoras de tickets no imprimen grises ni colores. */}
+      <img className={styles.ticketLogo} src="/ticket-logo.png" alt={store?.store_name ?? 'ZAHUY'} />
       <p className={styles.ticketHead}>
-        <strong>{store?.store_name ?? 'ZAHUY'}</strong>
-        <br />
         {store?.store_address && (
           <>
             {store.store_address}
