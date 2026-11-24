@@ -10,7 +10,7 @@ export interface NavItem {
   permission?: keyof Permissions
 }
 
-/** Secciones. La caja (etapa 5) se adelantó a pedido de `efacelli`; clientes y ARCA siguen fuera. */
+/** Secciones. La caja (etapa 5), ARCA y los clientes con cuenta corriente (§23) se adelantaron a pedido de `efacelli`. */
 export const NAV_ITEMS: NavItem[] = [
   {
     path: '/',
@@ -21,6 +21,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { path: '/caja', label: 'Caja', icon: 'cart', description: 'Vender con el lector y cobrar.' },
   { path: '/ventas', label: 'Ventas', icon: 'receipt', description: 'Historial de ventas, tickets y anulaciones.' },
+  { path: '/clientes', label: 'Clientes', icon: 'clipboard', description: 'Cuentas corrientes: deudas, límites y pagos.' },
   {
     path: '/turnos',
     label: 'Turnos de caja',

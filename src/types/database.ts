@@ -129,6 +129,150 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"customer_account_charges": {
+                  Row: {
+                    "amount": number,"created_at": string,"created_by": string,"customer_id": string,"id": string,"over_limit": boolean,"sale_id": string,"sale_number": number,"voided_at": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "amount": number,"created_at"?: string,"created_by"?: string,"customer_id": string,"id"?: string,"over_limit"?: boolean,"sale_id": string,"sale_number": number,"voided_at"?: string | null
+                  }
+                  Update: {
+                    "amount"?: number,"created_at"?: string,"created_by"?: string,"customer_id"?: string,"id"?: string,"over_limit"?: boolean,"sale_id"?: string,"sale_number"?: number,"voided_at"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "customer_account_charges_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "customer_account_charges_customer_id_fkey"
+      columns: ["customer_id"]
+isOneToOne: false
+      referencedRelation: "customers"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "customer_account_charges_customer_id_fkey"
+      columns: ["customer_id"]
+isOneToOne: false
+      referencedRelation: "v_customer_balances"
+      referencedColumns: ["customer_id"]
+    },{
+      foreignKeyName: "customer_account_charges_sale_id_fkey"
+      columns: ["sale_id"]
+isOneToOne: true
+      referencedRelation: "sales"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"customer_payments": {
+                  Row: {
+                    "amount": number,"cash_session_id": string,"created_at": string,"created_by": string,"customer_id": string,"id": string,"idempotency_key": string,"notes": string | null,"payment_method_id": string,"reference": string | null,"request_hash": string,"tendered_amount": number | null,"void_reason": string | null,"voided_at": string | null,"voided_by": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "amount": number,"cash_session_id": string,"created_at"?: string,"created_by"?: string,"customer_id": string,"id"?: string,"idempotency_key": string,"notes"?: string | null,"payment_method_id": string,"reference"?: string | null,"request_hash": string,"tendered_amount"?: number | null,"void_reason"?: string | null,"voided_at"?: string | null,"voided_by"?: string | null
+                  }
+                  Update: {
+                    "amount"?: number,"cash_session_id"?: string,"created_at"?: string,"created_by"?: string,"customer_id"?: string,"id"?: string,"idempotency_key"?: string,"notes"?: string | null,"payment_method_id"?: string,"reference"?: string | null,"request_hash"?: string,"tendered_amount"?: number | null,"void_reason"?: string | null,"voided_at"?: string | null,"voided_by"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "customer_payments_cash_session_id_fkey"
+      columns: ["cash_session_id"]
+isOneToOne: false
+      referencedRelation: "cash_sessions"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "customer_payments_cash_session_id_fkey"
+      columns: ["cash_session_id"]
+isOneToOne: false
+      referencedRelation: "v_cash_session_payments"
+      referencedColumns: ["cash_session_id"]
+    },{
+      foreignKeyName: "customer_payments_cash_session_id_fkey"
+      columns: ["cash_session_id"]
+isOneToOne: false
+      referencedRelation: "v_cash_session_summary"
+      referencedColumns: ["cash_session_id"]
+    },{
+      foreignKeyName: "customer_payments_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "customer_payments_customer_id_fkey"
+      columns: ["customer_id"]
+isOneToOne: false
+      referencedRelation: "customers"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "customer_payments_customer_id_fkey"
+      columns: ["customer_id"]
+isOneToOne: false
+      referencedRelation: "v_customer_balances"
+      referencedColumns: ["customer_id"]
+    },{
+      foreignKeyName: "customer_payments_payment_method_id_fkey"
+      columns: ["payment_method_id"]
+isOneToOne: false
+      referencedRelation: "payment_methods"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "customer_payments_payment_method_id_fkey"
+      columns: ["payment_method_id"]
+isOneToOne: false
+      referencedRelation: "v_cash_session_payments"
+      referencedColumns: ["payment_method_id"]
+    },{
+      foreignKeyName: "customer_payments_payment_method_id_fkey"
+      columns: ["payment_method_id"]
+isOneToOne: false
+      referencedRelation: "v_sales_daily_payments"
+      referencedColumns: ["payment_method_id"]
+    },{
+      foreignKeyName: "customer_payments_voided_by_fkey"
+      columns: ["voided_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"customers": {
+                  Row: {
+                    "address": string | null,"blocked_reason": string | null,"created_at": string,"created_by": string | null,"credit_limit": number,"document_number": string | null,"id": string,"is_active": boolean,"is_blocked": boolean,"name": string,"notes": string | null,"over_limit_authorized_by": string | null,"over_limit_authorized_until": string | null,"phone": string | null,"updated_at": string,"updated_by": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "address"?: string | null,"blocked_reason"?: string | null,"created_at"?: string,"created_by"?: string | null,"credit_limit"?: number,"document_number"?: string | null,"id"?: string,"is_active"?: boolean,"is_blocked"?: boolean,"name": string,"notes"?: string | null,"over_limit_authorized_by"?: string | null,"over_limit_authorized_until"?: string | null,"phone"?: string | null,"updated_at"?: string,"updated_by"?: string | null
+                  }
+                  Update: {
+                    "address"?: string | null,"blocked_reason"?: string | null,"created_at"?: string,"created_by"?: string | null,"credit_limit"?: number,"document_number"?: string | null,"id"?: string,"is_active"?: boolean,"is_blocked"?: boolean,"name"?: string,"notes"?: string | null,"over_limit_authorized_by"?: string | null,"over_limit_authorized_until"?: string | null,"phone"?: string | null,"updated_at"?: string,"updated_by"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "customers_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "customers_over_limit_by_fkey"
+      columns: ["over_limit_authorized_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "customers_updated_by_fkey"
+      columns: ["updated_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"expiry_alert_settings": {
                   Row: {
                     "category_id": string | null,"created_at": string,"created_by": string | null,"id": string,"notice_days": number,"soon_days": number,"updated_at": string,"updated_by": string | null,"urgent_days": number
@@ -155,6 +299,64 @@ isOneToOne: false
       referencedColumns: ["id"]
     },{
       foreignKeyName: "expiry_alert_settings_updated_by_fkey"
+      columns: ["updated_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"fiscal_documents": {
+                  Row: {
+                    "authorization_kind": string,"authorized_at": string | null,"cae": string | null,"cae_expires_on": string | null,"cbte_nro": number,"cbte_tipo": number,"created_at": string,"created_by": string,"environment": string,"id": string,"idempotency_key": string,"imp_iva": number,"imp_neto": number,"imp_total": number,"iva_breakdown": NonNullable<Json>,"kind": string,"observations": NonNullable<Json>,"original_document_id": string | null,"pto_vta": number,"receiver_doc_number": string,"receiver_doc_type": number,"receiver_vat_condition_id": number,"request_payload": Json | null,"response_payload": Json | null,"sale_id": string,"sent_at": string | null,"status": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "authorization_kind"?: string,"authorized_at"?: string | null,"cae"?: string | null,"cae_expires_on"?: string | null,"cbte_nro": number,"cbte_tipo": number,"created_at"?: string,"created_by": string,"environment": string,"id"?: string,"idempotency_key": string,"imp_iva": number,"imp_neto": number,"imp_total": number,"iva_breakdown": NonNullable<Json>,"kind": string,"observations"?: NonNullable<Json>,"original_document_id"?: string | null,"pto_vta": number,"receiver_doc_number"?: string,"receiver_doc_type"?: number,"receiver_vat_condition_id"?: number,"request_payload"?: Json | null,"response_payload"?: Json | null,"sale_id": string,"sent_at"?: string | null,"status"?: string
+                  }
+                  Update: {
+                    "authorization_kind"?: string,"authorized_at"?: string | null,"cae"?: string | null,"cae_expires_on"?: string | null,"cbte_nro"?: number,"cbte_tipo"?: number,"created_at"?: string,"created_by"?: string,"environment"?: string,"id"?: string,"idempotency_key"?: string,"imp_iva"?: number,"imp_neto"?: number,"imp_total"?: number,"iva_breakdown"?: NonNullable<Json>,"kind"?: string,"observations"?: NonNullable<Json>,"original_document_id"?: string | null,"pto_vta"?: number,"receiver_doc_number"?: string,"receiver_doc_type"?: number,"receiver_vat_condition_id"?: number,"request_payload"?: Json | null,"response_payload"?: Json | null,"sale_id"?: string,"sent_at"?: string | null,"status"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "fiscal_documents_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fiscal_documents_original_fkey"
+      columns: ["original_document_id"]
+isOneToOne: false
+      referencedRelation: "fiscal_documents"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fiscal_documents_sale_id_fkey"
+      columns: ["sale_id"]
+isOneToOne: false
+      referencedRelation: "sales"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"fiscal_settings": {
+                  Row: {
+                    "activity_start_date": string | null,"caea_pto_vta": number | null,"created_at": string,"created_by": string | null,"environment": string,"gross_income_number": string | null,"id": string,"issuer_address": string | null,"issuer_name": string | null,"issuer_tax_id": string | null,"pto_vta": number | null,"updated_at": string,"updated_by": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "activity_start_date"?: string | null,"caea_pto_vta"?: number | null,"created_at"?: string,"created_by"?: string | null,"environment"?: string,"gross_income_number"?: string | null,"id"?: string,"issuer_address"?: string | null,"issuer_name"?: string | null,"issuer_tax_id"?: string | null,"pto_vta"?: number | null,"updated_at"?: string,"updated_by"?: string | null
+                  }
+                  Update: {
+                    "activity_start_date"?: string | null,"caea_pto_vta"?: number | null,"created_at"?: string,"created_by"?: string | null,"environment"?: string,"gross_income_number"?: string | null,"id"?: string,"issuer_address"?: string | null,"issuer_name"?: string | null,"issuer_tax_id"?: string | null,"pto_vta"?: number | null,"updated_at"?: string,"updated_by"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "fiscal_settings_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "fiscal_settings_updated_by_fkey"
       columns: ["updated_by"]
 isOneToOne: false
       referencedRelation: "profiles"
@@ -303,14 +505,14 @@ isOneToOne: false
                   ]
                 },"products": {
                   Row: {
-                    "barcode": string | null,"boxes_quantity": number,"brand_id": string,"category_id": string,"cost_price": number,"created_at": string,"created_by": string | null,"creation_key": string | null,"description": string | null,"id": string,"image_path": string | null,"is_active": boolean,"legacy_code": string | null,"min_stock": number,"name": string,"sale_price": number,"sale_price_with_vat": number | null,"sale_unit": Database["public"]['Enums']["sale_unit"],"search_name": string | null,"sku": string,"supplier_id": string | null,"units_per_box": number,"updated_at": string,"updated_by": string | null,"vat_rate": number
+                    "barcode": string | null,"boxes_quantity": number,"brand_id": string,"category_id": string,"cost_price": number,"created_at": string,"created_by": string | null,"creation_key": string | null,"description": string | null,"id": string,"image_path": string | null,"is_active": boolean,"legacy_code": string | null,"min_stock": number,"name": string,"sale_price": number,"sale_price_with_vat": number | null,"sale_unit": Database["public"]['Enums']["sale_unit"],"scale_plu": string | null,"search_name": string | null,"sku": string,"supplier_id": string | null,"units_per_box": number,"updated_at": string,"updated_by": string | null,"vat_rate": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "barcode"?: string | null,"boxes_quantity"?: number,"brand_id": string,"category_id": string,"cost_price": number,"created_at"?: string,"created_by"?: string | null,"creation_key"?: string | null,"description"?: string | null,"id"?: string,"image_path"?: string | null,"is_active"?: boolean,"legacy_code"?: string | null,"min_stock"?: number,"name": string,"sale_price": number,"sale_price_with_vat"?: never,"sale_unit"?: Database["public"]['Enums']["sale_unit"],"search_name"?: never,"sku"?: string,"supplier_id"?: string | null,"units_per_box"?: number,"updated_at"?: string,"updated_by"?: string | null,"vat_rate"?: number
+                    "barcode"?: string | null,"boxes_quantity"?: number,"brand_id": string,"category_id": string,"cost_price": number,"created_at"?: string,"created_by"?: string | null,"creation_key"?: string | null,"description"?: string | null,"id"?: string,"image_path"?: string | null,"is_active"?: boolean,"legacy_code"?: string | null,"min_stock"?: number,"name": string,"sale_price": number,"sale_price_with_vat"?: never,"sale_unit"?: Database["public"]['Enums']["sale_unit"],"scale_plu"?: string | null,"search_name"?: never,"sku"?: string,"supplier_id"?: string | null,"units_per_box"?: number,"updated_at"?: string,"updated_by"?: string | null,"vat_rate"?: number
                   }
                   Update: {
-                    "barcode"?: string | null,"boxes_quantity"?: number,"brand_id"?: string,"category_id"?: string,"cost_price"?: number,"created_at"?: string,"created_by"?: string | null,"creation_key"?: string | null,"description"?: string | null,"id"?: string,"image_path"?: string | null,"is_active"?: boolean,"legacy_code"?: string | null,"min_stock"?: number,"name"?: string,"sale_price"?: number,"sale_price_with_vat"?: never,"sale_unit"?: Database["public"]['Enums']["sale_unit"],"search_name"?: never,"sku"?: string,"supplier_id"?: string | null,"units_per_box"?: number,"updated_at"?: string,"updated_by"?: string | null,"vat_rate"?: number
+                    "barcode"?: string | null,"boxes_quantity"?: number,"brand_id"?: string,"category_id"?: string,"cost_price"?: number,"created_at"?: string,"created_by"?: string | null,"creation_key"?: string | null,"description"?: string | null,"id"?: string,"image_path"?: string | null,"is_active"?: boolean,"legacy_code"?: string | null,"min_stock"?: number,"name"?: string,"sale_price"?: number,"sale_price_with_vat"?: never,"sale_unit"?: Database["public"]['Enums']["sale_unit"],"scale_plu"?: string | null,"search_name"?: never,"sku"?: string,"supplier_id"?: string | null,"units_per_box"?: number,"updated_at"?: string,"updated_by"?: string | null,"vat_rate"?: number
                   }
                   Relationships: [
                     {
@@ -361,14 +563,14 @@ isOneToOne: false
                   ]
                 },"sale_items": {
                   Row: {
-                    "discount_amount": number,"discount_percent": number,"id": string,"line_total": number,"list_line_total": number,"net_amount": number,"product_id": string,"product_name": string,"product_sku": string,"quantity": number,"sale_id": string,"suggested_discount_percent": number,"unit_cost_price": number,"unit_price_with_vat": number,"vat_amount": number,"vat_rate": number
+                    "catalog_line_total": number | null,"discount_amount": number,"discount_percent": number,"id": string,"line_total": number,"list_line_total": number,"net_amount": number,"price_source": string,"product_id": string | null,"product_name": string,"product_sku": string | null,"quantity": number,"sale_id": string,"suggested_discount_percent": number,"unit_cost_price": number | null,"unit_price_with_vat": number,"vat_amount": number,"vat_rate": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "discount_amount"?: number,"discount_percent"?: number,"id"?: string,"line_total": number,"list_line_total": number,"net_amount": number,"product_id": string,"product_name": string,"product_sku": string,"quantity": number,"sale_id": string,"suggested_discount_percent"?: number,"unit_cost_price": number,"unit_price_with_vat": number,"vat_amount": number,"vat_rate": number
+                    "catalog_line_total"?: number | null,"discount_amount"?: number,"discount_percent"?: number,"id"?: string,"line_total": number,"list_line_total": number,"net_amount": number,"price_source"?: string,"product_id"?: string | null,"product_name": string,"product_sku"?: string | null,"quantity": number,"sale_id": string,"suggested_discount_percent"?: number,"unit_cost_price"?: number | null,"unit_price_with_vat": number,"vat_amount": number,"vat_rate": number
                   }
                   Update: {
-                    "discount_amount"?: number,"discount_percent"?: number,"id"?: string,"line_total"?: number,"list_line_total"?: number,"net_amount"?: number,"product_id"?: string,"product_name"?: string,"product_sku"?: string,"quantity"?: number,"sale_id"?: string,"suggested_discount_percent"?: number,"unit_cost_price"?: number,"unit_price_with_vat"?: number,"vat_amount"?: number,"vat_rate"?: number
+                    "catalog_line_total"?: number | null,"discount_amount"?: number,"discount_percent"?: number,"id"?: string,"line_total"?: number,"list_line_total"?: number,"net_amount"?: number,"price_source"?: string,"product_id"?: string | null,"product_name"?: string,"product_sku"?: string | null,"quantity"?: number,"sale_id"?: string,"suggested_discount_percent"?: number,"unit_cost_price"?: number | null,"unit_price_with_vat"?: number,"vat_amount"?: number,"vat_rate"?: number
                   }
                   Relationships: [
                     {
@@ -632,7 +834,7 @@ isOneToOne: false
                   ]
                 },"v_cash_session_summary": {
                   Row: {
-                    "cash_collected": number | null,"cash_register_id": string,"cash_register_name": string,"cash_session_id": string,"closed_at": string | null,"closed_by": string | null,"counted_cash": number | null,"difference": number | null,"expected_cash": number | null,"opened_at": string,"opened_by": string,"opening_amount": number,"rounding_total": number | null,"sales_count": number | null,"sales_total": number | null,"status": Database["public"]['Enums']["cash_session_status"],"voided_count": number | null
+                    "account_cash_collected": number | null,"cash_collected": number | null,"cash_register_id": string,"cash_register_name": string,"cash_session_id": string,"closed_at": string | null,"closed_by": string | null,"counted_cash": number | null,"difference": number | null,"expected_cash": number | null,"opened_at": string,"opened_by": string,"opening_amount": number,"rounding_total": number | null,"sales_count": number | null,"sales_total": number | null,"status": Database["public"]['Enums']["cash_session_status"],"voided_count": number | null
                   }
                   ComputedFields: never
                   Relationships: [
@@ -656,6 +858,22 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"v_customer_account_movements": {
+                  Row: {
+                    "amount": number | null,"created_at": string | null,"created_by": string | null,"customer_id": string | null,"kind": string | null,"movement_id": string | null,"over_limit": boolean | null,"payment_method_name": string | null,"reference": string | null,"sale_id": string | null,"sale_number": number | null,"void_reason": string | null,"voided_at": string | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    
+                  ]
+                },"v_customer_balances": {
+                  Row: {
+                    "address": string | null,"available_credit": number | null,"balance": number | null,"blocked_reason": string | null,"credit_limit": number,"customer_id": string,"document_number": string | null,"is_active": boolean,"is_blocked": boolean,"last_charge_at": string | null,"last_payment_at": string | null,"name": string,"notes": string | null,"over_limit_authorized_until": string | null,"phone": string | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    
+                  ]
                 },"v_inventory_summary": {
                   Row: {
                     "active_products": number | null,"box_mismatch_products": number | null,"expired_batches": number | null,"expiring_products": number | null,"low_stock_products": number | null,"shrinkage_quantity_month": number | null,"shrinkage_value_month": number | null,"stock_value_cost": number | null,"stock_value_sale": number | null
@@ -666,7 +884,7 @@ isOneToOne: false
                   ]
                 },"v_product_list": {
                   Row: {
-                    "active_batches_count": number | null,"barcode": string | null,"boxes_quantity": number,"brand_id": string,"brand_name": string,"category_id": string,"category_name": string,"cost_price": number,"created_at": string,"description": string | null,"has_box_mismatch": boolean | null,"id": string,"image_path": string | null,"is_active": boolean,"is_low_stock": boolean | null,"legacy_code": string | null,"loose_units": number | null,"min_stock": number,"name": string,"next_expires_on": string | null,"next_expiry_status": Database["public"]['Enums']["expiry_status"] | null,"sale_price": number,"sale_price_with_vat": number | null,"sale_unit": Database["public"]['Enums']["sale_unit"],"search_name": string | null,"sku": string,"stock_quantity": number | null,"supplier_id": string | null,"supplier_name": string | null,"units_in_boxes": number | null,"units_per_box": number,"updated_at": string,"vat_rate": number
+                    "active_batches_count": number | null,"barcode": string | null,"boxes_quantity": number,"brand_id": string,"brand_name": string,"category_id": string,"category_name": string,"cost_price": number,"created_at": string,"description": string | null,"has_box_mismatch": boolean | null,"id": string,"image_path": string | null,"is_active": boolean,"is_low_stock": boolean | null,"legacy_code": string | null,"loose_units": number | null,"min_stock": number,"name": string,"next_expires_on": string | null,"next_expiry_status": Database["public"]['Enums']["expiry_status"] | null,"sale_price": number,"sale_price_with_vat": number | null,"sale_unit": Database["public"]['Enums']["sale_unit"],"scale_plu": string | null,"search_name": string | null,"sku": string,"stock_quantity": number | null,"supplier_id": string | null,"supplier_name": string | null,"units_in_boxes": number | null,"units_per_box": number,"updated_at": string,"vat_rate": number
                   }
                   ComputedFields: never
                   Relationships: [
@@ -700,7 +918,7 @@ isOneToOne: false
                   ]
                 },"v_sales_daily": {
                   Row: {
-                    "cost_total": number | null,"discount_total": number | null,"gross_margin": number | null,"net_amount": number | null,"rounding_total": number | null,"sale_date": string | null,"sales_count": number | null,"total_amount": number | null,"vat_amount": number | null,"voided_count": number | null
+                    "cost_total": number | null,"discount_total": number | null,"free_net_total": number | null,"gross_margin": number | null,"net_amount": number | null,"rounding_total": number | null,"sale_date": string | null,"sales_count": number | null,"total_amount": number | null,"vat_amount": number | null,"voided_count": number | null
                   }
                   ComputedFields: never
                   Relationships: [
@@ -745,6 +963,31 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"authorize_customer_over_limit":
+{ Args: { "p_customer_id": string }; Returns: {
+              "address": string | null,
+"blocked_reason": string | null,
+"created_at": string,
+"created_by": string | null,
+"credit_limit": number,
+"document_number": string | null,
+"id": string,
+"is_active": boolean,
+"is_blocked": boolean,
+"name": string,
+"notes": string | null,
+"over_limit_authorized_by": string | null,
+"over_limit_authorized_until": string | null,
+"phone": string | null,
+"updated_at": string,
+"updated_by": string | null
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "customers"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
 "close_cash_session":
 { Args: { "p_cash_session_id": string,"p_close_notes"?: string,"p_counted_cash": number }; Returns: {
               "cash_register_id": string,
@@ -769,7 +1012,7 @@ isOneToOne: false
         isSetofReturn: false
       } },
 "create_product":
-{ Args: { "p_barcode"?: string,"p_batch_number"?: string,"p_boxes_quantity"?: number,"p_brand_id": string,"p_category_id": string,"p_cost_price": number,"p_description"?: string,"p_expires_on"?: string,"p_idempotency_key": string,"p_image_path"?: string,"p_initial_quantity"?: number,"p_is_active"?: boolean,"p_legacy_code"?: string,"p_min_stock"?: number,"p_name": string,"p_received_on"?: string,"p_sale_price": number,"p_sale_unit": Database["public"]['Enums']["sale_unit"],"p_supplier_id"?: string,"p_units_per_box"?: number,"p_vat_rate": number }; Returns: {
+{ Args: { "p_barcode"?: string,"p_batch_number"?: string,"p_boxes_quantity"?: number,"p_brand_id": string,"p_category_id": string,"p_cost_price": number,"p_description"?: string,"p_expires_on"?: string,"p_idempotency_key": string,"p_image_path"?: string,"p_initial_quantity"?: number,"p_is_active"?: boolean,"p_legacy_code"?: string,"p_min_stock"?: number,"p_name": string,"p_received_on"?: string,"p_sale_price": number,"p_sale_unit": Database["public"]['Enums']["sale_unit"],"p_scale_plu"?: string,"p_supplier_id"?: string,"p_units_per_box"?: number,"p_vat_rate": number }; Returns: {
               "barcode": string | null,
 "boxes_quantity": number,
 "brand_id": string,
@@ -788,6 +1031,7 @@ isOneToOne: false
 "sale_price": number,
 "sale_price_with_vat": number | null,
 "sale_unit": Database["public"]['Enums']["sale_unit"],
+"scale_plu": string | null,
 "search_name": string | null,
 "sku": string,
 "supplier_id": string | null,
@@ -802,6 +1046,89 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"fiscal_begin":
+{ Args: { "p_arca_last": number,"p_cbte_tipo": number,"p_created_by": string,"p_idempotency_key": string,"p_kind": string,"p_original_document_id"?: string,"p_receiver_doc_number"?: string,"p_receiver_doc_type"?: number,"p_receiver_vat_condition_id"?: number,"p_sale_id": string }; Returns: {
+              "authorization_kind": string,
+"authorized_at": string | null,
+"cae": string | null,
+"cae_expires_on": string | null,
+"cbte_nro": number,
+"cbte_tipo": number,
+"created_at": string,
+"created_by": string,
+"environment": string,
+"id": string,
+"idempotency_key": string,
+"imp_iva": number,
+"imp_neto": number,
+"imp_total": number,
+"iva_breakdown": NonNullable<Json>,
+"kind": string,
+"observations": NonNullable<Json>,
+"original_document_id": string | null,
+"pto_vta": number,
+"receiver_doc_number": string,
+"receiver_doc_type": number,
+"receiver_vat_condition_id": number,
+"request_payload": Json | null,
+"response_payload": Json | null,
+"sale_id": string,
+"sent_at": string | null,
+"status": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "fiscal_documents"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"fiscal_claim":
+{ Args: { "p_document_id": string }; Returns: boolean
+                           },
+"fiscal_finish":
+{ Args: { "p_cae"?: string,"p_cae_expires_on"?: string,"p_document_id": string,"p_observations"?: Json,"p_request"?: Json,"p_response"?: Json,"p_status": string }; Returns: {
+              "authorization_kind": string,
+"authorized_at": string | null,
+"cae": string | null,
+"cae_expires_on": string | null,
+"cbte_nro": number,
+"cbte_tipo": number,
+"created_at": string,
+"created_by": string,
+"environment": string,
+"id": string,
+"idempotency_key": string,
+"imp_iva": number,
+"imp_neto": number,
+"imp_total": number,
+"iva_breakdown": NonNullable<Json>,
+"kind": string,
+"observations": NonNullable<Json>,
+"original_document_id": string | null,
+"pto_vta": number,
+"receiver_doc_number": string,
+"receiver_doc_type": number,
+"receiver_vat_condition_id": number,
+"request_payload": Json | null,
+"response_payload": Json | null,
+"sale_id": string,
+"sent_at": string | null,
+"status": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "fiscal_documents"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"fiscal_ticket_get":
+{ Args: { "p_environment": string,"p_service": string }; Returns: {
+              "expiration_time": string,"sign": string,"token": string
+            }[]
+                           },
+"fiscal_ticket_save":
+{ Args: { "p_environment": string,"p_expiration_time": string,"p_generation_time": string,"p_service": string,"p_sign": string,"p_token": string }; Returns: undefined
+                           },
 "open_cash_session":
 { Args: { "p_cash_register_id": string,"p_idempotency_key": string,"p_opening_amount": number }; Returns: {
               "cash_register_id": string,
@@ -857,6 +1184,57 @@ isOneToOne: false
                           SetofOptions: {
         from: "*"
         to: "stock_movements"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"register_account_sale":
+{ Args: { "p_allow_over_limit"?: boolean,"p_cash_session_id": string,"p_customer_id": string,"p_idempotency_key": string,"p_items": Json,"p_notes"?: string,"p_payments": Json }; Returns: {
+              "cash_session_id": string,
+"created_at": string,
+"created_by": string,
+"discount_total": number,
+"id": string,
+"idempotency_key": string,
+"net_amount": number,
+"notes": string | null,
+"request_hash": string,
+"rounding_amount": number,
+"rounding_multiple": number,
+"sale_number": number,
+"status": Database["public"]['Enums']["sale_status"],
+"total_amount": number,
+"vat_amount": number,
+"void_reason": string | null,
+"voided_at": string | null,
+"voided_by": string | null
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "sales"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"register_customer_payment":
+{ Args: { "p_amount": number,"p_cash_session_id": string,"p_customer_id": string,"p_idempotency_key": string,"p_notes"?: string,"p_payment_method_id": string,"p_reference"?: string,"p_tendered_amount"?: number }; Returns: {
+              "amount": number,
+"cash_session_id": string,
+"created_at": string,
+"created_by": string,
+"customer_id": string,
+"id": string,
+"idempotency_key": string,
+"notes": string | null,
+"payment_method_id": string,
+"reference": string | null,
+"request_hash": string,
+"tendered_amount": number | null,
+"void_reason": string | null,
+"voided_at": string | null,
+"voided_by": string | null
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "customer_payments"
         isOneToOne: true
         isSetofReturn: false
       } },
@@ -965,6 +1343,30 @@ isOneToOne: false
 "revert_price_change":
 { Args: { "p_bulk_change_id": string,"p_idempotency_key": string,"p_reason": string }; Returns: Json
                            },
+"void_customer_payment":
+{ Args: { "p_payment_id": string,"p_reason": string }; Returns: {
+              "amount": number,
+"cash_session_id": string,
+"created_at": string,
+"created_by": string,
+"customer_id": string,
+"id": string,
+"idempotency_key": string,
+"notes": string | null,
+"payment_method_id": string,
+"reference": string | null,
+"request_hash": string,
+"tendered_amount": number | null,
+"void_reason": string | null,
+"voided_at": string | null,
+"voided_by": string | null
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "customer_payments"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
 "void_sale":
 { Args: { "p_idempotency_key": string,"p_reason": string,"p_sale_id": string }; Returns: {
               "cash_session_id": string,

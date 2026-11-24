@@ -20,9 +20,10 @@ describe('AppLayout', () => {
     }
   })
 
-  it('no muestra módulos futuros (la caja se adelantó a pedido de efacelli)', async () => {
+  it('no muestra módulos futuros (caja y clientes se adelantaron a pedido de efacelli)', async () => {
     await renderAt('/')
-    for (const label of [/clientes/i, /arca/i, /facturaci/i]) {
+    expect(screen.getByRole('link', { name: 'Clientes' })).toBeInTheDocument()
+    for (const label of [/arca/i, /facturaci/i]) {
       expect(screen.queryByRole('link', { name: label })).not.toBeInTheDocument()
     }
   })

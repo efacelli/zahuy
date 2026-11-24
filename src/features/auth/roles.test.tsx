@@ -16,6 +16,7 @@ describe('permissionsFor (contrato v0.4.0 §9)', () => {
       viewDashboard: false,
       configureAlerts: false,
       manageUsers: false,
+      manageCustomers: false,
     })
   })
 
