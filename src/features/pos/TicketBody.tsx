@@ -63,9 +63,8 @@ export function TicketBody({ ticket }: { ticket: TicketData }) {
             <br />
           </>
         )}
-        Comprobante interno n.º {ticket.saleNumber}
-        <br />
-        {formatDateTime(ticket.createdAt)} · {ticket.registerName}
+        {/* Sin número de comprobante ni caja (pedido del negocio): quedan en el historial de ventas. */}
+        {formatDateTime(ticket.createdAt)}
       </p>
       <p className={styles.ticketWarning}>NO VÁLIDO COMO FACTURA</p>
       {ticket.voided && <p className={styles.ticketWarning}>VENTA ANULADA</p>}
