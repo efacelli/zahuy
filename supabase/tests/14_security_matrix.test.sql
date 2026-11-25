@@ -84,7 +84,10 @@ insert into t_expected values
   ('price_history', false, false, false),
   -- Facturación ARCA (v0.12): la configuración la edita el dueño; los comprobantes los escribe solo la función (service_role).
   ('fiscal_settings', false, true, false),
-  ('fiscal_documents', false, false, false);
+  ('fiscal_documents', false, false, false),
+  ('customers', true, true, false),
+  ('customer_account_charges', false, false, false),
+  ('customer_payments', false, false, false);
 
 select is(
   (select count(*)::int from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r'
@@ -167,7 +170,10 @@ select is(
         + (select count(*) from public.v_cash_session_payments)
         + (select count(*) from public.v_sales_daily) + (select count(*) from public.v_sales_daily_payments)
         + (select count(*) from public.price_bulk_changes) + (select count(*) from public.price_history)
-        + (select count(*) from public.fiscal_settings) + (select count(*) from public.fiscal_documents))::int,
+        + (select count(*) from public.fiscal_settings) + (select count(*) from public.fiscal_documents)
+        + (select count(*) from public.customers) + (select count(*) from public.customer_payments)
+        + (select count(*) from public.customer_account_charges) + (select count(*) from public.v_customer_balances)
+        + (select count(*) from public.v_customer_account_movements))::int,
   0, 'inactivo: no lee ninguna otra tabla ni vista (aunque su rol sea admin)'
 );
 select throws_ok(

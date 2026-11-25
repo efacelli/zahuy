@@ -10,6 +10,8 @@ import { lazyPage } from './lazyPage'
 // Cada pantalla se descarga recién al abrirla; login, inicio y el marco quedan en el bundle principal.
 const AlertsPage = lazyPage(() => import('../features/alerts/AlertsPage'), 'AlertsPage')
 const AuditPage = lazyPage(() => import('../features/audit/AuditPage'), 'AuditPage')
+const CustomersPage = lazyPage(() => import('../features/customers/CustomersPage'), 'CustomersPage')
+const CustomerDetailPage = lazyPage(() => import('../features/customers/CustomerDetailPage'), 'CustomerDetailPage')
 const PosPage = lazyPage(() => import('../features/pos/PosPage'), 'PosPage')
 const PricesPage = lazyPage(() => import('../features/prices/PricesPage'), 'PricesPage')
 const RestockPage = lazyPage(() => import('../features/restock/RestockPage'), 'RestockPage')
@@ -39,6 +41,8 @@ export const routes: RouteObject[] = [
           { index: true, element: <HomePage /> },
           { path: 'caja', element: <PosPage /> },
           { path: 'ventas', element: <SalesPage /> },
+          { path: 'clientes', element: <CustomersPage /> },
+          { path: 'clientes/:id', element: <CustomerDetailPage /> },
           {
             path: 'turnos',
             element: (

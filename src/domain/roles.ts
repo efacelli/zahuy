@@ -33,6 +33,8 @@ export interface Permissions {
   configureAlerts: boolean
   /** Gestionar usuarios y leer la auditoría. */
   manageUsers: boolean
+  /** Alta, edición, límite y bloqueo de clientes; autorizar ventas por encima del límite y anular pagos (§23). */
+  manageCustomers: boolean
 }
 
 const NONE: Permissions = {
@@ -45,6 +47,7 @@ const NONE: Permissions = {
   viewDashboard: false,
   configureAlerts: false,
   manageUsers: false,
+  manageCustomers: false,
 }
 
 export function permissionsFor(role: AppRole | null | undefined, isActive: boolean): Permissions {
@@ -62,5 +65,6 @@ export function permissionsFor(role: AppRole | null | undefined, isActive: boole
     viewDashboard: manager,
     configureAlerts: manager,
     manageUsers: owner,
+    manageCustomers: manager,
   }
 }

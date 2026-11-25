@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.12.0 (propuesta: §22 facturación electrónica ARCA; §21 PLU de balanza en productos, aprobada para implementar; §20 importe manual para productos de balanza y líneas libres, aprobada para implementar; convención de ruta de imágenes de productos, §5.5; propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
+| Versión | 0.13.0 (§23 clientes y cuentas corrientes, implementada; §22 facturación electrónica ARCA; §21 PLU de balanza en productos, aprobada para implementar; §20 importe manual para productos de balanza y líneas libres, aprobada para implementar; convención de ruta de imágenes de productos, §5.5; propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16); ranking de productos vendidos (§17); datos del comercio y aumentos de precios (§18 y §19, propuesta) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -1116,6 +1116,7 @@ volver a registrar la concordancia.
 | 0.10.0 | 2026-11-17 | **Propuesta** del frontend (§20): importe manual para productos pesados con etiqueta de balanza. Campo opcional `manual_line_total` en los ítems de `register_sale`, columnas aditivas `price_source` y `catalog_line_total` en `sale_items` y código `INVALID_MANUAL_PRICE`; líneas libres sin producto ni stock (§20.8, `INVALID_FREE_ITEM`). P-55 a P-60 decididas. Revisada y aprobada por `ChinoNader18` con sus precisiones: excepción explícita a §15.1, hash sin cambios cuando no hay campos nuevos, margen solo sobre líneas con costo y `free_net_total` en `v_sales_daily`, consistencia diferida sin las líneas libres |
 | 0.11.0 | 2026-11-17 | **Propuesta** del frontend (§21): `products.scale_plu` para que la etiqueta de la balanza identifique el producto. El comercio va a armar la lista de PLU de fiambrería. Columna aditiva, `create_product` con `p_scale_plu`, `v_product_list` la expone al final. P-61 a P-63 decididas por `efacelli`. Aprobada por `ChinoNader18` con sus precisiones: firma nueva de `create_product`, errores `23514`/`23505`, `grant update (scale_plu)` |
 | 0.12.0 | 2026-11-17 | **Propuesta** del backend (§22): facturación electrónica ARCA desde una Edge Function (WSAA + WSFEv1), `fiscal_settings` y `fiscal_documents`, flujo idempotente, nota de crédito y contingencia CAEA (diseño). P-64 a P-70 abiertas, la mayoría para el contador. Sin datos fiscales del comercio en el repositorio |
+| 0.13.0 | 2026-11-24 | §23: clientes y cuentas corrientes (`customers`, `customer_account_charges`, `customer_payments`, medio de pago `account`, `register_account_sale`, `register_customer_payment`, `void_customer_payment`, `authorize_customer_over_limit`, `v_customer_balances`, `v_customer_account_movements`); el arqueo suma el efectivo cobrado de cuentas. Reglas decididas por `efacelli` |
 
 ---
 
@@ -2516,3 +2517,67 @@ Configuración). Cierra lo que P-70 dejaba abierto.
   punto de venta de CAEA y datos del emisor. **Producción no se activa ni se desactiva desde la app** (§22.1).
 - **Comprobante sin confirmar:** la pantalla lo vuelve a consultar sola cada 20 segundos (hasta 12 veces) mientras
   esté abierta; la función concilia con ARCA pasados ~2 minutos.
+
+## 23. Clientes y cuentas corrientes (v0.13.0, implementada)
+
+Etapa futura 4 adelantada a pedido de `efacelli` (2026-11-24). Migración
+`20261124100000_customer_accounts.sql`; pruebas `supabase/tests/27_customer_accounts.test.sql`.
+
+### 23.1 Reglas de negocio (decididas por `efacelli`)
+
+- **Límite de crédito por cliente.** Una venta que deja la deuda por encima del límite se rechaza
+  (`CREDIT_LIMIT_EXCEEDED`, con el excedente en `DETAIL`) salvo que la **autorice el encargado o el dueño**:
+  - vendiendo él mismo, con `p_allow_over_limit = true`;
+  - o desde la ficha del cliente con `authorize_customer_over_limit`, que habilita **una sola venta** durante 30 minutos.
+- **Quién vende fiado:** cualquier empleado activo. **Quién administra clientes** (alta, edición, límite, bloqueo):
+  encargado y dueño (y programador).
+- **Pagos:** se cobran en una **caja abierta**, parciales o totales, con cualquier medio activo salvo cuenta
+  corriente; no se cobra más que la deuda (`PAYMENT_EXCEEDS_BALANCE`). El efectivo entra en el arqueo.
+- **Sin bloqueo automático por atraso.** El bloqueo es manual (`is_blocked`); un cliente bloqueado no compra a
+  cuenta (`ACCOUNT_BLOCKED`) pero sí puede pagar.
+- Sin intereses ni vencimientos. El saldo **no se guarda**: es Σ cargos vigentes − Σ pagos vigentes.
+
+### 23.2 Tablas
+
+**`customers`** (RLS; lee todo usuario activo; inserta y edita encargado/dueño con permisos por columna; no se
+borra; auditada): `id`, `name` (1–80), `document_number` (opcional, 7–11 dígitos, único), `phone`, `address`,
+`notes`, `credit_limit numeric(12,2) ≥ 0` (default 0), `is_blocked`, `blocked_reason`, `is_active`,
+`over_limit_authorized_until`, `over_limit_authorized_by` (solo por RPC), columnas comunes (§2.5).
+
+**`customer_account_charges`** (solo lectura para la app): `id`, `sale_id` (único, FK `sales`), `sale_number`
+(copia), `customer_id`, `amount > 0` (lo pagado con `account`), `over_limit`, `created_at`, `created_by`,
+`voided_at`. Al anular la venta (`void_sale`) un trigger completa `voided_at`; no hay otro cambio posible.
+
+**`customer_payments`** (solo lectura para la app): `id`, `idempotency_key` (único), `request_hash`,
+`customer_id`, `cash_session_id`, `payment_method_id`, `amount > 0`, `tendered_amount` (solo efectivo, ≥ amount),
+`reference` (≤ 60), `notes` (≤ 200), `created_at`, `created_by`, `voided_at`, `voided_by`, `void_reason`.
+Inmutable salvo la anulación.
+
+**`payment_methods`:** fila nueva `account` «Cuenta corriente» (`is_cash = false`, orden 6). Un pago `account` en
+`sale_payments` solo se confirma si la misma transacción creó su cargo (constraint trigger diferido →
+`ACCOUNT_CUSTOMER_REQUIRED`): `register_sale` no cambia, pero no sirve para vender fiado.
+
+### 23.3 Funciones (SECURITY DEFINER, usuario activo)
+
+| Función | Quién | Qué hace |
+|---|---|---|
+| `register_account_sale(p_idempotency_key, p_cash_session_id, p_customer_id, p_items, p_payments, p_notes default null, p_allow_over_limit default false) → sales` | todos | Bloquea el cliente, llama a `register_sale` y crea el cargo. Exige un pago `account` (`ACCOUNT_PAYMENT_REQUIRED`). Idempotente (el reintento devuelve la venta; otro cliente con la misma clave → `IDEMPOTENCY_CONFLICT`) |
+| `register_customer_payment(p_idempotency_key, p_cash_session_id, p_customer_id, p_payment_method_id, p_amount, p_tendered_amount default null, p_reference default null, p_notes default null) → customer_payments` | todos | Cobra un pago en una sesión abierta. Idempotente |
+| `void_customer_payment(p_payment_id, p_reason) → customer_payments` | encargado/dueño | Anula un pago mientras su sesión siga abierta (`REASON_REQUIRED`, `PAYMENT_NOT_FOUND`, `ALREADY_VOIDED`, `CASH_SESSION_CLOSED`) |
+| `authorize_customer_over_limit(p_customer_id) → customers` | encargado/dueño | Habilita una venta por encima del límite durante 30 minutos |
+
+### 23.4 Vistas (`security_invoker`)
+
+- **`v_customer_balances`:** `customer_id`, datos del cliente, `credit_limit`, `is_blocked`, `blocked_reason`,
+  `is_active`, `over_limit_authorized_until`, `balance`, `available_credit` (no negativo), `last_charge_at`,
+  `last_payment_at`.
+- **`v_customer_account_movements`:** `customer_id`, `kind` (`charge` | `payment`), `movement_id`, `created_at`,
+  `amount`, `sale_id`, `sale_number`, `payment_method_name`, `reference`, `over_limit`, `voided_at`,
+  `void_reason`, `created_by`. Incluye los anulados.
+- **`v_cash_session_summary`:** columna nueva al final, `account_cash_collected` (efectivo de pagos de cuenta,
+  solo encargado/dueño); `expected_cash` y `close_cash_session` lo suman.
+
+### 23.5 Códigos de error nuevos
+
+`CUSTOMER_NOT_FOUND`, `ACCOUNT_BLOCKED`, `CREDIT_LIMIT_EXCEEDED`, `ACCOUNT_PAYMENT_REQUIRED`,
+`ACCOUNT_CUSTOMER_REQUIRED`, `PAYMENT_EXCEEDS_BALANCE`, `PAYMENT_NOT_FOUND`.

@@ -65,6 +65,14 @@ export const BUSINESS_ERROR_MESSAGES: Record<string, string> = {
   NO_PRODUCTS: 'Ningún producto cambia de precio con esos filtros (o quedaron todos excluidos).',
   ALREADY_REVERTED: 'Ese aumento ya se había deshecho.',
   PRICE_CHANGE_NOT_FOUND: 'Ese aumento no existe.',
+  // Clientes y cuentas corrientes (contrato v0.13.0, §23.5).
+  CUSTOMER_NOT_FOUND: 'El cliente no existe o está desactivado.',
+  ACCOUNT_BLOCKED: 'La cuenta corriente de este cliente está bloqueada.',
+  CREDIT_LIMIT_EXCEEDED: 'La venta supera el límite de crédito del cliente. Hace falta la autorización del encargado o del dueño.',
+  ACCOUNT_PAYMENT_REQUIRED: 'Para fiar, elegí «Cuenta corriente» como medio de pago.',
+  ACCOUNT_CUSTOMER_REQUIRED: 'Para vender a cuenta corriente hay que elegir el cliente.',
+  PAYMENT_EXCEEDS_BALANCE: 'El pago es mayor que la deuda del cliente.',
+  PAYMENT_NOT_FOUND: 'Ese pago no existe.',
 }
 
 /** Mensajes por nombre de restricción única (contrato §5). */

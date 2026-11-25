@@ -7,6 +7,8 @@ import { DEFAULT_CASH_STEP } from '../../domain/cash-rounding'
 import { formatMoney } from '../../lib/format'
 import { toAppError } from '../../lib/errors'
 import { useSupabase } from '../../lib/supabase-context'
+import { usePermissions } from '../auth/useProfile'
+import { CUSTOMERS_KEY, fetchCustomers, registerAccountSale } from '../customers/customers-api'
 import { lineName, toSaleItem, type PricedCart } from './cart'
 import { planPayments, type PaymentDraft } from './payment'
 import { fetchPaymentMethods, fetchRoundingMultiple, registerSale, type OpenSession, type PaymentMethod } from './pos-api'
@@ -51,6 +53,11 @@ export function PaymentDialog({
   const [showErrors, setShowErrors] = useState(false)
   /** Monto a cobrar escrito por el cajero; null = el sugerido (total redondeado). */
   const [charged, setCharged] = useState<string | null>(null)
+  /** Cuenta corriente (§23): cliente elegido y, si supera el límite, la autorización del encargado o el dueño. */
+  const [customerId, setCustomerId] = useState('')
+  const [overLimit, setOverLimit] = useState(false)
+  const [allowOverLimit, setAllowOverLimit] = useState(false)
+  const canAuthorize = usePermissions().manageCustomers
 
   const cash = methods.data?.find((m) => m.is_cash)
   const current = drafts ?? (cash ? [draftFor(cash)] : [])
@@ -58,6 +65,16 @@ export function PaymentDialog({
   const step = multiple.data ?? DEFAULT_CASH_STEP
   const plan = planPayments(total, current, charged ?? '', step)
   const single = current.length === 1
+  const isAccount = current.some((d) => d.method.code === 'account')
+  const customers = useQuery({
+    queryKey: CUSTOMERS_KEY,
+    queryFn: () => fetchCustomers(client),
+    enabled: isAccount,
+  })
+  const activeCustomers = (customers.data ?? []).filter((c) => c.is_active)
+  const customer = activeCustomers.find((c) => c.customer_id === customerId) ?? null
+  const accountErrors = isAccount && !customer ? ['Elegí el cliente de la cuenta corriente.'] : []
+  const errors = [...plan.errors, ...accountErrors]
 
   const update = (methodId: string, patch: Partial<PaymentDraft>) =>
     setDrafts(current.map((d) => (d.method.id === methodId ? { ...d, ...patch } : d)))
@@ -79,17 +96,23 @@ export function PaymentDialog({
 
   const sale = useMutation({
     mutationFn: (_withTicket: boolean) =>
-      registerSale(client, {
+    {
+      const params = {
         p_idempotency_key: idempotencyKey,
         p_cash_session_id: session.cash_session_id,
         p_items: lines.map(toSaleItem),
         p_payments: plan.payments,
         p_notes: null,
-      }),
+      }
+      return isAccount && customer
+        ? registerAccountSale(client, { ...params, p_customer_id: customer.customer_id, p_allow_over_limit: allowOverLimit })
+        : registerSale(client, params)
+    },
     onSuccess: async (row, withTicket) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['cash-sessions'] }),
         queryClient.invalidateQueries({ queryKey: ['products'] }),
+        queryClient.invalidateQueries({ queryKey: CUSTOMERS_KEY }),
       ])
       const cashPayment = plan.payments.find((p) => p.tendered_amount !== null)
       onDone(
@@ -107,23 +130,32 @@ export function PaymentDialog({
           total: row.total_amount,
           rounding: plan.rounding,
           toPay: plan.toPay,
-          payments: plan.payments.map((p) => ({
-            name: current.find((d) => d.method.id === p.payment_method_id)?.method.name ?? '',
-            amount: p.amount,
-          })),
+          payments: plan.payments.map((p) => {
+            const method = current.find((d) => d.method.id === p.payment_method_id)?.method
+            const name = method?.name ?? ''
+            return { name: method?.code === 'account' && customer ? `${name} · ${customer.name}` : name, amount: p.amount }
+          }),
           tendered: cashPayment?.tendered_amount ?? null,
           change: plan.change,
         },
         { withTicket },
       )
     },
-    onError: (e) => setServerError(toAppError(e).message),
+    onError: (e) => {
+      const err = toAppError(e)
+      setOverLimit(err.code === 'CREDIT_LIMIT_EXCEEDED')
+      setServerError(
+        err.code === 'CREDIT_LIMIT_EXCEEDED' && !canAuthorize
+          ? `${err.message} Pedile que la autorice desde Clientes y volvé a confirmar.`
+          : err.message,
+      )
+    },
   })
 
   function confirm(withTicket = true) {
     setServerError(null)
     setShowErrors(true)
-    if (plan.errors.length === 0) sale.mutate(withTicket)
+    if (errors.length === 0) sale.mutate(withTicket)
   }
 
   const cashDraft = current.find((d) => d.method.is_cash)
@@ -275,9 +307,46 @@ export function PaymentDialog({
         </p>
       )}
 
-      {showErrors && plan.errors.length > 0 && (
+      {isAccount && (
+        <div className={styles.payRow}>
+          <label htmlFor="pay-customer">Cliente</label>
+          <select
+            id="pay-customer"
+            className="select"
+            value={customerId}
+            onChange={(e) => {
+              setCustomerId(e.target.value)
+              setOverLimit(false)
+              setAllowOverLimit(false)
+            }}
+          >
+            <option value="">{customers.isPending ? 'Cargando clientes…' : 'Elegí el cliente'}</option>
+            {activeCustomers.map((c) => (
+              <option key={c.customer_id} value={c.customer_id}>
+                {c.name}
+                {c.document_number ? ` (${c.document_number})` : ''}
+                {c.is_blocked ? ' — BLOQUEADO' : ` — disponible ${formatMoney(c.available_credit)}`}
+              </option>
+            ))}
+          </select>
+          {customer && (
+            <span className={styles.chargedHint}>
+              Debe {formatMoney(customer.balance)} · límite {formatMoney(customer.credit_limit)}
+              {customer.over_limit_authorized_until && ' · exceso autorizado por el encargado'}
+            </span>
+          )}
+        </div>
+      )}
+      {isAccount && overLimit && canAuthorize && (
+        <label className={styles.payRow}>
+          <input type="checkbox" checked={allowOverLimit} onChange={(e) => setAllowOverLimit(e.target.checked)} />
+          Autorizo esta venta por encima del límite (encargado o dueño)
+        </label>
+      )}
+
+      {showErrors && errors.length > 0 && (
         <ul className={styles.payErrors} role="alert">
-          {plan.errors.map((e) => (
+          {errors.map((e) => (
             <li key={e}>{e}</li>
           ))}
         </ul>

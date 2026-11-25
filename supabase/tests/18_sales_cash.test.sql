@@ -70,7 +70,8 @@ select is(
 );
 select is(
   (select array_agg(code order by sort_order) from public.payment_methods),
-  array['cash', 'debit', 'credit', 'qr', 'transfer'], 'la migración siembra los 5 medios de pago'
+  array['cash', 'debit', 'credit', 'qr', 'transfer', 'account'],
+  'las migraciones siembran los 5 medios de pago y «Cuenta corriente» (§23)'
 );
 select is((select count(*)::int from public.payment_methods where is_cash), 1, 'un solo medio es efectivo');
 select is((select array_agg(name order by name) from public.cash_registers), array['Caja 1', 'Caja 2'], 'la migración siembra Caja 1 y Caja 2');
@@ -677,6 +678,9 @@ select throws_ok($$update public.sale_payments set amount = 1 where sale_id = pg
 select throws_ok($$delete from public.sale_payments where sale_id = pg_temp.vid('V2')$$, '42501', null, 'un pago no se borra');
 select throws_ok($$update public.cash_sessions set counted_cash = 1 where id = pg_temp.sid('S1')$$, '42501', null, 'una sesión cerrada no se edita');
 select throws_ok($$delete from public.cash_sessions where id = pg_temp.sid('S1')$$, '42501', null, 'una sesión no se borra');
+-- §23: el control diferido de cuenta corriente deja eventos pendientes; se ejecutan antes del TRUNCATE.
+set constraints all immediate;
+set constraints all deferred;
 select throws_ok($$truncate public.sale_payments$$, '42501', null, 'sale_payments no admite TRUNCATE');
 select throws_ok($$update public.payment_methods set is_cash = false where code = 'cash'$$, '23514', null, 'is_cash de un medio no se cambia');
 select throws_ok($$update public.payment_methods set code = 'otro' where code = 'debit'$$, '23514', null, 'el código de un medio no se cambia');
