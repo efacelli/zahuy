@@ -2,7 +2,7 @@
 
 | Campo | Valor |
 |---|---|
-| Versión | 0.13.0 (§23 clientes y cuentas corrientes, implementada; §22 facturación electrónica ARCA; §21 PLU de balanza en productos, aprobada para implementar; §20 importe manual para productos de balanza y líneas libres, aprobada para implementar; convención de ruta de imágenes de productos, §5.5; propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
+| Versión | 0.13.1 (§23 clientes y cuentas corrientes, implementada, con dos correcciones; §22 facturación electrónica ARCA; §21 PLU de balanza en productos, aprobada para implementar; §20 importe manual para productos de balanza y líneas libres, aprobada para implementar; convención de ruta de imágenes de productos, §5.5; propuesta: §18 datos del comercio para el ticket y §19 historial de precios y aumentos masivos; §17 ranking de productos vendidos, aprobada para implementar; rol Programador; ventas y caja §15 implementada en #65; descuentos y métricas §16 aprobada para implementar) |
 | Estado | **VIGENTE — EL BACKEND CONCUERDA CON OBSERVACIONES (v0.5.2, §14)** |
 | Alcance | Productos, lotes, vencimientos, stock y movimientos; ventas y caja (§15); descuentos por cantidad y métricas de ventas (§16); ranking de productos vendidos (§17); datos del comercio y aumentos de precios (§18 y §19, propuesta) |
 | Fuentes | `CLAUDE.md`, skills `supabase-database`, `inventory-domain`, `security-rls`, `testing-migrations`, `docs/RELEVAMIENTO_RESPUESTAS.md` |
@@ -1117,6 +1117,7 @@ volver a registrar la concordancia.
 | 0.11.0 | 2026-11-17 | **Propuesta** del frontend (§21): `products.scale_plu` para que la etiqueta de la balanza identifique el producto. El comercio va a armar la lista de PLU de fiambrería. Columna aditiva, `create_product` con `p_scale_plu`, `v_product_list` la expone al final. P-61 a P-63 decididas por `efacelli`. Aprobada por `ChinoNader18` con sus precisiones: firma nueva de `create_product`, errores `23514`/`23505`, `grant update (scale_plu)` |
 | 0.12.0 | 2026-11-17 | **Propuesta** del backend (§22): facturación electrónica ARCA desde una Edge Function (WSAA + WSFEv1), `fiscal_settings` y `fiscal_documents`, flujo idempotente, nota de crédito y contingencia CAEA (diseño). P-64 a P-70 abiertas, la mayoría para el contador. Sin datos fiscales del comercio en el repositorio |
 | 0.13.0 | 2026-11-24 | §23: clientes y cuentas corrientes (`customers`, `customer_account_charges`, `customer_payments`, medio de pago `account`, `register_account_sale`, `register_customer_payment`, `void_customer_payment`, `authorize_customer_over_limit`, `v_customer_balances`, `v_customer_account_movements`); el arqueo suma el efectivo cobrado de cuentas. Reglas decididas por `efacelli` |
+| 0.13.1 | 2026-11-25 | §23.3, correcciones de la revisión de §23 (`20261125100000_customer_accounts_fixes.sql`): el reintento de `register_account_sale` devuelve la venta aunque el cliente se haya desactivado; `void_customer_payment` bloquea al cliente antes de anular. Sin cambios de nombres, tipos ni códigos de error |
 
 ---
 
@@ -2518,7 +2519,7 @@ Configuración). Cierra lo que P-70 dejaba abierto.
 - **Comprobante sin confirmar:** la pantalla lo vuelve a consultar sola cada 20 segundos (hasta 12 veces) mientras
   esté abierta; la función concilia con ARCA pasados ~2 minutos.
 
-## 23. Clientes y cuentas corrientes (v0.13.0, implementada)
+## 23. Clientes y cuentas corrientes (v0.13.1, implementada)
 
 Etapa futura 4 adelantada a pedido de `efacelli` (2026-11-24). Migración
 `20261124100000_customer_accounts.sql`; pruebas `supabase/tests/27_customer_accounts.test.sql`.
@@ -2565,6 +2566,13 @@ Inmutable salvo la anulación.
 | `register_customer_payment(p_idempotency_key, p_cash_session_id, p_customer_id, p_payment_method_id, p_amount, p_tendered_amount default null, p_reference default null, p_notes default null) → customer_payments` | todos | Cobra un pago en una sesión abierta. Idempotente |
 | `void_customer_payment(p_payment_id, p_reason) → customer_payments` | encargado/dueño | Anula un pago mientras su sesión siga abierta (`REASON_REQUIRED`, `PAYMENT_NOT_FOUND`, `ALREADY_VOIDED`, `CASH_SESSION_CLOSED`) |
 | `authorize_customer_over_limit(p_customer_id) → customers` | encargado/dueño | Habilita una venta por encima del límite durante 30 minutos |
+
+Precisiones (v0.13.1, migración `20261125100000_customer_accounts_fixes.sql`):
+
+- Un cliente **desactivado** no compra a cuenta (`CUSTOMER_NOT_FOUND`), pero repetir con la misma clave una venta
+  ya registrada la devuelve.
+- `register_account_sale`, `register_customer_payment` y `void_customer_payment` bloquean la fila del cliente: una
+  venta a cuenta no compara el límite mientras se anula un pago de ese cliente.
 
 ### 23.4 Vistas (`security_invoker`)
 
