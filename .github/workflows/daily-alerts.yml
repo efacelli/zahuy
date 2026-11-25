@@ -1,0 +1,28 @@
+# Resumen diario de vencimientos al encargado: llama a la Edge Function `daily-alerts` a las 8:00 de Argentina
+# (11:00 UTC). La URL y el token están en los secretos del repositorio, nunca en este archivo.
+name: Alertas diarias
+
+on:
+  schedule:
+    - cron: '0 11 * * *'
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Llamar a daily-alerts
+        env:
+          ALERTS_URL: ${{ secrets.ALERTS_URL }}
+          ALERTS_CRON_TOKEN: ${{ secrets.ALERTS_CRON_TOKEN }}
+        run: |
+          if [ -z "$ALERTS_URL" ] || [ -z "$ALERTS_CRON_TOKEN" ]; then
+            echo "::notice::Alertas sin configurar: faltan los secretos ALERTS_URL o ALERTS_CRON_TOKEN"; exit 0
+          fi
+          status=$(curl -sS -o /tmp/out.json -w '%{http_code}' -X POST "$ALERTS_URL" \
+            -H "x-alerts-token: $ALERTS_CRON_TOKEN" -H 'Content-Type: application/json' -d '{}')
+          cat /tmp/out.json; echo
+          [ "$status" = "200" ]

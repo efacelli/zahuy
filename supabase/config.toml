@@ -432,3 +432,8 @@ verify_jwt = true
 # Función que emite facturas en ARCA (solo homologación). Exige sesión; además comprueba que el usuario esté activo y pueda ver la venta.
 [functions.arca-emitir]
 verify_jwt = true
+
+# Resumen diario de vencimientos al encargado (WhatsApp y email). La llama el cron de GitHub Actions con el
+# encabezado x-alerts-token (secreto ALERTS_CRON_TOKEN), no un usuario: por eso no exige JWT.
+[functions.daily-alerts]
+verify_jwt = false
